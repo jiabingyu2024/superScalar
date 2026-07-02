@@ -29,7 +29,15 @@ irom_enaA/B = 取指使能
 irom_dataA/B = 返回的两条指令
 ```
 
-仿真 memory model 必须匹配 RTL 和 SoC/IP 行为模型预期的有效时序。除非 RTL 明确改成零延迟取指模式，否则不要用过度理想化的零延迟模型掩盖问题。
+取指时序固定为 BRAM 风格的一拍地址寄存、寄存地址组合读：
+
+| 周期 | 行为 |
+| --- | --- |
+| T0 上升沿前 | `myCPU` 给出 `irom_addrA/B` 和 `irom_enaA/B`。 |
+| T0 上升沿 | IROM 行为模型寄存 `addrA/B`；`FetchStage` 同时寄存 PF 阶段 PC/预测 payload。 |
+| T0 上升沿后 | `irom_dataA/B = mem[addr_q]` 组合有效，并和 `FetchStage` 保存的 payload 同拍绑定。 |
+
+因此主 Verilator TB 不允许把 IROM 简化成“当前地址组合读当前指令”的零延迟模型，也不应额外增加到两拍同步读。否则 IF 阶段 PC 和指令会错位。
 
 ## DRAM/MMIO 契约
 
@@ -40,7 +48,30 @@ accessReady: 本周期地址/命令被接受
 readData: 固定延迟后的读返回数据
 ```
 
-`ExecuteMemStage` 使用 `loadMetaPipe0/loadMetaPipe1` 对齐 load 元信息和 `readData`。后续 Verilator memory model 必须保留这个延迟关系，否则可能出现仿真通过但 FPGA 失败。
+`myCPU` 当前固定 `accessReady=1'b1`，语义是“本周期命令被接收”，不是“读数据本周期有效”。DRAM 读返回固定两拍：
+
+| 周期 | 行为 |
+| --- | --- |
+| T0 | `ExecuteMemStage` 发起 load，`readEn=1`，地址被 DRAM 接收；load 的 ROB/Rd/addr/subtype 进入 `loadMetaPipe0`。 |
+| T1 | load metadata 从 `loadMetaPipe0` 推进到 `loadMetaPipe1`，DRAM 内部读地址/valid 继续推进。 |
+| T2 | `readData` 有效，`ExecuteMemStage` 用 `loadMetaPipe1` 的 metadata 对齐生成 WB 结果。 |
+
+store 写入同样在命令被接受的周期生效；byte mask 和非对齐字节移位由 `ExecuteMemStage` 与 `dram_driver` 配合完成。后续 Verilator memory model 必须保留这个两拍 load 返回关系，否则可能出现仿真通过但 FPGA 失败。
+
+## CSR 和无 cache 约束
+
+当前 core 不实现 I/D cache。`FENCE/FENCE.I` 在项目内定义为 serial NOP：它们需要走 serial 路径保证顺序边界，但不产生 cache flush、取指失效或额外内存副作用。
+
+CSR 当前只承诺测试子集：
+
+| CSR | 地址 | 当前行为 |
+| --- | --- | --- |
+| `mstatus` | `0x300` | 支持有限 MIE/MPIE 位读写。 |
+| `mtvec` | `0x305` | 写入时低两位清零；ECALL 跳转使用它。 |
+| `mepc` | `0x341` | ECALL/MRET 路径使用。 |
+| `mcause` | `0x342` | ECALL 写入 machine ecall cause。 |
+
+非白名单 CSR 当前读 0、写忽略；这不是完整 RISC-V privileged 行为。rv32/src 测试选择必须和这个子集一致，除非后续明确扩展 CSR 实现。
 
 ## rv32 通过标准
 
@@ -62,4 +93,3 @@ src 测试有独立通过逻辑，后续由用户补充。框架需要预留：
 1. 用户提供的 src pass/fail 规则。
 2. 赛事 counter/MMIO 行为。
 3. 在不修改 `myCPU.sv` 端口的前提下，尽量保留内部性能指标观测能力。
-

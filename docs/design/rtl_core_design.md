@@ -42,7 +42,7 @@ myCPU
 | `PipelineTypes.sv` | 各流水级之间传递的 payload，不拥有队列/恢复协议。 |
 | `CtrlIF.sv` / `Ctrl.sv` | 全流水 stall/flush 生成。 |
 | `PreFetchStage/` | PC、BPU、BTB、BHB、PF->IF 取指地址生成。 |
-| `FetchStage/` | IROM 返回指令打一拍送 ID。 |
+| `FetchStage/` | 保存 PF payload，并和 IROM 地址寄存后一拍的组合读指令绑定。 |
 | `DecodeStage/` | RV32I/M/CSR 译码、立即数生成、2-way 包拆分。 |
 | `RenameStage/` | 逻辑寄存器到物理寄存器映射、FreeList 分配、Ready 查询、checkpoint 创建。 |
 | `DispatchStage/` | 分配 ROB/IQ/Payload/StoreBuffer 资源。 |
@@ -66,7 +66,7 @@ PF -> IF -> ID -> RN -> DS -> IS -> RR -> EX -> WB -> CM
 
 ```text
 PF: PC + BPU 选择取指地址，向 IROM 发出 iromAddr/ena
-IF: 保存 PF 传来的 PC/预测信息，并绑定 IROM 返回指令
+IF: 保存 PF 传来的 PC/预测信息，并绑定 IROM 地址寄存后一拍返回的指令
 ID: 并行译码 2 条指令，必要时拆包 replay
 RN: SpecRAT 查询/更新，FreeList 分配新目的物理寄存器，ReadyTable 查询源 ready
 DS: 同时写 ROB、IssueQueue、Payload，store 额外分配 StoreBuffer entry
@@ -99,7 +99,21 @@ CM: ROB head 顺序退休，更新 ArchRAT/FreeList，提交 store 或发起恢�
 | `perip_addr/perip_wen/perip_mask/perip_wdata` | 将 `DramAccessIF` 扁平化到赛事 perip 总线。 |
 | `perip_rdata` | 直接作为 `dromAccess.readData`。 |
 
-维护注意：`myCPU` 当前将 `dromAccess.accessReady` 固定为 `1'b1`。仿真 memory model 必须和 RTL 的 load 元信息延迟对齐，否则容易掩盖 load 时序 bug。
+维护注意：`myCPU` 当前将 `dromAccess.accessReady` 固定为 `1'b1`，语义是访问命令被接收，不代表 load 数据同拍有效。仿真 memory model 必须和 RTL 的 load 元信息延迟对齐，否则容易掩盖 load 时序 bug。
+
+### 5.3 Reset 约束
+
+当前 reset 不是完全统一风格，但已有可维护的层级语义：
+
+| 层级 | reset 信号 | 语义 |
+| --- | --- | --- |
+| `top` | `pll.locked` | PLL 锁定后为 1，作为外设低有效 reset 的释放条件。 |
+| `student_top` / CPU 域 | `w_clk_rst = ~locked` | 高有效 reset，连接到 `myCPU.cpu_rst`、`perip_bridge.rst`、`counter.rst`。 |
+| `uart/twin_controller` | `rst_n = locked` | 低有效 reset，运行在 50MHz 外设域。 |
+| `core` 内部 | `rst` | 高有效 reset；多数队列/状态是异步 reset，少量前端流水寄存器是同步 reset。 |
+| `RegFile` | `posedge rst` + `negedge clk` 写 | PRF 负沿写是当前 WB/RR 时序假设的一部分。 |
+
+后续新增 core 模块默认采用高有效 `rst`。若要统一成同步释放或同步 reset，应作为单独上板稳定性任务处理，不和功能 debug 混在一起。
 
 ## 6. 控制流与优先级
 
@@ -313,9 +327,21 @@ Bypass 只匹配 WriteBackStage 当前周期的 wbForward
 | BRC | branch/JAL/JALR | 计算 taken、真实 target，JAL/JALR 写回 `pc+4`。 |
 | MEM | load/store | store 写 StoreBuffer；load 优先查 StoreBuffer，再发 DRAM read；一次只选一个 load。 |
 | MUL | RV32M mul/div/rem | MUL 3 拍，DIV/REM 36 拍，处理除零和有符号溢出。 |
-| SYS | CSR/ECALL/MRET/FENCE 类 serial | 维护 `mstatus/mtvec/mepc/mcause`，ECALL/MRET 产生 exception recovery target。 |
+| SYS | CSR/ECALL/MRET/FENCE 类 serial | 维护项目 CSR 子集 `mstatus/mtvec/mepc/mcause`；ECALL/MRET 产生 exception recovery target；FENCE/FENCE.I 在无 cache 设计中按 serial NOP。 |
 
-### 13.1 MEM load 时序
+### 13.1 IROM 取指时序
+
+IROM 行为模型是 BRAM 风格的一拍地址寄存、寄存地址组合读：
+
+```text
+T0 posedge 前: PF/PC 给出 iromAddr 和 ena
+T0 posedge:    IROM_0 寄存 addra/addrb，FetchStage 寄存 PF payload
+T0 posedge 后: dout = mem[addr_q]，FetchStage 组合绑定 pipeReg PC + inst
+```
+
+因此 `FetchStage` 不是任意 ROM 延迟自适应模块，它假设 IROM 返回和 PF payload 在上述时序下对齐。TB 必须复刻这个模型。
+
+### 13.2 MEM load 时序
 
 `ExecuteMemStage` 用两级 metadata 管线对齐 DRAM 返回：
 
@@ -326,6 +352,19 @@ T2: loadMetaPipe1.valid 时，使用 dram.exReadData 生成 WB 结果
 ```
 
 如果 `loadMetaPipe1.valid` 且当前 MEM pipe 又有新有效 uop，则 `loadReturnBlocked` 拉高，阻塞 EX，避免 load 返回和新 MEM 输入抢同一输出口。
+
+### 13.3 CSR/FENCE 支持边界
+
+当前 CSR 白名单：
+
+```text
+mstatus 0x300
+mtvec   0x305
+mepc    0x341
+mcause  0x342
+```
+
+非白名单 CSR 读 0、写忽略，不承诺 `mcycle/minstret/Zicntr`。FENCE/FENCE.I 由于当前无 cache，作为 serial NOP 使用；EBREAK 当前不会产生 exception，这是后续若跑 `rv32mi-p-sbreak` 需要补的点。
 
 ## 14. WriteBack
 
@@ -428,8 +467,8 @@ commitRecoveryReq > writeBackRecoveryReq
 
 以下是阅读 RTL 后应重点验证的风险，不代表已经确认是 bug：
 
-1. `myCPU` 固定 `dromAccess.accessReady=1`，而 SoC DRAM 实际读返回有延迟；仿真模型必须和 `ExecuteMemStage` 的 metadata 延迟一致。
-2. `FetchStage` 直接把当前 `iromAccess.inst[i]` 和上一拍 PF payload 绑定，IROM 行为模型的同步/异步读时序会直接影响取指正确性。
+1. IROM 固定为地址寄存后一拍组合读；仿真模型若改成零延迟或两拍同步读，PC 和 inst 会错位。
+2. `myCPU` 固定 `dromAccess.accessReady=1`，DRAM load 数据固定两拍返回；仿真模型必须和 `ExecuteMemStage` 的 metadata 延迟一致。
 3. `DecodeStage` 拆包只保存 `decodedStage[1]`，需要确认 lane0 serial/branch/store 情况下 lane1 replay 是否覆盖所有组合场景。
 4. `RenameStage` 同包 WAW 时 `oldDst` 指向前序 lane 新物理寄存器，这对提交释放链条很敏感，需要用同周期双写同一逻辑寄存器测试验证。
 5. `ReadyTable.recoverReadyAll` 在 backend flush 时把所有物理寄存器置 ready，这简单但可能掩盖恢复后未完成生产者问题，需要结合 ROB/FreeList 恢复语义验证。
@@ -452,4 +491,3 @@ commitRecoveryReq > writeBackRecoveryReq
 5. M 扩展：`mul/div/rem`，重点看 long latency wakeup。
 6. CSR/system：`csr/ecall/mret`，重点看 serialBlock 和异常恢复。
 7. src smoke：接入用户提供的 src pass/fail 逻辑后再看性能。
-

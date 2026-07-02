@@ -8,15 +8,15 @@
 
 主要不足不在“模块数量不够”，而在以下几类：
 
-1. 仿真/上板 memory 时序契约还不够硬，`myCPU`、`rtl/ip`、`rtl/soc` 三层存在错拍风险。
-2. 若干异常/非法指令/CSR 路径不完整，会影响 rv32mi 和后续严格正确性测试。
+1. 仿真/上板 memory 时序契约必须固定：IROM 为地址寄存一拍后组合读，DRAM 为两拍返回；后续 TB 不能使用零延迟模型替代。
+2. 若干异常/非法指令路径不完整。CSR 当前按项目测试子集支持，不能按完整 privileged/Zicntr 覆盖来评价。
 3. M 扩展当前直接用 RTL 运算符和自写除法流水，没有明确 FPGA IP/资源/Fmax 策略。
 4. 恢复、ReadyTable、StoreBuffer forwarding 等乱序关键路径有简化实现，必须用 directed tests 验证。
 5. 当前接口没有标准 ready/valid transaction 记录，debug 时需要额外波形和断言辅助。
 
 ## 2. 阻塞仿真一致性的优先问题
 
-### 2.1 `myCPU` 固定 `dromAccess.accessReady=1`，但 SoC DRAM 实际有返回延迟
+### 2.1 IROM/DRAM 时序契约必须在 TB 中严格复刻
 
 证据：
 
@@ -24,19 +24,21 @@
 - `rtl/soc/perip_bridge.sv:68-83`：DRAM/MMIO/counter read select 有寄存选择
 - `rtl/soc/perip_bridge.sv:162-171`：`dram_read_sel_d2` 后才选择 `dram_rdata`
 - `rtl/soc/dram_driver.sv:53-62`：offset 打两拍后对 `dram_rdata_raw` 右移
+- `rtl/ip/IROM_0.sv:36-49`：IROM 在时钟沿寄存地址，随后用寄存地址组合读出指令
+- `rtl/ip/DRAM_0.sv:38-47`：DRAM 读地址/valid 走两级管线，第二拍更新 `douta`
 - `rtl/core/ExecuteStage/ExecuteMemStage.sv:87-99`、`128-134`：core 用 `loadMetaPipe0/1` 对齐 load 返回
 
 影响：
 
-`myCPU` 对 core 声称访问立即 ready，但 `perip_rdata` 对 DRAM load 不是立即有效。若 Verilator TB 给 `myCPU` 做零延迟内存，会掩盖真实上板错拍；若 TB 复刻 SoC 延迟，又要确认 `ExecuteMemStage` 的 metadata 与返回延迟严格一致。
+这不是“DRAM 有延迟但 core 没处理”的直接 bug；当前 core 的 MEM load metadata 已按两拍返回设计。真正的风险是后续 Verilator TB 如果给 `myCPU` 做零延迟 IROM/DRAM，会制造一个和 FPGA BRAM 不一致的验证环境，掩盖真实错拍或引入伪 bug。
 
 建议：
 
-1. 后续先写 `docs/design/memory_contract` 的时序表：load request T0、readData T?。
-2. `myCPU` 主仿真 memory model 必须显式模拟 IROM/DRAM 延迟。
+1. 文档固定时序表：IROM 地址在 T0 被寄存，T0 时钟沿后指令组合有效；DRAM load 请求在 T0 被接受，T2 返回数据有效。
+2. `myCPU` 主仿真 memory model 必须显式模拟上述 IROM/DRAM 延迟。
 3. 给 `ExecuteMemStage` 加 directed test：连续 load、load 后 ALU、load 与 store forwarding 交错。
 
-优先级：P0。
+优先级：P0。性质：仿真契约风险，不是当前 RTL 已确认功能 bug。
 
 ### 2.2 `student_top` 例化 `rtl/ip/IROM_0/DRAM_0` 时没有传初始化文件
 
@@ -72,7 +74,7 @@ FetchStage 没有显式 instruction valid/ready，只假设 IROM 返回和 `pipe
 
 建议：
 
-1. `myCPU` TB 的 IROM 模型必须明确“地址打一拍、数据组合读注册地址”还是“同步读两拍”。
+1. `myCPU` TB 的 IROM 模型固定为“地址打一拍、数据组合读注册地址”。
 2. 用 `rv32ui-p-simple` 前先做一个取指 trace：PC 和 inst dump 前 20 条必须逐条对齐。
 
 优先级：P0。
@@ -100,7 +102,7 @@ FetchStage 没有显式 instruction valid/ready，只假设 IROM 返回和 `pipe
 
 优先级：P0/P1，取决于 rv32mi 覆盖范围。
 
-### 3.2 EBREAK/MISC-MEM/FENCE 类路径不完整
+### 3.2 EBREAK 未作为 trap；FENCE/FENCE.I 在无 cache 设计中按 serial NOP 处理
 
 证据：
 
@@ -110,16 +112,16 @@ FetchStage 没有显式 instruction valid/ready，只假设 IROM 返回和 `pipe
 
 影响：
 
-`rv32mi-p-sbreak` 这类测试很可能失败。FENCE/FENCE.I 被 serial 化但没有真正内存序/取指序语义；在无 cache 设计中可以简化，但必须有明确定义。
+`rv32mi-p-sbreak` 这类测试很可能失败，因为 EBREAK 当前不会产生 exception。FENCE/FENCE.I 走 SYS serial 路径但不产生异常；在当前无 cache 设计中，按 serial NOP 处理是可接受的项目内定义，后续不要把它误判为必须实现 cache flush。
 
 建议：
 
 1. 明确 `EBREAK` 是否作为 trap。
-2. `FENCE/FENCE.I` 在当前无 cache 场景可作为 serial NOP，但文档和测试预期要一致。
+2. `FENCE/FENCE.I` 维持 serial NOP；仿真测试只检查它不破坏顺序和提交，不检查 cache 相关副作用。
 
-优先级：P1。
+优先级：P1 for EBREAK；P3 for FENCE 文档约束。
 
-### 3.3 CSR 覆盖不足，Zicntr/机器态测试可能失败
+### 3.3 CSR 为项目子集实现，不承诺 Zicntr/完整机器态覆盖
 
 证据：
 
@@ -129,15 +131,15 @@ FetchStage 没有显式 instruction valid/ready，只假设 IROM 返回和 `pipe
 
 影响：
 
-`rv32mi-p-zicntr`、部分 CSR 测试、需要 `mcycle/minstret` 的程序可能失败。更危险的是 CSR 指令“看似支持”，但返回值不符合 spec。
+当前项目只要求支持现有测试会用到的 CSR 子集，`mstatus/mtvec/mepc/mcause` 是明确白名单；`mcycle/minstret`、Zicntr 和更完整的机器态 CSR 不纳入当前验证目标。需要注意的是，译码层会接收通用 CSR 指令格式，而执行层对非白名单 CSR 读 0、写忽略，这属于项目内受限行为，不等价于完整 RISC-V privileged 兼容。
 
 建议：
 
-1. 列出支持 CSR 白名单。
-2. 对不支持 CSR 选择 illegal trap 或明确返回 0 的非标准行为。
-3. 若 src 性能要读 cycle，应设计 MMIO counter 或内部 perf 暴露方式，不要混用未实现 CSR。
+1. 文档列出支持 CSR 白名单：`mstatus/mtvec/mepc/mcause`。
+2. 不支持 CSR 当前明确为“读 0、写忽略”的非标准行为；只有当后续测试需要时再改成 illegal trap 或补实现。
+3. src 性能计数不依赖 Zicntr CSR，优先使用赛事 counter/MMIO 或内部 perf 观测。
 
-优先级：P1。
+优先级：P2。性质：测试范围约束，不是当前必须修复项。
 
 ### 3.4 ReadyTable 恢复时直接全 ready，可能掩盖恢复后依赖关系
 
@@ -274,7 +276,7 @@ Vivado 可能推 DSP，也可能产生较重组合路径；三种 product 同时
 
 ## 5. 控制、恢复与时序可维护性问题
 
-### 5.1 reset 风格不一致
+### 5.1 reset 风格需要形成统一使用约束
 
 证据：
 
@@ -286,15 +288,15 @@ Vivado 可能推 DSP，也可能产生较重组合路径；三种 product 同时
 
 影响：
 
-仿真一般可跑，但上板复位释放、CDC、时序约束和 debug 会复杂。尤其 `top.sv` 中 PLL `locked` 被反相后给 `student_top`，而 UART/twin_controller 用 `rst_n`，复位极性混杂。
+仿真一般可跑，但上板复位释放、CDC、时序约束和 debug 会复杂。当前可接受的统一口径是：CPU 域以高有效 reset 为语义入口；`top.sv` 用 PLL `locked` 生成 `student_top.w_clk_rst = ~locked`；UART/twin_controller 保持低有效 `rst_n = locked`。core 内部多数状态为异步高有效 reset，少量前端流水寄存器是同步 reset，PRF 是负沿写加异步 reset。
 
 建议：
 
-1. 文档明确每层 reset 极性和同步/异步策略。
-2. 后续不要随意混用 reset 风格。
-3. 若需要上板稳定，建议 CPU 域 reset 做同步释放。
+1. 文档明确每层 reset 极性和同步/异步策略，后续新增模块优先采用 CPU 域高有效 reset。
+2. 不在本阶段重构现有 reset 风格，避免引入无关功能变化。
+3. 若后续上板不稳定，再单独做 CPU 域 reset 同步释放改造，并配套仿真/上板验证。
 
-优先级：P1/P2。
+优先级：P2。性质：工程约束和后续上板风险。
 
 ### 5.2 PRF 负沿写是隐含关键时序假设
 
@@ -448,7 +450,7 @@ Linux 区分大小写，脚本/filelist 容易出错；新人阅读会被命名�
 
 ### 第一阶段：先保证仿真闭环可信
 
-1. 固定 `myCPU` TB 的 IROM/DRAM 时序模型。
+1. 固定 `myCPU` TB 的 IROM/DRAM 时序模型：IROM 地址打一拍组合读，DRAM 两拍读返回。
 2. 取指 trace 对齐 dump。
 3. 明确 `tohost` 地址和 store 监控。
 4. 不先碰性能优化。
@@ -456,7 +458,7 @@ Linux 区分大小写，脚本/filelist 容易出错；新人阅读会被命名�
 ### 第二阶段：修正确性阻塞
 
 1. 非法/不支持指令处理。
-2. EBREAK/ECALL/MRET/CSR 子集定义。
+2. EBREAK/ECALL/MRET/CSR 子集定义；CSR 当前只承诺 `mstatus/mtvec/mepc/mcause`。
 3. StoreBuffer forwarding 年龄问题。
 4. ReadyTable recovery 策略验证。
 
@@ -472,4 +474,3 @@ Linux 区分大小写，脚本/filelist 容易出错；新人阅读会被命名�
 1. 未运行 Verilator/lint/synthesis。
 2. 未修改 RTL。
 3. 未判断每条风险是否已经在某个测试中实际失败。
-
