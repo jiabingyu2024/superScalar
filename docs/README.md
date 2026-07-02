@@ -21,6 +21,8 @@
 | 文档 | 内容 |
 | --- | --- |
 | `archive/2026-07-02/001_framework_and_bringup_rules.md` | 工程框架、DUT 选择、filelist 和测试数据准备的初始决策。 |
+| `archive/2026-07-02/002_docs_chinese_and_rtl_design.md` | docs 中文化和 `rtl/core` 详细设计文档更新记录。 |
+| `archive/2026-07-02/003_rtl_review_risks_and_gaps.md` | 当前 `rtl/` 静态评审问题、不完善点和建议处理顺序。 |
 
 ## 后续维护规则
 
@@ -29,4 +31,3 @@
 3. FPGA 工程、Tcl、约束或上板流程变化时，更新 `fpga/`。
 4. 定位具体 bug 时，在 `debug/` 下新增记录。
 5. 每次有意义的项目修改，在 `archive/` 下按日期新增归档。
-
