@@ -23,6 +23,7 @@
 | `archive/2026-07-02/001_framework_and_bringup_rules.md` | 工程框架、DUT 选择、filelist 和测试数据准备的初始决策。 |
 | `archive/2026-07-02/002_docs_chinese_and_rtl_design.md` | docs 中文化和 `rtl/core` 详细设计文档更新记录。 |
 | `archive/2026-07-02/003_rtl_review_risks_and_gaps.md` | 当前 `rtl/` 静态评审问题、不完善点和建议处理顺序。 |
+| `archive/2026-07-02/004_src_dump_generation.md` | src 测试 dump 补齐规则和脚本更新记录。 |
 
 ## 后续维护规则
 

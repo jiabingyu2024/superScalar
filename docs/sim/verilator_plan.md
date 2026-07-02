@@ -65,3 +65,12 @@ scripts/prepare_test_data.py
 ```
 
 该脚本会在 `data/` 原目录下补齐缺失的 `.hex` 和 `.dump`。默认幂等，不覆盖已有文件；需要覆盖时显式使用 `--force`。
+
+当前规则：
+
+| 测试类型 | 输入 | 生成物 |
+| --- | --- | --- |
+| rv32 | ELF | `<test>.hex`、缺失时生成 `<test>.dump` |
+| src | `irom.coe/dram.coe` | `irom.hex/dram.hex`、当目录内没有 `.dump` 时由 `irom.coe` 生成 `<profile>.dump` |
+
+src dump 是基于 `irom.coe` 的 raw RV32 反汇编，不包含 ELF 符号信息。
