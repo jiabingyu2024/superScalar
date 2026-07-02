@@ -25,6 +25,7 @@
 | `archive/2026-07-02/003_rtl_review_risks_and_gaps.md` | 当前 `rtl/` 静态评审问题、不完善点和建议处理顺序。 |
 | `archive/2026-07-02/004_src_dump_generation.md` | src 测试 dump 补齐规则和脚本更新记录。 |
 | `archive/2026-07-02/005_review_corrections_memory_csr_reset.md` | IROM/DRAM、CSR、无 cache 和 reset 约束的评审修订记录。 |
+| `archive/2026-07-02/006_system_subtype_and_ebreak_fix.md` | SYSTEM/MISC-MEM subtype 与 EBREAK trap 的 RTL 修复记录。 |
 
 ## 后续维护规则
 

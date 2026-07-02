@@ -102,7 +102,9 @@ FetchStage 没有显式 instruction valid/ready，只假设 IROM 返回和 `pipe
 
 优先级：P0/P1，取决于 rv32mi 覆盖范围。
 
-### 3.2 EBREAK 未作为 trap；FENCE/FENCE.I 在无 cache 设计中按 serial NOP 处理
+### 3.2 历史问题：EBREAK 未作为 trap；FENCE/FENCE.I 在无 cache 设计中按 serial NOP 处理
+
+状态：已在 `docs/archive/2026-07-02/006_system_subtype_and_ebreak_fix.md` 对应的 RTL 修改中修复 EBREAK/FENCE/MRET subtype 表达和 EBREAK trap 行为。以下保留原评审背景。
 
 证据：
 
@@ -112,7 +114,7 @@ FetchStage 没有显式 instruction valid/ready，只假设 IROM 返回和 `pipe
 
 影响：
 
-`rv32mi-p-sbreak` 这类测试很可能失败，因为 EBREAK 当前不会产生 exception。FENCE/FENCE.I 走 SYS serial 路径但不产生异常；在当前无 cache 设计中，按 serial NOP 处理是可接受的项目内定义，后续不要把它误判为必须实现 cache flush。
+修复前，`rv32mi-p-sbreak` 这类测试很可能失败，因为 EBREAK 不会产生 exception。FENCE/FENCE.I 走 SYS serial 路径但不产生异常；在当前无 cache 设计中，按 serial NOP 处理是可接受的项目内定义，后续不要把它误判为必须实现 cache flush。
 
 建议：
 

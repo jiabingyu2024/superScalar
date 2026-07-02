@@ -13,6 +13,7 @@ module ExecuteSysStage(
     localparam logic [11:0] CSR_MEPC    = 12'h341;
     localparam logic [11:0] CSR_MCAUSE  = 12'h342;
     localparam DataPath     MCAUSE_ECALL_M = 32'd11;
+    localparam DataPath     MCAUSE_BREAKPOINT = 32'd3;
 
     RrToExSysPath pipeReg [WAY_NUM];
     DataPath mstatus;
@@ -21,9 +22,12 @@ module ExecuteSysStage(
     DataPath mcause;
 
     function automatic logic is_mret(input RrToExSysPath uop);
-        return uop.subType.sysSubType == SYS_SUBTYPE_EBREAK &&
-               uop.csrAddr.valid &&
-               uop.csrAddr.csrAddr == 12'h302;
+        return uop.subType.sysSubType == SYS_SUBTYPE_MRET;
+    endfunction
+
+    function automatic logic is_trap(input RrToExSysPath uop);
+        return uop.subType.sysSubType == SYS_SUBTYPE_ECALL ||
+               uop.subType.sysSubType == SYS_SUBTYPE_EBREAK;
     endfunction
 
     function automatic logic is_csr(input SysSubType st);
@@ -108,9 +112,10 @@ module ExecuteSysStage(
                 oldValue = csr_read(pipeReg[i].csrAddr.csrAddr);
                 newValue = csr_write_value(pipeReg[i].subType.sysSubType, oldValue, operand);
 
-                if (pipeReg[i].valid && pipeReg[i].subType.sysSubType == SYS_SUBTYPE_ECALL) begin
+                if (pipeReg[i].valid && is_trap(pipeReg[i])) begin
                     mepc <= pipeReg[i].pc;
-                    mcause <= MCAUSE_ECALL_M;
+                    mcause <= (pipeReg[i].subType.sysSubType == SYS_SUBTYPE_EBREAK) ?
+                              MCAUSE_BREAKPOINT : MCAUSE_ECALL_M;
                     mstatus[7] <= mstatus[3];
                     mstatus[3] <= 1'b0;
                 end else if (pipeReg[i].valid && is_mret(pipeReg[i])) begin
@@ -151,9 +156,9 @@ module ExecuteSysStage(
             self.nextSysToStage[i].trueTargetPc = '0;
             self.nextSysToStage[i].isSerial = 1'b1;
             self.nextSysToStage[i].exception =
-                pipeReg[i].subType.sysSubType == SYS_SUBTYPE_ECALL || is_mret(pipeReg[i]);
+                is_trap(pipeReg[i]) || is_mret(pipeReg[i]);
 
-            if (pipeReg[i].subType.sysSubType == SYS_SUBTYPE_ECALL) begin
+            if (is_trap(pipeReg[i])) begin
                 self.nextSysToStage[i].trueTargetPc = {mtvec[31:2], 2'b00};
             end else if (is_mret(pipeReg[i])) begin
                 self.nextSysToStage[i].trueTargetPc = mepc;

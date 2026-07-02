@@ -373,7 +373,7 @@ package DecodeTypes;
         instInfo.isSerial    = TRUE;
         instInfo.writeReg    = FALSE;
         instInfo.tubeType    = TUBE_TYPE_SYS;
-        instInfo.SubType.sysSubType = SYS_SUBTYPE_EBREAK;
+        instInfo.SubType.sysSubType = SYS_SUBTYPE_FENCE;
         instInfo.opTypeA     = OP_TYPE_NONE;
         instInfo.opTypeB     = OP_TYPE_NONE;
     endfunction
@@ -396,11 +396,7 @@ package DecodeTypes;
             unique case (inst[31:20])
                 12'h000:  instInfo.SubType.sysSubType = SYS_SUBTYPE_ECALL;
                 12'h001:  instInfo.SubType.sysSubType = SYS_SUBTYPE_EBREAK;
-                12'h302: begin
-                    instInfo.SubType.sysSubType = SYS_SUBTYPE_EBREAK;
-                    csrAddr.valid = TRUE;
-                    csrAddr.csrAddr = 12'h302;
-                end
+                12'h302:  instInfo.SubType.sysSubType = SYS_SUBTYPE_MRET;
                 default: begin
                     instInfo.valid = FALSE;
                     instInfo.SubType.sysSubType = SYS_SUBTYPE_ECALL;

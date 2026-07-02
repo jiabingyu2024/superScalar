@@ -327,7 +327,7 @@ Bypass 只匹配 WriteBackStage 当前周期的 wbForward
 | BRC | branch/JAL/JALR | 计算 taken、真实 target，JAL/JALR 写回 `pc+4`。 |
 | MEM | load/store | store 写 StoreBuffer；load 优先查 StoreBuffer，再发 DRAM read；一次只选一个 load。 |
 | MUL | RV32M mul/div/rem | MUL 3 拍，DIV/REM 36 拍，处理除零和有符号溢出。 |
-| SYS | CSR/ECALL/MRET/FENCE 类 serial | 维护项目 CSR 子集 `mstatus/mtvec/mepc/mcause`；ECALL/MRET 产生 exception recovery target；FENCE/FENCE.I 在无 cache 设计中按 serial NOP。 |
+| SYS | CSR/ECALL/EBREAK/MRET/FENCE 类 serial | 维护项目 CSR 子集 `mstatus/mtvec/mepc/mcause`；ECALL/EBREAK 进入 `mtvec`，MRET 返回 `mepc`；FENCE/FENCE.I 在无 cache 设计中按 serial NOP。 |
 
 ### 13.1 IROM 取指时序
 
@@ -364,7 +364,7 @@ mepc    0x341
 mcause  0x342
 ```
 
-非白名单 CSR 读 0、写忽略，不承诺 `mcycle/minstret/Zicntr`。FENCE/FENCE.I 由于当前无 cache，作为 serial NOP 使用；EBREAK 当前不会产生 exception，这是后续若跑 `rv32mi-p-sbreak` 需要补的点。
+非白名单 CSR 读 0、写忽略，不承诺 `mcycle/minstret/Zicntr`。FENCE/FENCE.I 由于当前无 cache，作为 serial NOP 使用。EBREAK 当前按 breakpoint trap 处理，写 `mepc=pc`、`mcause=3`，并跳转到 `mtvec`。
 
 ## 14. WriteBack
 
@@ -489,5 +489,5 @@ commitRecoveryReq > writeBackRecoveryReq
 3. 分支：`beq/bne/blt/jal/jalr`，重点看 ROB `isMiss` 和 RecoveryManager。
 4. Load/store：`lw/sw/lb/lh/sb/sh`，重点看 StoreBuffer 和 load metadata。
 5. M 扩展：`mul/div/rem`，重点看 long latency wakeup。
-6. CSR/system：`csr/ecall/mret`，重点看 serialBlock 和异常恢复。
+6. CSR/system：`csr/ecall/ebreak/mret/fence`，重点看 serialBlock、trap redirect 和异常恢复。
 7. src smoke：接入用户提供的 src pass/fail 逻辑后再看性能。

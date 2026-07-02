@@ -152,7 +152,9 @@ package BasicTypes;
         SYS_SUBTYPE_CSRRC  = 4'b0100,
         SYS_SUBTYPE_CSRRWI = 4'b0101,
         SYS_SUBTYPE_CSRRSI = 4'b0110,
-        SYS_SUBTYPE_CSRRCI = 4'b0111
+        SYS_SUBTYPE_CSRRCI = 4'b0111,
+        SYS_SUBTYPE_FENCE  = 4'b1000,
+        SYS_SUBTYPE_MRET   = 4'b1001
     } SysSubType;
 
     typedef union packed {
