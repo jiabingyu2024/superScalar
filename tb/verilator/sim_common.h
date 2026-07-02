@@ -1,0 +1,111 @@
+#ifndef TB_VERILATOR_SIM_COMMON_H
+#define TB_VERILATOR_SIM_COMMON_H
+
+#include <cstdint>
+#include <iosfwd>
+#include <string>
+
+namespace sim {
+
+constexpr uint32_t IROM_BASE = 0x80000000u;
+constexpr uint32_t SRC_DRAM_BASE = 0x80100000u;
+constexpr uint32_t SW0_ADDR = 0x80200000u;
+constexpr uint32_t SW1_ADDR = 0x80200004u;
+constexpr uint32_t KEY_ADDR = 0x80200010u;
+constexpr uint32_t SEG_ADDR = 0x80200020u;
+constexpr uint32_t LED_ADDR = 0x80200040u;
+constexpr uint32_t CNT_ADDR = 0x80200050u;
+constexpr uint32_t CNT_START_CMD = 0x80000000u;
+constexpr uint32_t CNT_STOP_CMD = 0xffffffffu;
+
+constexpr uint32_t DEFAULT_SRC_LED_FAIL = 0x24181824u;
+constexpr uint32_t DEFAULT_SRC_LED_PASS = 0x01221c08u;
+constexpr uint64_t DEFAULT_MAX_CYCLES = 2000000ull;
+constexpr uint64_t DEFAULT_SRC_MAX_CYCLES = 20000000ull;
+constexpr uint64_t DEFAULT_SRC_SEG_GRACE = 512ull;
+constexpr uint64_t DEFAULT_COUNTER_CYCLES_PER_MS = 50000ull;
+
+struct Options {
+    std::string mode = "rv32";
+    std::string test_name = "unknown";
+    std::string irom_hex;
+    std::string dram_hex;
+    std::string result_path;
+    std::string wave_path;
+    uint32_t tohost_addr = 0x80001000u;
+    uint64_t max_cycles = DEFAULT_MAX_CYCLES;
+    uint64_t src_seg_grace = DEFAULT_SRC_SEG_GRACE;
+    uint64_t counter_cycles_per_ms = DEFAULT_COUNTER_CYCLES_PER_MS;
+    bool trace = false;
+
+    std::string src_checker = "ledseg";
+    uint32_t src_led_pass = DEFAULT_SRC_LED_PASS;
+    uint32_t src_led_fail = DEFAULT_SRC_LED_FAIL;
+    bool has_pass_counter_addr = false;
+    bool has_fail_counter_addr = false;
+    bool has_expected_pass_count = false;
+    bool has_src_test_mask = false;
+    bool has_src_pass_marker = false;
+    bool has_src_fail_marker = false;
+    bool has_expected_rv32i_count = false;
+    bool has_expected_mext_count = false;
+    uint32_t pass_counter_addr = 0;
+    uint32_t fail_counter_addr = 0;
+    uint32_t expected_pass_count = 0;
+    uint32_t src_test_mask = 0;
+    uint32_t src_pass_marker = 0;
+    uint32_t src_fail_marker = 0;
+    uint32_t expected_rv32i_count = 0;
+    uint32_t expected_mext_count = 0;
+};
+
+struct Request {
+    uint32_t irom_addr_a = 0;
+    uint32_t irom_addr_b = 0;
+    bool irom_ena_a = false;
+    bool irom_ena_b = false;
+    uint32_t perip_addr = 0;
+    uint32_t perip_wdata = 0;
+    uint8_t perip_mask = 0;
+    bool perip_wen = false;
+};
+
+struct SimResult {
+    std::string status = "TIMEOUT";
+    std::string reason = "max cycles reached";
+    uint64_t cycles = 0;
+    uint32_t fail_code = 0;
+
+    bool saw_led_pass = false;
+    bool saw_seg_match = false;
+    bool saw_virtual_seg_match = false;
+    uint64_t led_pass_cycle = 0;
+    uint64_t seg_match_cycle = 0;
+    uint64_t virtual_seg_match_cycle = 0;
+    uint32_t last_led = 0;
+    uint32_t last_seg_wdata = 0;
+    uint32_t counter_ms = 0;
+
+    bool saw_pass_counter = false;
+    bool saw_fail_counter = false;
+    uint32_t last_pass_counter = 0;
+    uint32_t last_fail_counter = 0;
+
+    bool saw_src_pass_marker = false;
+    bool saw_src_fail_marker = false;
+    uint32_t last_src_test_lamps = 0;
+    uint32_t last_rv32i_count = 0;
+    uint32_t last_mext_count = 0;
+};
+
+std::string hex32(uint32_t value);
+std::string json_escape(const std::string& value);
+bool parse_u64(const std::string& text, uint64_t& out);
+bool parse_u32(const std::string& text, uint32_t& out);
+bool is_known_mmio_addr(uint32_t addr);
+void write_json_string_field(std::ostream& out, const std::string& key,
+                             const std::string& value, bool comma);
+
+}  // namespace sim
+
+#endif  // TB_VERILATOR_SIM_COMMON_H

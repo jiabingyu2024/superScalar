@@ -1,0 +1,47 @@
+[
+  {
+    "name": "src0",
+    "checker": "ledseg",
+    "led_pass": "0x01221c08",
+    "led_fail": "0x24181824"
+  },
+  {
+    "name": "src1",
+    "checker": "ledseg",
+    "led_pass": "0x01221c08",
+    "led_fail": "0x24181824"
+  },
+  {
+    "name": "src2",
+    "checker": "ledseg",
+    "led_pass": "0x01221c08",
+    "led_fail": "0x24181824"
+  },
+  {
+    "name": "srcSmoke",
+    "checker": "ledseg",
+    "led_pass": "0x01221c08",
+    "led_fail": "0x24181824"
+  },
+  {
+    "name": "srcWithMext",
+    "checker": "lampseg",
+    "pass_counter_addr": "0x80100000",
+    "fail_counter_addr": "0x80100004",
+    "test_lamp_mask": "0x03030303",
+    "pass_marker": "0x04887020",
+    "fail_marker": "0x90606090",
+    "expected_rv32i_count": 37,
+    "expected_mext_count": 8
+  },
+  {
+    "name": "srcWithoutMext",
+    "checker": "lampseg",
+    "pass_counter_addr": "0x80100000",
+    "fail_counter_addr": "0x80100004",
+    "test_lamp_mask": "0x03030303",
+    "pass_marker": "0x04887020",
+    "fail_marker": "0x90606090",
+    "expected_rv32i_count": 37
+  }
+]

@@ -26,6 +26,10 @@
 | `archive/2026-07-02/004_src_dump_generation.md` | src 测试 dump 补齐规则和脚本更新记录。 |
 | `archive/2026-07-02/005_review_corrections_memory_csr_reset.md` | IROM/DRAM、CSR、无 cache 和 reset 约束的评审修订记录。 |
 | `archive/2026-07-02/006_system_subtype_and_ebreak_fix.md` | SYSTEM/MISC-MEM subtype 与 EBREAK trap 的 RTL 修复记录。 |
+| `archive/2026-07-02/007_verilator_tb_mycpu.md` | `myCPU` Verilator TB、rv32/src 判定和运行入口记录。 |
+| `archive/2026-07-02/008_tb_replan_after_review.md` | TB 结构复盘、src profile 化 checker 和性能统计重规划。 |
+| `archive/2026-07-02/009_verilator_tb_refactor.md` | 按 008 规划完成 Verilator TB 拆分、src profile 和 smoke 验证记录。 |
+| `archive/2026-07-02/010_src_mext_lampseg_checker.md` | `srcWithMext/srcWithoutMext` dump 分析、新 LED/SEG 协议和 checker 更新记录。 |
 
 ## 后续维护规则
 
