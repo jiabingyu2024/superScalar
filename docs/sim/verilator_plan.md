@@ -1,10 +1,10 @@
-# Verilator Plan
+# Verilator 仿真规划
 
-## User-Facing Entry
+## 用户入口
 
-Makefile should become the command surface. Python scripts may be used behind Makefile for test discovery, path expansion, batching, and result reporting.
+后续 Makefile 应作为用户可见命令入口。Python 脚本可以在 Makefile 背后负责测试发现、路径展开、批量执行和结果汇总。
 
-Target command shape:
+目标命令形态：
 
 ```sh
 make sim-rv32 TEST=rv32ui-p-simple
@@ -14,38 +14,38 @@ make sim-src TEST=srcSmoke
 make sim-src-all
 ```
 
-## Test Selection
+## 测试选择粒度
 
-rv32 tests should support:
+rv32 测试需要支持：
 
-| Mode | Example |
+| 模式 | 示例 |
 | --- | --- |
-| Single test | `TEST=rv32ui-p-add` |
-| Suite | `SUITE=rv32ui` |
-| All suites | `sim-rv32-all` |
+| 单个测试 | `TEST=rv32ui-p-add` |
+| 单个套件 | `SUITE=rv32ui` |
+| 全部套件 | `sim-rv32-all` |
 
-src tests should support:
+src 测试需要支持：
 
-| Mode | Example |
+| 模式 | 示例 |
 | --- | --- |
-| Single profile | `TEST=src0` |
-| All profiles | `sim-src-all` |
+| 单个 profile | `TEST=src0` |
+| 全部 profile | `sim-src-all` |
 
-## Filelists
+## 文件列表
 
-Stable filelists live under `scripts/filelists/`:
+稳定 filelist 位于 `scripts/filelists/`：
 
-| File | Use |
+| 文件 | 用途 |
 | --- | --- |
-| `core.f` | Core packages, interfaces, modules, `core`, and `myCPU`. |
-| `soc.f` | SoC wrapper RTL. |
-| `ip_verilator.f` | Behavioral IP models for Verilator only. |
-| `verilator_mycpu.f` | Primary `myCPU` simulation filelist. |
-| `verilator_student_top.f` | SoC smoke simulation filelist. |
+| `core.f` | core package、interface、module、`core` 和 `myCPU`。 |
+| `soc.f` | SoC wrapper RTL。 |
+| `ip_verilator.f` | 仅 Verilator/仿真使用的 IP 行为模型。 |
+| `verilator_mycpu.f` | 主 DUT `myCPU` 的仿真 filelist。 |
+| `verilator_student_top.f` | SoC smoke DUT 的仿真 filelist。 |
 
-## Generated Outputs
+## 生成输出
 
-Future simulation output should use:
+后续仿真输出建议使用：
 
 ```text
 build/verilator/
@@ -54,16 +54,14 @@ build/wave/
 build/result/
 ```
 
-`build/` is ignored by git.
+`build/` 已被 git 忽略。
 
-## Test Data Preparation
+## 测试数据准备
 
-Use:
+使用：
 
 ```sh
 scripts/prepare_test_data.py
 ```
 
-The script fills missing `.hex` and `.dump` artifacts in-place under `data/`.
-It is idempotent by default and overwrites only with `--force`.
-
+该脚本会在 `data/` 原目录下补齐缺失的 `.hex` 和 `.dump`。默认幂等，不覆盖已有文件；需要覆盖时显式使用 `--force`。
