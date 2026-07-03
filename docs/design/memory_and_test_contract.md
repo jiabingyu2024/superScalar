@@ -121,10 +121,11 @@ CSR 当前只承诺测试子集：
 | --- | --- | --- |
 | `mstatus` | `0x300` | 支持有限 MIE/MPIE 位读写。 |
 | `mtvec` | `0x305` | 写入时低两位清零；ECALL 跳转使用它。 |
+| `mscratch` | `0x340` | 普通可读写 scratch CSR，用于当前 `rv32mi-p-csr`。 |
 | `mepc` | `0x341` | ECALL/EBREAK 写入 trap PC，MRET 使用它返回。 |
 | `mcause` | `0x342` | ECALL 写入 machine ecall cause 11，EBREAK 写入 breakpoint cause 3。 |
 
-非白名单 CSR 当前读 0、写忽略；这不是完整 RISC-V privileged 行为。rv32/src 测试选择必须和这个子集一致，除非后续明确扩展 CSR 实现。
+非白名单 CSR 当前读 0、写忽略；`misa` 当前读 0，不声明未实现的 U/S/F 等能力。这不是完整 RISC-V privileged 行为。rv32/src 测试选择必须和这个子集一致，除非后续明确扩展 CSR 实现。
 
 ## rv32 通过标准
 

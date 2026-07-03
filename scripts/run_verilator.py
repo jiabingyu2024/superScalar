@@ -109,7 +109,7 @@ def source_newer_than_bin() -> bool:
     return False
 
 
-def build_verilator(force: bool) -> None:
+def build_verilator(force: bool, jobs: int, cxx: str | None) -> None:
     if not force and not source_newer_than_bin():
         return
     VERILATOR_DIR.mkdir(parents=True, exist_ok=True)
@@ -120,9 +120,13 @@ def build_verilator(force: bool) -> None:
         "--exe",
         "--build",
         "-j",
-        "0",
+        str(jobs),
         "--top-module",
         "myCPU",
+        "--output-split",
+        "20000",
+        "--output-split-cfuncs",
+        "20000",
         "-f",
         "scripts/filelists/verilator_mycpu.f",
         *TB_SOURCES,
@@ -135,6 +139,8 @@ def build_verilator(force: bool) -> None:
         "-CFLAGS",
         "-std=c++17",
     ]
+    if cxx:
+        cmd.extend(["-MAKEFLAGS", f"CXX={cxx}"])
     log = LOG_DIR / "build_mycpu.log"
     rc = run(cmd, log=log)
     if rc != 0:
@@ -340,6 +346,9 @@ def main() -> int:
         p.add_argument("--build", action="store_true", help="force rebuild before running")
         p.add_argument("--build-only", action="store_true")
         p.add_argument("--no-build", action="store_true")
+        p.add_argument("--build-jobs", type=int,
+                       default=int(os.environ.get("VERILATOR_BUILD_JOBS", "0")))
+        p.add_argument("--build-cxx", default=os.environ.get("VERILATOR_CXX"))
 
     p_rv32 = sub.add_parser("rv32")
     add_common(p_rv32)
@@ -354,7 +363,7 @@ def main() -> int:
 
     args = parser.parse_args()
     if not args.no_build:
-        build_verilator(force=args.build)
+        build_verilator(force=args.build, jobs=args.build_jobs, cxx=args.build_cxx)
     if args.build_only:
         return 0
 

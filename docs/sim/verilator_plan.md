@@ -31,6 +31,8 @@ scripts/run_verilator.py src --all
 | --- | --- |
 | `--build` | 强制重编 Verilator。 |
 | `--build-only` | 只编译，不运行测试。 |
+| `--build-jobs N` | 设置 Verilator `--build` 的 make 并行度，默认取 `VERILATOR_BUILD_JOBS`，未设置时为 0。内存紧张或调试时建议用 1。 |
+| `--build-cxx CXX` | 通过 Verilator `-MAKEFLAGS` 指定 C++ 编译器，也可用 `VERILATOR_CXX`。当前环境下 GCC 13 可能在大 Verilator 文件上 ICE，推荐 `--build-cxx clang++`。 |
 | `--max-cycles N` | 设置最大 CPU 周期数。 |
 | `--trace` | 生成 FST 波形到 `build/wave/<mode>/<test>.fst`。 |
 | `--counter-cycles-per-ms N` | src counter 模型每 N 个 CPU 周期加 1ms，默认 50000。 |
@@ -45,6 +47,18 @@ scripts/run_verilator.py src --all
 3. `scripts/filelists/verilator_mycpu.f` 递归包含的 RTL/package/header 源文件
 
 只要这些文件比 `build/verilator/mycpu/sim_mycpu` 新，就会自动重编。调试 RTL 时优先使用默认行为或显式 `--build`；只有明确要复用旧二进制时才使用 `--no-build`。
+
+当前构建命令默认加入：
+
+```text
+--output-split 20000 --output-split-cfuncs 20000
+```
+
+目的是拆小 Verilator 生成的 C++ 翻译单元，降低 GCC/clang 编译内存压力。若并行重编中断或编译器 ICE，应先清理 `build/verilator/mycpu` 后单线程重建：
+
+```sh
+scripts/run_verilator.py rv32 --suite rv32ui --build --build-jobs 1 --build-cxx clang++
+```
 
 ## 测试选择粒度
 

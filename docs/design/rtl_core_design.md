@@ -348,8 +348,8 @@ Bypass 只匹配 WriteBackStage 当前周期的 wbForward
 | ALU | ADD/SUB/SHIFT/LOGIC/SLT | 组合计算，一拍输出 WB payload。 |
 | BRC | branch/JAL/JALR | 计算 taken、真实 target，JAL/JALR 写回 `pc+4`。 |
 | MEM | load/store | store 写 StoreBuffer；load 优先查 StoreBuffer，再发 DRAM read；一次只选一个 load。 |
-| MUL | RV32M mul/div/rem | MUL 3 拍，DIV/REM 36 拍，处理除零和有符号溢出。 |
-| SYS | CSR/ECALL/EBREAK/MRET/FENCE 类 serial | 维护项目 CSR 子集 `mstatus/mtvec/mepc/mcause`；ECALL/EBREAK 进入 `mtvec`，MRET 返回 `mepc`；FENCE/FENCE.I 在无 cache 设计中按 serial NOP。 |
+| MUL | RV32M mul/div/rem | MUL 3 拍；DIV/REM 对外固定 36 拍，其中只做 32 次有效恢复除法迭代，后 4 拍保留为固定延迟余量；处理除零和有符号溢出。 |
+| SYS | CSR/ECALL/EBREAK/MRET/FENCE 类 serial | 维护项目 CSR 子集 `mstatus/mtvec/mscratch/mepc/mcause`；ECALL/EBREAK 进入 `mtvec`，MRET 返回 `mepc`；FENCE/FENCE.I 在无 cache 设计中按 serial NOP。 |
 
 ### 13.1 IROM 取指时序
 
@@ -382,11 +382,14 @@ T2: loadMetaPipe1.valid 时，使用 dram.exReadData 生成 WB 结果
 ```text
 mstatus 0x300
 mtvec   0x305
+mscratch 0x340
 mepc    0x341
 mcause  0x342
 ```
 
-非白名单 CSR 读 0、写忽略，不承诺 `mcycle/minstret/Zicntr`。FENCE/FENCE.I 由于当前无 cache，作为 serial NOP 使用。EBREAK 当前按 breakpoint trap 处理，写 `mepc=pc`、`mcause=3`，并跳转到 `mtvec`。
+`mscratch` 是普通可读写 scratch CSR，用于通过 `rv32mi-p-csr` 中 CSRRW/CSRRS/CSRRC 及立即数变体的读旧值、写新值检查。`mstatus` 当前只保存 `MIE/MPIE` 两个已用 bit，`mtvec` 写入时低两位清零。
+
+非白名单 CSR 读 0、写忽略，不承诺完整 privileged 架构；当前 `misa` 读 0，因此不会声明未实现的 U/S/F 等能力。`rv32mi-p-zicntr` 当前通过的前提是 counter CSR 写忽略、读 0 的测试约束，不表示已经实现真实 `cycle/instret` 计数器。FENCE/FENCE.I 由于当前无 cache，作为 serial NOP 使用。EBREAK 当前按 breakpoint trap 处理，写 `mepc=pc`、`mcause=3`，并跳转到 `mtvec`。
 
 ## 14. WriteBack
 

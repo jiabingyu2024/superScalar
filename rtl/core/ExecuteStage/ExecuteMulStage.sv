@@ -38,6 +38,7 @@ module ExecuteMulStage(
         DataPath      divisor;
         DataPath      quotient;
         logic [32:0]  remainder;
+        logic [5:0]   iterCount;
     } DivPipeEntry;
 
     MulPipeEntry mulPipe [WAY_NUM][MUL_LATENCY];
@@ -81,10 +82,11 @@ module ExecuteMulStage(
         logic [32:0] divisorExt;
 
         out = in;
-        if (in.valid && !in.divByZero && !in.overflow) begin
+        if (in.valid && !in.divByZero && !in.overflow && in.iterCount < 6'd32) begin
             trial = {in.remainder[31:0], in.dividend[31]};
             divisorExt = {1'b0, in.divisor};
             out.dividend = {in.dividend[30:0], 1'b0};
+            out.iterCount = in.iterCount + 6'd1;
             if (trial >= divisorExt) begin
                 out.remainder = trial - divisorExt;
                 out.quotient = {in.quotient[30:0], 1'b1};
@@ -179,6 +181,7 @@ module ExecuteMulStage(
             divLaunch[i].divisor = signedOp ? abs32(b) : b;
             divLaunch[i].quotient = '0;
             divLaunch[i].remainder = '0;
+            divLaunch[i].iterCount = '0;
 
             ctrl.mulStageEmpty &= !(pipeReg[i].valid && !ctrl.exPipe.flush);
             for (int s = 0; s < MUL_LATENCY; s++) begin

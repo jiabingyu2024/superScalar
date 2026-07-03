@@ -10,6 +10,7 @@ module ExecuteSysStage(
 );
     localparam logic [11:0] CSR_MSTATUS = 12'h300;
     localparam logic [11:0] CSR_MTVEC   = 12'h305;
+    localparam logic [11:0] CSR_MSCRATCH = 12'h340;
     localparam logic [11:0] CSR_MEPC    = 12'h341;
     localparam logic [11:0] CSR_MCAUSE  = 12'h342;
     localparam DataPath     MCAUSE_ECALL_M = 32'd11;
@@ -18,6 +19,7 @@ module ExecuteSysStage(
     RrToExSysPath pipeReg [WAY_NUM];
     DataPath mstatus;
     DataPath mtvec;
+    DataPath mscratch;
     DataPath mepc;
     DataPath mcause;
 
@@ -39,6 +41,7 @@ module ExecuteSysStage(
         unique case (addr)
             CSR_MSTATUS: csr_read = mstatus;
             CSR_MTVEC:   csr_read = mtvec;
+            CSR_MSCRATCH: csr_read = mscratch;
             CSR_MEPC:    csr_read = mepc;
             CSR_MCAUSE:  csr_read = mcause;
             default:     csr_read = '0;
@@ -99,6 +102,7 @@ module ExecuteSysStage(
         if (self.rst) begin
             mstatus <= '0;
             mtvec <= '0;
+            mscratch <= '0;
             mepc <= '0;
             mcause <= '0;
         end else if (!ctrl.exPipe.flush && !ctrl.exPipe.stall) begin
@@ -127,6 +131,7 @@ module ExecuteSysStage(
                     unique case (pipeReg[i].csrAddr.csrAddr)
                         CSR_MSTATUS: mstatus <= mstatus_mask(newValue);
                         CSR_MTVEC:   mtvec <= {newValue[31:2], 2'b00};
+                        CSR_MSCRATCH: mscratch <= newValue;
                         CSR_MEPC:    mepc <= newValue;
                         CSR_MCAUSE:  mcause <= newValue;
                         default: begin end
