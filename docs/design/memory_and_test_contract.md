@@ -54,9 +54,18 @@ readData: 固定延迟后的读返回数据
 | --- | --- |
 | T0 | `ExecuteMemStage` 发起 load，`readEn=1`，地址被 DRAM 接收；load 的 ROB/Rd/addr/subtype 进入 `loadMetaPipe0`。 |
 | T1 | load metadata 从 `loadMetaPipe0` 推进到 `loadMetaPipe1`，DRAM 内部读地址/valid 继续推进。 |
-| T2 | `readData` 有效，`ExecuteMemStage` 用 `loadMetaPipe1` 的 metadata 对齐生成 WB 结果。 |
+| T2 | `readData` 有效，`ExecuteMemStage` 用 `loadMetaPipe1` 的 metadata 做符号/零扩展后生成 WB 结果。 |
 
-store 写入同样在命令被接受的周期生效；byte mask 和非对齐字节移位由 `ExecuteMemStage` 与 `dram_driver` 配合完成。后续 Verilator memory model 必须保留这个两拍 load 返回关系，否则可能出现仿真通过但 FPGA 失败。
+store 写入同样在命令被接受的周期生效。当前约定为“core 发 raw data/raw mask，外部 memory model 负责按地址 offset 对齐”：
+
+| 访问 | `myCPU`/core 输出 | `dram_driver`/TB memory model 行为 |
+| --- | --- | --- |
+| `SB` | `perip_wdata[7:0]` 有效，`perip_mask=4'b0001` | `data << addr[1:0]*8`，`mask << addr[1:0]`。 |
+| `SH` | `perip_wdata[15:0]` 有效，`perip_mask=4'b0011` | `data << addr[1:0]*8`，`mask << addr[1:0]`。 |
+| `SW` | `perip_wdata[31:0]` 有效，`perip_mask=4'b1111` | word 写入。 |
+| load | `readData` 已由外部按 `addr[1:0]` 右移 | `ExecuteMemStage` 只按 load subtype 做符号/零扩展。 |
+
+这样 `myCPU` Verilator TB 和 `student_top/perip_bridge/dram_driver` 的对齐点一致。后续 Verilator memory model 必须保留两拍 load 返回关系，并复刻 `dram_driver` 的读右移、写左移行为，否则可能出现仿真通过但 FPGA 失败。
 
 ## CSR 和无 cache 约束
 

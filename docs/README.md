@@ -30,6 +30,8 @@
 | `archive/2026-07-02/008_tb_replan_after_review.md` | TB 结构复盘、src profile 化 checker 和性能统计重规划。 |
 | `archive/2026-07-02/009_verilator_tb_refactor.md` | 按 008 规划完成 Verilator TB 拆分、src profile 和 smoke 验证记录。 |
 | `archive/2026-07-02/010_src_mext_lampseg_checker.md` | `srcWithMext/srcWithoutMext` dump 分析、新 LED/SEG 协议和 checker 更新记录。 |
+| `archive/2026-07-03/011_tb_self_review_proposal.md` | Verilator TB 自审与优化提案，已被 012 的对齐边界决策覆盖。 |
+| `archive/2026-07-03/012_store_alignment_boundary_fix.md` | store/load 对齐边界修正：core 输出 raw data/mask，SoC/TB memory model 负责对齐。 |
 
 ## 后续维护规则
 

@@ -89,7 +89,7 @@ src_profiles.json          # src profile 到 checker 的映射
 | 通道 | TB 行为 |
 | --- | --- |
 | IROM | 地址在 CPU 上升沿寄存，随后用寄存地址组合返回指令，匹配 BRAM 风格一拍取指契约。 |
-| DRAM/普通内存 | 上升沿采样请求；读返回走两级 pipeline；返回 aligned word 按 `addr[1:0]` 右移，匹配 `dram_driver` 行为。 |
+| DRAM/普通内存 | 上升沿采样请求；读返回走两级 pipeline；读数据按 `addr[1:0]` 右移；写数据和 mask 按 `addr[1:0]` 左移，匹配 `dram_driver` 行为。 |
 | MMIO | 支持 `SW0/SW1/KEY/SEG/LED/CNT` 地址；写 SEG/LED/CNT 更新 TB 内部寄存器。 |
 | counter | 写 `0x80200050 = 0x80000000` 启动，写 `0xffffffff` 停止；默认每 50000 个 CPU 周期加 1ms，可由参数调整。 |
 | virtual_seg | 按 `display_seg`/`seg7` 编码模型生成，并在 src 判定中检查能否还原当前 `seg_wdata`。 |

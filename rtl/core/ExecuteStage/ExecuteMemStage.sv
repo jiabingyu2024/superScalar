@@ -28,19 +28,11 @@ module ExecuteMemStage(
         return st inside {MEM_SUBTYPE_SB, MEM_SUBTYPE_SH, MEM_SUBTYPE_SW};
     endfunction
 
-    function automatic logic [3:0] store_wstrb(input MemSubType st, input AddrPath addr);
+    function automatic logic [3:0] store_wstrb(input MemSubType st);
         unique case (st)
-            MEM_SUBTYPE_SB: store_wstrb = 4'b0001 << addr[1:0];
-            MEM_SUBTYPE_SH: store_wstrb = addr[1] ? 4'b1100 : 4'b0011;
+            MEM_SUBTYPE_SB: store_wstrb = 4'b0001;
+            MEM_SUBTYPE_SH: store_wstrb = 4'b0011;
             default:        store_wstrb = 4'b1111;
-        endcase
-    endfunction
-
-    function automatic DataPath align_store_data(input MemSubType st, input AddrPath addr, input DataPath data);
-        unique case (st)
-            MEM_SUBTYPE_SB: align_store_data = data << (addr[1:0] * 8);
-            MEM_SUBTYPE_SH: align_store_data = data << (addr[1] * 16);
-            default:        align_store_data = data;
         endcase
     endfunction
 
@@ -51,16 +43,6 @@ module ExecuteMemStage(
             MEM_SUBTYPE_LH,
             MEM_SUBTYPE_LHU: load_rstrb = addr[1] ? 4'b1100 : 4'b0011;
             default:         load_rstrb = 4'b1111;
-        endcase
-    endfunction
-
-    function automatic DataPath align_load_data(input MemSubType st, input AddrPath addr, input DataPath data);
-        unique case (st)
-            MEM_SUBTYPE_LB,
-            MEM_SUBTYPE_LBU: align_load_data = data >> (addr[1:0] * 8);
-            MEM_SUBTYPE_LH,
-            MEM_SUBTYPE_LHU: align_load_data = data >> (addr[1] * 16);
-            default:         align_load_data = data;
         endcase
     endfunction
 
@@ -128,10 +110,7 @@ module ExecuteMemStage(
         if (loadMetaPipe1.valid) begin
             self.nextMemToStage[0] = loadMetaPipe1.wb;
             self.nextMemToStage[0].data =
-                extend_load_data(loadMetaPipe1.memSubType,
-                                 align_load_data(loadMetaPipe1.memSubType,
-                                                 loadMetaPipe1.addr,
-                                                 dram.exReadData));
+                extend_load_data(loadMetaPipe1.memSubType, dram.exReadData);
         end
 
         for (int i = 0; i < WAY_NUM; i++) begin
@@ -155,10 +134,9 @@ module ExecuteMemStage(
                     storeBuffer.StoreBufferPushReq.valid = pipeReg[i].storeBufferIndexValid;
                     storeBuffer.StoreBufferPushReq.index = pipeReg[i].storeBufferIndex;
                     storeBuffer.StoreBufferPushReq.addr = effAddr;
-                    storeBuffer.StoreBufferPushReq.data =
-                        align_store_data(pipeReg[i].subType.memSubType, effAddr, dataB);
+                    storeBuffer.StoreBufferPushReq.data = dataB;
                     storeBuffer.StoreBufferPushReq.wstrb =
-                        store_wstrb(pipeReg[i].subType.memSubType, effAddr);
+                        store_wstrb(pipeReg[i].subType.memSubType);
 
                     self.nextMemToStage[i].valid = 1'b1;
                     self.nextMemToStage[i].Rd = pipeReg[i].Rd;
@@ -185,9 +163,7 @@ module ExecuteMemStage(
                         self.nextMemToStage[loadMetaPipe1.valid ? 1 : 0].robIndex = loadIssueMeta.wb.robIndex;
                         self.nextMemToStage[loadMetaPipe1.valid ? 1 : 0].data =
                             extend_load_data(pipeReg[i].subType.memSubType,
-                                             align_load_data(pipeReg[i].subType.memSubType,
-                                                             effAddr,
-                                                             storeBuffer.StoreBufferMatchOut.data));
+                                             storeBuffer.StoreBufferMatchOut.data);
                     end else if (storeBuffer.StoreBufferMatchOut.block) begin
                         loadAccessBlocked = 1'b1;
                     end else begin

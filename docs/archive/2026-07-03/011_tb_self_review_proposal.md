@@ -1,6 +1,6 @@
-# Verilator TB 自审与优化提案（待审）
+# Verilator TB 自审与优化提案（已被 012 覆盖）
 
-> 本文是待审文档，不代表继续执行代码修改。用户确认前，不应继续扩大 TB 实现改动。
+> 本文是 2026-07-03 中间待审提案。后续用户明确决策为“删除 RTL 内 store/load 对齐，只保留 SoC/TB memory model 处对齐”，因此本文 3.1 关于 `myCPU` TB 应匹配 core 已对齐 data/mask 的建议已被 `012_store_alignment_boundary_fix.md` 覆盖。本文保留为决策过程记录。
 
 ## 1. 本次审查目标
 

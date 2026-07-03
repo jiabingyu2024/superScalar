@@ -283,7 +283,7 @@ Payload 使用和 IssueQueue 相同的 `payloadIndex`。IssueQueue 只保存调�
 StoreBuffer 深度 8，承担三件事：
 
 1. Dispatch 为 store 分配 entry。
-2. ExecuteMem 计算 store 地址/数据/byte mask 后写入 entry。
+2. ExecuteMem 计算 store 地址、raw store data 和 raw byte mask 后写入 entry。
 3. Commit 只允许 ROB head store 提交；StoreBuffer 负责把 head store 写到 DRAM。
 
 Load 查询 StoreBuffer：
@@ -294,7 +294,11 @@ Load 查询 StoreBuffer：
 | 部分字节冲突 | `block=1`，MEM 拉 `exStallReq` 等待。 |
 | 无冲突 | 发起 DRAM read。 |
 
-维护注意：当前 StoreBuffer forwarding 按 word 地址匹配，并用 `rstrb/wstrb` 判断字节覆盖；store 每周期分配限制已经由 Decode/Dispatch 配合保证。
+维护注意：
+
+1. store 对外提交时不在 core 内按 `addr[1:0]` 左移，统一交给 `dram_driver` 或 TB memory model 对齐。
+2. StoreBuffer 内部 forwarding 仍需按 entry 地址临时对齐 `data/wstrb`，再按 load 地址右移成外部 DRAM 返回格式，保证 store-to-load forwarding 和外部 load 返回语义一致。
+3. store 每周期分配限制已经由 Decode/Dispatch 配合保证。
 
 ## 12. ReadReg、Bypass 和 PRF
 

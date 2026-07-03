@@ -79,12 +79,15 @@ uint32_t MemoryModel::read_shifted_word(uint32_t addr) const {
 
 void MemoryModel::write_word_masked(uint32_t addr, uint32_t data, uint8_t mask) {
     uint32_t aligned = addr & ~uint32_t{3};
+    uint32_t offset = addr & 3u;
+    uint32_t write_data = data << (offset * 8u);
+    uint8_t write_mask = (mask << offset) & 0xfu;
     uint32_t old = read_aligned_word(aligned);
     uint32_t next = old;
     for (int i = 0; i < 4; ++i) {
-        if (mask & (1u << i)) {
+        if (write_mask & (1u << i)) {
             next &= ~(0xffu << (i * 8));
-            next |= ((data >> (i * 8)) & 0xffu) << (i * 8);
+            next |= ((write_data >> (i * 8)) & 0xffu) << (i * 8);
         }
     }
     mem_[aligned] = next;
