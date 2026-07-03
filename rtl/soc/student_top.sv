@@ -26,7 +26,7 @@ module student_top#(
     parameter                           P_SEG_CNT           = 40,
     parameter                           P_KEY_CNT           = 8,
     parameter logic [31:0]              P_DRAM_ADDR_START   = 32'h8010_0000,
-    parameter logic [31:0]              P_DRAM_ADDR_END     = 32'h8013_FFFF
+    parameter logic [31:0]              P_DRAM_ADDR_END     = 32'h8014_0000
 ) (
     input                                       w_cpu_clk     ,
     input                                       w_clk_50Mhz   ,

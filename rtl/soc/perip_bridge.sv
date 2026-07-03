@@ -21,7 +21,7 @@
 
 module perip_bridge#(
     parameter logic [31:0] P_DRAM_ADDR_START = 32'h8010_0000,
-    parameter logic [31:0] P_DRAM_ADDR_END   = 32'h8013_FFFF
+    parameter logic [31:0] P_DRAM_ADDR_END   = 32'h8014_0000
 ) (
     input  logic         clk				,
     input  logic         cnt_clk			,

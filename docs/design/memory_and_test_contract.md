@@ -39,6 +39,15 @@ irom_dataA/B = 返回的两条指令
 
 因此主 Verilator TB 不允许把 IROM 简化成“当前地址组合读当前指令”的零延迟模型，也不应额外增加到两拍同步读。否则 IF 阶段 PC 和指令会错位。
 
+IROM 地址映射由 `student_top` 完成：
+
+```text
+inst_addrA = irom_addrA[13:2]
+inst_addrB = irom_addrB[13:2]
+```
+
+当前 IROM 容量是 4096 words = 16 KiB。程序应位于 `0x8000_0000..0x8000_3fff`，超过后会因只取 `[13:2]` 发生回绕。后续运行脚本应检查 irom hex 不超过 4096 words。
+
 ## DRAM/MMIO 契约
 
 `DramAccessIF` 明确区分“访问被接受”和“读数据有效”：
@@ -66,6 +75,41 @@ store 写入同样在命令被接受的周期生效。当前约定为“core 发
 | load | `readData` 已由外部按 `addr[1:0]` 右移 | `ExecuteMemStage` 只按 load subtype 做符号/零扩展。 |
 
 这样 `myCPU` Verilator TB 和 `student_top/perip_bridge/dram_driver` 的对齐点一致。后续 Verilator memory model 必须保留两拍 load 返回关系，并复刻 `dram_driver` 的读右移、写左移行为，否则可能出现仿真通过但 FPGA 失败。
+
+### SoC 地址划分
+
+`perip_bridge` 当前地址表：
+
+| 地址/范围 | 目标 | 说明 |
+| --- | --- | --- |
+| `0x8010_0000 <= addr < 0x8014_0000` | DRAM | 256 KiB，排他上界为 `0x8014_0000`。 |
+| `0x8020_0000` | SW0 | 读 `virtual_sw[31:0]`。 |
+| `0x8020_0004` | SW1 | 读 `virtual_sw[63:32]`。 |
+| `0x8020_0010` | KEY | 读 `{24'd0, virtual_key}`。 |
+| `0x8020_0020` | SEG | 读/写 `seg_wdata`；写忽略 mask。 |
+| `0x8020_0040` | LED | 写 LED；写忽略 mask。 |
+| `0x8020_0050` | counter | 写 start/stop，读 counter。 |
+| 其他地址 | 无映射 | 读返回 0，写无效果。 |
+
+注意：`myCPU` 没有单独 read enable 端口，`perip_bridge` 通过 `~perip_wen` 和地址选择推断读；因此 `myCPU` 无访问时必须把 `perip_addr` 置 0。当前 `myCPU.sv` 已满足这一点。
+
+### Mask 和 offset 职责
+
+当前唯一对齐点在 SoC/TB memory model：
+
+```text
+dram_data = perip_wdata << {addr[1:0], 3'b000}
+dram_we   = perip_mask  << addr[1:0]
+readData  = rawWord >> {addr[1:0], 3'b000}
+```
+
+core 内部不再对 load data 二次右移，也不对 store data/mask 左移。StoreBuffer 只在内部 forwarding 时临时对齐，用来判断和拼接同 word 的字节覆盖；对外提交仍保持 raw data/raw mask。
+
+当前不完整支持 misaligned half/word。`SH addr+1/3`、`SW addr+1/2/3` 没有 trap，也不能跨 word 正确写入；测试应避免这些访问，或后续补 misaligned exception。
+
+### 延迟风险
+
+`perip_bridge` 用 `dram_read_sel_d2` 选择 DRAM 返回，`dram_driver` 用 `offset_d2` 对读数据右移。需要后续用 `student_top` 定向 smoke 确认该相位与真实 Vivado `DRAM_0`/当前行为模型完全一致。若发现 `DRAM_0.douta` 比 `dram_read_sel_d2` 晚一拍，应统一调整 `DRAM_0` 行为模型或 `perip_bridge` select 延迟，并同步 core load metadata。
 
 ## CSR 和无 cache 约束
 

@@ -32,6 +32,8 @@
 | `archive/2026-07-02/010_src_mext_lampseg_checker.md` | `srcWithMext/srcWithoutMext` dump 分析、新 LED/SEG 协议和 checker 更新记录。 |
 | `archive/2026-07-03/011_tb_self_review_proposal.md` | Verilator TB 自审与优化提案，已被 012 的对齐边界决策覆盖。 |
 | `archive/2026-07-03/012_store_alignment_boundary_fix.md` | store/load 对齐边界修正：core 输出 raw data/mask，SoC/TB memory model 负责对齐。 |
+| `archive/2026-07-03/013_mycpu_soc_boundary_review.md` | `myCPU` 与 SoC 边界审查：IROM/DRAM/MMIO 时序、mask 和对齐职责。 |
+| `archive/2026-07-03/014_soc_boundary_contract_fix.md` | 按 SoC 边界职责修正 DRAM 地址上界、对齐注释和当前设计文档。 |
 
 ## 后续维护规则
 

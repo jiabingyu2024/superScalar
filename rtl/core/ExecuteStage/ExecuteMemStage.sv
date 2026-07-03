@@ -30,6 +30,8 @@ module ExecuteMemStage(
 
     function automatic logic [3:0] store_wstrb(input MemSubType st);
         unique case (st)
+            // Store data/mask are raw at the core boundary. dram_driver/TB
+            // performs the final addr[1:0]-based lane alignment.
             MEM_SUBTYPE_SB: store_wstrb = 4'b0001;
             MEM_SUBTYPE_SH: store_wstrb = 4'b0011;
             default:        store_wstrb = 4'b1111;

@@ -62,6 +62,8 @@ module dram_driver(
     end
 
     always_comb begin
+        // Core provides raw store data/mask. The SoC boundary owns byte-lane
+        // alignment according to the low address bits.
         dram_data = perip_wdata << {offset, 3'b000};
         dram_we   = dram_wen ? (perip_mask << offset) : 4'b0000;
     end
