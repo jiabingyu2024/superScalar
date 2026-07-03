@@ -36,6 +36,16 @@ scripts/run_verilator.py src --all
 | `--counter-cycles-per-ms N` | src counter 模型每 N 个 CPU 周期加 1ms，默认 50000。 |
 | `--src-seg-grace N` | LED PASS 后等待 SEG 匹配的窗口，默认 512 周期。 |
 
+### 重编译判定
+
+默认不加 `--no-build` 时，`scripts/run_verilator.py` 会检查：
+
+1. `tb/verilator/*.cpp/*.h`
+2. `scripts/filelists/*.f`
+3. `scripts/filelists/verilator_mycpu.f` 递归包含的 RTL/package/header 源文件
+
+只要这些文件比 `build/verilator/mycpu/sim_mycpu` 新，就会自动重编。调试 RTL 时优先使用默认行为或显式 `--build`；只有明确要复用旧二进制时才使用 `--no-build`。
+
 ## 测试选择粒度
 
 rv32 测试需要支持：

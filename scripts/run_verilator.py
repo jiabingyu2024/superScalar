@@ -33,6 +33,37 @@ TB_SOURCES = [
 ]
 
 
+def collect_filelist_sources(path: Path, seen: set[Path] | None = None) -> list[Path]:
+    if seen is None:
+        seen = set()
+    path = path.resolve()
+    if path in seen or not path.exists():
+        return []
+    seen.add(path)
+
+    sources: list[Path] = [path]
+    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        i = 0
+        while i < len(parts):
+            token = parts[i]
+            if token == "-f" and i + 1 < len(parts):
+                nested = (REPO / parts[i + 1]).resolve()
+                sources.extend(collect_filelist_sources(nested, seen))
+                i += 2
+                continue
+            if token.startswith("-f") and len(token) > 2:
+                nested = (REPO / token[2:]).resolve()
+                sources.extend(collect_filelist_sources(nested, seen))
+            elif token.endswith((".sv", ".v", ".vh")):
+                sources.append((REPO / token).resolve())
+            i += 1
+    return sources
+
+
 @dataclass(frozen=True)
 class TestCase:
     name: str
@@ -71,6 +102,7 @@ def source_newer_than_bin() -> bool:
     candidates = [REPO / src for src in TB_SOURCES]
     candidates.extend((REPO / "tb" / "verilator").glob("*.h"))
     candidates.extend((REPO / "scripts" / "filelists").glob("*.f"))
+    candidates.extend(collect_filelist_sources(REPO / "scripts" / "filelists" / "verilator_mycpu.f"))
     for path in candidates:
         if path.exists() and path.stat().st_mtime > bin_mtime:
             return True

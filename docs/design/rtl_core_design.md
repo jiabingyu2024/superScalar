@@ -263,8 +263,11 @@ IssueQueue 保存轻量调度信息。选择策略：
 1. entry valid 且未 issued。
 2. 源 A ready，源 B ready 或源 B 是立即数/none。
 3. 同周期已选 uop 不能和候选形成 RAW。
-4. 每周期最多选择一个 MEM uop。
-5. 在可选项中选 ROB 顺序更老的 entry。
+4. MEM uop 必须按 IssueQueue 本地 `entryAge` 程序序发射：候选 MEM 前面只要还有更老 MEM entry，即使更老 entry 尚未 ready，也不能越过。
+5. 每周期最多选择一个 MEM uop。
+6. 在可选项中选 `entryAge` 更老的 entry。
+
+`entryAge` 是 IssueQueue 内部单调计数，不走对外接口。不能用 ROB 的 1-bit `position + robIndex` 直接比较年龄，因为 ROB 环形指针多次 wrap 后会出现 `rob15,pos1` 比 `rob0,pos0` 更老但被误判为更年轻的情况。这个年龄只用于 IssueQueue 内部选择和 MEM 保序，ROB 仍按原 `robIndex` 回填 done。
 
 唤醒来源：
 
@@ -277,6 +280,20 @@ WriteBackStage -> IssueWakeup[WAY_NUM * 5]
 ### 10.4 Payload
 
 Payload 使用和 IssueQueue 相同的 `payloadIndex`。IssueQueue 只保存调度所需字段，Payload 保存较大的执行静态字段，Issue 发射时两者重新合并为 `IsToRrPath`。
+
+IssueStage 的真实发射条件是：
+
+```text
+issueFire = !isPipe.stall && !isPipe.flush && IssuePopRes.done
+```
+
+只有 `issueFire` 为 1 时才允许：
+
+1. `IssuePopReq.valid=1`，让 IssueQueue 删除该 entry。
+2. `PayloadPopReq.valid=1`，让 Payload 删除同 `payloadIndex` entry。
+3. `nextStage.valid=1`，把合并后的 uop 送入 ReadReg。
+
+维护注意：Payload pop 必须和 IssueQueue pop 同步。若在 `isPipe.stall=1` 时只 pop Payload，会导致下一拍 IssueQueue 再发射同 entry 时 payload 已经丢失，ROB entry 永远无法 done。
 
 ## 11. StoreBuffer 与内存顺序
 
@@ -298,7 +315,8 @@ Load 查询 StoreBuffer：
 
 1. store 对外提交时不在 core 内按 `addr[1:0]` 左移，统一交给 `dram_driver` 或 TB memory model 对齐。
 2. StoreBuffer 内部 forwarding 仍需按 entry 地址临时对齐 `data/wstrb`，再按 load 地址右移成外部 DRAM 返回格式，保证 store-to-load forwarding 和外部 load 返回语义一致。
-3. store 每周期分配限制已经由 Decode/Dispatch 配合保证。
+3. StoreBuffer 不用“尚未填充的任意 store entry”阻塞 load；这会把年轻 store 误当 older store，造成 `load` 卡住 EX、older store 又无法进入 EX 的死锁。older store/load 的程序序职责放在 IssueQueue MEM 保序中。
+4. store 每周期分配限制已经由 Decode/Dispatch 配合保证。
 
 ## 12. ReadReg、Bypass 和 PRF
 

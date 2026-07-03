@@ -17,7 +17,11 @@ module FetchStage(
             for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
-        end 
+        end else if (ctrl.ifPipe.flush) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
+                pipeReg[i] <= '0;
+            end
+        end
         else if (!ctrl.ifPipe.stall) begin
             pipeReg <= prev.nextStage; 
         end

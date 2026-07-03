@@ -34,6 +34,7 @@
 | `archive/2026-07-03/012_store_alignment_boundary_fix.md` | store/load 对齐边界修正：core 输出 raw data/mask，SoC/TB memory model 负责对齐。 |
 | `archive/2026-07-03/013_mycpu_soc_boundary_review.md` | `myCPU` 与 SoC 边界审查：IROM/DRAM/MMIO 时序、mask 和对齐职责。 |
 | `archive/2026-07-03/014_soc_boundary_contract_fix.md` | 按 SoC 边界职责修正 DRAM 地址上界、对齐注释和当前设计文档。 |
+| `archive/2026-07-03/015_rv32ui_mycpu_debug_fixes.md` | 定位并修复 myCPU rv32ui bring-up 问题：store 译码、flush、recovery、wakeup、MEM 保序、Issue/Payload pop 同步。 |
 
 ## 后续维护规则
 

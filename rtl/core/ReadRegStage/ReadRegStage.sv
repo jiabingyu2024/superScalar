@@ -15,6 +15,10 @@ module RegReadStage(
             for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
+        end else if (ctrl.rrPipe.flush) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
+                pipeReg[i] <= '0;
+            end
         end else if (!ctrl.rrPipe.stall) begin
             pipeReg <= prev.nextStage;
         end

@@ -39,6 +39,9 @@ module DecodeStage (
             replayValid <= 1'b0;
             idStallReqReg <= 1'b0;
         end else if (ctrl.idPipe.flush) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
+                pipeReg[i] <= '0;
+            end
             replaySlot <= '0;
             replayValid <= 1'b0;
             idStallReqReg <= 1'b0;

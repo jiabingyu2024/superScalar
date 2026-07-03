@@ -3,17 +3,12 @@ import IssueTypes::*;
 
 module IssueQueue(IssueQueueIF.IssueQueue self);
     IssueEntryPath entries [ISSUE_QUEUE_DEPTH];
+    logic [31:0] entryAge [ISSUE_QUEUE_DEPTH];
+    logic [31:0] ageCounter;
     logic valid [ISSUE_QUEUE_DEPTH];
 
-    function automatic logic older_than(
-        input IssueEntryPath a,
-        input IssueEntryPath b
-    );
-        if (a.robIndexPosition != b.robIndexPosition) begin
-            older_than = a.robIndexPosition < b.robIndexPosition;
-        end else begin
-            older_than = a.robIndex < b.robIndex;
-        end
+    function automatic logic older_index(input int a, input int b);
+        older_index = entryAge[a] < entryAge[b];
     endfunction
 
     function automatic logic wakeup_match(input PhyRegNumPath phyRegNum);
@@ -30,13 +25,28 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
     always_comb begin
         logic [ISSUE_QUEUE_DEPTH-1:0] selected;
         logic [ISSUE_QUEUE_DEPTH-1:0] allocMask;
+        logic [ISSUE_QUEUE_DEPTH-1:0] memBlockedByOlder;
         logic memSelected;
         int freeCnt;
         selected = '0;
+        memBlockedByOlder = '0;
         memSelected = 1'b0;
         freeCnt = 0;
         for (int k = 0; k < ISSUE_QUEUE_DEPTH; k++) begin
             allocMask[k] = valid[k];
+        end
+
+        for (int j = 0; j < ISSUE_QUEUE_DEPTH; j++) begin
+            if (valid[j] && !entries[j].issued &&
+                entries[j].tubeType == TUBE_TYPE_MEM) begin
+                for (int m = 0; m < ISSUE_QUEUE_DEPTH; m++) begin
+                    if (valid[m] && !entries[m].issued &&
+                        entries[m].tubeType == TUBE_TYPE_MEM &&
+                        older_index(m, j)) begin
+                        memBlockedByOlder[j] = 1'b1;
+                    end
+                end
+            end
         end
 
         for (int i = 0; i < WAY_NUM; i++) begin
@@ -52,17 +62,22 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
         end
 
         for (int i = 0; i < WAY_NUM; i++) begin
+            int selectedIdx;
+
+            selectedIdx = 0;
             self.IssuePopRes[i].done = 1'b0;
             self.IssuePopRes[i].entry = '0;
             for (int j = 0; j < ISSUE_QUEUE_DEPTH; j++) begin
                 if (valid[j] && !selected[j] && !entries[j].issued &&
                     entries[j].srcARdy && (entries[j].srcBRdy || entries[j].srcBIsImm) &&
                     !has_same_cycle_raw(entries[j], selected) &&
+                    !memBlockedByOlder[j] &&
                     !(memSelected && entries[j].tubeType == TUBE_TYPE_MEM)) begin
                     if (!self.IssuePopRes[i].done ||
-                        older_than(entries[j], self.IssuePopRes[i].entry)) begin
+                        older_index(j, selectedIdx)) begin
                         self.IssuePopRes[i].done = 1'b1;
                         self.IssuePopRes[i].entry = entries[j];
+                        selectedIdx = j;
                     end
                 end
             end
@@ -100,13 +115,20 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
             for (int i = 0; i < ISSUE_QUEUE_DEPTH; i++) begin
                 valid[i] <= 1'b0;
                 entries[i] <= '0;
+                entryAge[i] <= '0;
             end
+            ageCounter <= '0;
         end else if (self.IssueCtrl.flush) begin
             for (int i = 0; i < ISSUE_QUEUE_DEPTH; i++) begin
                 valid[i] <= 1'b0;
                 entries[i] <= '0;
+                entryAge[i] <= '0;
             end
+            ageCounter <= '0;
         end else begin
+            int pushCnt;
+
+            pushCnt = 0;
             for (int i = 0; i < ISSUE_QUEUE_DEPTH; i++) begin
                 if (valid[i]) begin
                     if (entries[i].srcAMatched && !entries[i].srcARdy) begin
@@ -150,9 +172,12 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
                     end
 
                     entries[self.IssuePushRes[i].payloadIndex] <= pushEntry;
+                    entryAge[self.IssuePushRes[i].payloadIndex] <= ageCounter + 32'(pushCnt);
                     valid[self.IssuePushRes[i].payloadIndex] <= 1'b1;
+                    pushCnt++;
                 end
             end
+            ageCounter <= ageCounter + 32'(pushCnt);
 
             for (int i = 0; i < WAY_NUM; i++) begin
                 if (self.IssuePopReq[i].valid && self.IssuePopRes[i].done) begin

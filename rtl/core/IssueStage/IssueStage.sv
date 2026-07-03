@@ -14,12 +14,15 @@ module IssueStage(
         ctrl.isStallReq = 1'b0;
 
         for (int i = 0; i < WAY_NUM; i++) begin
+            logic issueFire;
+
             issueQueue.IssuePopReq[i].valid = !ctrl.isPipe.stall && !ctrl.isPipe.flush;
-            payload.PayloadPopReq[i].valid = issueQueue.IssuePopRes[i].done;
+            issueFire = issueQueue.IssuePopReq[i].valid && issueQueue.IssuePopRes[i].done;
+            payload.PayloadPopReq[i].valid = issueFire;
             payload.PayloadPopReq[i].payloadIndex = issueQueue.IssuePopRes[i].entry.payloadIndex;
 
             self.nextStage[i] = '0;
-            self.nextStage[i].valid = issueQueue.IssuePopRes[i].done &&
+            self.nextStage[i].valid = issueFire &&
                                       payload.PayloadPopRes[i].valid &&
                                       !ctrl.isPipe.flush;
             self.nextStage[i].pc = payload.PayloadPopRes[i].entry.pc;

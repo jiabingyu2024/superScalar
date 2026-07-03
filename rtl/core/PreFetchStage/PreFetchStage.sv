@@ -38,8 +38,13 @@ module PreFetchStage(
             end
         end
 
-        iromAccess.ena = !ctrl.pfPipe.stall;
-        iromAccess.iromAddr = self.pcOut;
+        // IROM is a one-cycle address-registered memory. On a redirect, the
+        // target address must be presented in the same cycle as the PC update;
+        // otherwise a following frontend stall can leave the IROM holding the
+        // old wrong-path address and Fetch will later pair the recovered PC with
+        // stale instructions.
+        iromAccess.ena = !ctrl.pfPipe.stall || recovery.pcUpdateEn;
+        iromAccess.iromAddr = recovery.pcUpdateEn ? recovery.pcUpdate : self.pcOut;
 
         predTakenSeen = 1'b0;
         for (int i = 0; i < WAY_NUM; i++) begin

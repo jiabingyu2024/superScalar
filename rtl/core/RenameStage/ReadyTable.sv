@@ -12,6 +12,12 @@ module ReadyTable(ReadyTableIF.ReadyTable self);
                 self.readReady[i] = 1'b1;
             end else begin
                 self.readReady[i] = readyMask[self.readReq[i].phyRegNum];
+                for (int w = 0; w < BYPASS_WB_PORT_NUM; w++) begin
+                    if (self.markReady[w].valid &&
+                        self.markReady[w].phyRegNum == self.readReq[i].phyRegNum) begin
+                        self.readReady[i] = 1'b1;
+                    end
+                end
             end
         end
     end

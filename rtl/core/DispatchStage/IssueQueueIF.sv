@@ -46,6 +46,7 @@ interface IssueQueueIF( input logic clk, rst );
     input
         IssuePushRes,
         IssueFreeCount,
+        IssueWakeup,
     output
         IssuePushReq,
         IssueCtrl

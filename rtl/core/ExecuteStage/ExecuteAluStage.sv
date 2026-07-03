@@ -31,6 +31,10 @@ module ExecuteAluStage(
             for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
+        end else if (ctrl.exPipe.flush) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
+                pipeReg[i] <= '0;
+            end
         end else if (!ctrl.exPipe.stall) begin
             pipeReg <= prev.nextToAluStage;
         end

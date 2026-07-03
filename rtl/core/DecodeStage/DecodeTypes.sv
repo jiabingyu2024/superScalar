@@ -223,7 +223,10 @@ package DecodeTypes;
         instInfo.writeReg    = FALSE;
         instInfo.tubeType    = TUBE_TYPE_MEM;
         instInfo.opTypeA     = OP_TYPE_REG;
-        instInfo.opTypeB     = OP_TYPE_IMM;
+        // Store has two register sources: rs1 is the address base, rs2 is the
+        // write data. The S-type immediate is carried separately in imm and is
+        // consumed by ExecuteMemStage for address generation.
+        instInfo.opTypeB     = OP_TYPE_REG;
 
         unique case (inst[14:12])
             3'b000:  instInfo.SubType.memSubType = MEM_SUBTYPE_SB;

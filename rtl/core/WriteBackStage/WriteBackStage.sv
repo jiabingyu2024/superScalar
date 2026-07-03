@@ -30,6 +30,14 @@ module WriteBackStage(
                 brcPipeReg[i] <= '0;
                 sysPipeReg[i] <= '0;
             end
+        end else if (ctrl.wbPipe.flush) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
+                aluPipeReg[i] <= '0;
+                memPipeReg[i] <= '0;
+                mulPipeReg[i] <= '0;
+                brcPipeReg[i] <= '0;
+                sysPipeReg[i] <= '0;
+            end
         end else if (!ctrl.wbPipe.stall) begin
             aluPipeReg <= prev.nextAluToStage;
             memPipeReg <= prev.nextMemToStage;

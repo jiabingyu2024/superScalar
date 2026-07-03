@@ -23,6 +23,21 @@ module DispatchStage(
                          {MEM_SUBTYPE_SB, MEM_SUBTYPE_SH, MEM_SUBTYPE_SW});
     endfunction
 
+    function automatic logic wakeup_match(
+        input logic valid,
+        input PhyRegNumPath phyRegNum
+    );
+        wakeup_match = 1'b0;
+        if (valid && phyRegNum != '0) begin
+            for (int w = 0; w < ISSUE_WAKEUP_PORT_NUM; w++) begin
+                if (issueQueue.IssueWakeup[w].valid &&
+                    issueQueue.IssueWakeup[w].phyRegNum == phyRegNum) begin
+                    wakeup_match = 1'b1;
+                end
+            end
+        end
+    endfunction
+
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
             for (int i = 0; i < WAY_NUM; i++) begin
@@ -34,6 +49,17 @@ module DispatchStage(
             end
         end else if (!ctrl.dsPipe.stall) begin
             pipeReg <= prev.nextStage;
+        end else begin
+            for (int i = 0; i < WAY_NUM; i++) begin
+                if (wakeup_match(pipeReg[i].phyRegInfo.PhyRegNumSrcAValid,
+                                 pipeReg[i].phyRegInfo.PhyRegNumSrcA)) begin
+                    pipeReg[i].phyRegInfo.PhyRegNumSrcAReady <= 1'b1;
+                end
+                if (wakeup_match(pipeReg[i].phyRegInfo.PhyRegNumSrcBValid,
+                                 pipeReg[i].phyRegInfo.PhyRegNumSrcB)) begin
+                    pipeReg[i].phyRegInfo.PhyRegNumSrcBReady <= 1'b1;
+                end
+            end
         end
     end
 
@@ -115,10 +141,14 @@ module DispatchStage(
             issueQueue.IssuePushReq[i].entry.srcB = pipeReg[i].phyRegInfo.PhyRegNumSrcB;
             issueQueue.IssuePushReq[i].entry.srcARdy =
                 !pipeReg[i].phyRegInfo.PhyRegNumSrcAValid ||
-                pipeReg[i].phyRegInfo.PhyRegNumSrcAReady;
+                pipeReg[i].phyRegInfo.PhyRegNumSrcAReady ||
+                wakeup_match(pipeReg[i].phyRegInfo.PhyRegNumSrcAValid,
+                             pipeReg[i].phyRegInfo.PhyRegNumSrcA);
             issueQueue.IssuePushReq[i].entry.srcBRdy =
                 !pipeReg[i].phyRegInfo.PhyRegNumSrcBValid ||
-                pipeReg[i].phyRegInfo.PhyRegNumSrcBReady;
+                pipeReg[i].phyRegInfo.PhyRegNumSrcBReady ||
+                wakeup_match(pipeReg[i].phyRegInfo.PhyRegNumSrcBValid,
+                             pipeReg[i].phyRegInfo.PhyRegNumSrcB);
             issueQueue.IssuePushReq[i].entry.srcBIsImm = pipeReg[i].instInfo.opTypeB == OP_TYPE_IMM ||
                                                          pipeReg[i].instInfo.opTypeB == OP_TYPE_NONE;
             issueQueue.IssuePushReq[i].entry.dst = pipeReg[i].phyRegInfo.PhyRegNumDst;
