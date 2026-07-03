@@ -39,6 +39,7 @@ package StoreBufferTypes;
         logic    hit;
         logic    block;
         DataPath data;
+        logic [3:0] mask;
     } StoreBufferMatchOutPath;
 
     typedef struct packed {

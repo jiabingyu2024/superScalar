@@ -69,6 +69,34 @@ void SrcLedSegChecker::post_tick(uint64_t cycle, const Request&, const MemoryMod
     }
 }
 
+void SrcLedOnlyChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryModel&,
+                                 SimResult& result) {
+    if (!req.perip_wen || req.perip_addr != LED_ADDR) return;
+
+    result.last_led = req.perip_wdata;
+    if (req.perip_wdata == opt_.src_led_fail) {
+        result.status = "FAIL";
+        result.reason = "LED wrote fail signature";
+        result.cycles = cycle;
+        done_ = true;
+        return;
+    }
+    if (req.perip_wdata == opt_.src_led_pass) {
+        result.saw_led_pass = true;
+        result.led_pass_cycle = cycle;
+        result.status = "PASS";
+        result.reason = "LED pass signature observed";
+        result.cycles = cycle;
+        done_ = true;
+    }
+}
+
+void SrcLedOnlyChecker::post_tick(uint64_t, const Request&, const MemoryModel& mem,
+                                  SimResult& result) {
+    result.last_seg_wdata = mem.seg_wdata;
+    result.counter_ms = mem.counter_ms;
+}
+
 void SrcObserveChecker::observe_counter_write(const Request& req, SimResult& result) {
     if (!req.perip_wen) return;
     uint32_t aligned = req.perip_addr & ~uint32_t{3};

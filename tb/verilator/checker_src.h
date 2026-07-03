@@ -22,6 +22,21 @@ private:
     bool done_ = false;
 };
 
+class SrcLedOnlyChecker : public Checker {
+public:
+    explicit SrcLedOnlyChecker(const Options& opt) : opt_(opt) {}
+    std::string kind() const override { return "src_ledonly"; }
+    void pre_tick(uint64_t cycle, const Request& req, const MemoryModel& mem,
+                  SimResult& result) override;
+    void post_tick(uint64_t cycle, const Request& req, const MemoryModel& mem,
+                   SimResult& result) override;
+    bool done() const override { return done_; }
+
+private:
+    const Options& opt_;
+    bool done_ = false;
+};
+
 class SrcObserveChecker : public Checker {
 public:
     explicit SrcObserveChecker(const Options& opt) : opt_(opt) {}

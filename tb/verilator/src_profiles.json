@@ -19,7 +19,7 @@
   },
   {
     "name": "srcSmoke",
-    "checker": "ledseg",
+    "checker": "ledonly",
     "led_pass": "0x01221c08",
     "led_fail": "0x24181824"
   },

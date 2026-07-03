@@ -105,6 +105,16 @@ readData  = rawWord >> {addr[1:0], 3'b000}
 
 core 内部不再对 load data 二次右移，也不对 store data/mask 左移。StoreBuffer 只在内部 forwarding 时临时对齐，用来判断和拼接同 word 的字节覆盖；对外提交仍保持 raw data/raw mask。
 
+StoreBuffer forwarding 的边界：
+
+| 场景 | core 内部行为 | 对外行为 |
+| --- | --- | --- |
+| load 所需字节全部来自更老 store | StoreBuffer 直接返回右移后的 raw load 数据，MEM 不访问 DRAM。 | 无 DRAM read。 |
+| load 所需字节部分来自更老 store | StoreBuffer 返回 `forwardData/forwardMask`，MEM 发 DRAM read，返回后逐字节合并。 | DRAM/TB 仍按地址右移返回 word；core 只覆盖 StoreBuffer 命中字节。 |
+| load 与 StoreBuffer 无字节交集 | 正常发 DRAM read。 | 由 DRAM/TB 负责读右移。 |
+
+StoreBuffer 不再把部分命中视为必须等待的 hazard。更老 store 和 load 的程序顺序由 IssueQueue 的 MEM 保序保证；StoreBuffer 的职责是保存已经执行完成的 store 字节并提供 forwarding/提交。
+
 当前不完整支持 misaligned half/word。`SH addr+1/3`、`SW addr+1/2/3` 没有 trap，也不能跨 word 正确写入；测试应避免这些访问，或后续补 misaligned exception。
 
 ### 延迟风险

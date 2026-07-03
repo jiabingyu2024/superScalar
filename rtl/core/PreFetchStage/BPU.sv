@@ -6,9 +6,9 @@ module BPU(
     CtrlIF.PreFetchStage ctrl,
     RecoveryManagerIF.BPU recovery
 );
-    localparam int BTB_ENTRY_NUM = 32;
-    localparam int BHB_PHT_ENTRY_NUM = 64;
-    localparam int BHB_LOCAL_ENTRY_NUM = 64;
+    localparam int BTB_ENTRY_NUM = 256;
+    localparam int BHB_PHT_ENTRY_NUM = 256;
+    localparam int BHB_LOCAL_ENTRY_NUM = 256;
 
     PcPath lookupPc [WAY_NUM];
     logic  btbHit   [WAY_NUM];
@@ -27,7 +27,7 @@ module BPU(
 
     BTB #(
         .ENTRY_NUM(BTB_ENTRY_NUM),
-        .TAG_WIDTH(10)
+        .TAG_WIDTH(12)
     ) btb (
         .clk(fetch.clk),
         .rst(fetch.rst),
@@ -43,7 +43,7 @@ module BPU(
         .PHT_ENTRY_NUM(BHB_PHT_ENTRY_NUM),
         .LOCAL_ENTRY_NUM(BHB_LOCAL_ENTRY_NUM),
         .LOCAL_HISTORY_WIDTH(4),
-        .GLOBAL_HISTORY_WIDTH(6)
+        .GLOBAL_HISTORY_WIDTH(8)
     ) bhb (
         .clk(fetch.clk),
         .rst(fetch.rst),
@@ -65,7 +65,9 @@ module BPU(
             lookupPc[i] = pf.pcOut + PcPath'(i * 4);
 
             pf.bpuResult[i].btbhit = predictEnable && btbHit[i];
-            pf.bpuResult[i].taken = predictEnable && btbHit[i] && bhbTaken[i] && !takenFound;
+            pf.bpuResult[i].taken = predictEnable && btbHit[i] &&
+                                    (bhbTaken[i] || (btbTarget[i] < lookupPc[i])) &&
+                                    !takenFound;
             pf.bpuResult[i].target = pf.bpuResult[i].taken ? btbTarget[i] : (pf.pcOut + PC_STEP);
 
             if (pf.bpuResult[i].taken) begin

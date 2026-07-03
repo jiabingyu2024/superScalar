@@ -46,6 +46,7 @@ module StoreBuffer(
             logic [3:0] entryMask;
             DataPath entryData;
             DataPath matchedData;
+            logic [3:0] shiftedMask;
             StoreBufferIndexPath idx;
 
             matchedMask = '0;
@@ -68,17 +69,18 @@ module StoreBuffer(
                 self.StoreBufferMatchOut.hit = 1'b1;
                 self.StoreBufferMatchOut.data =
                     matchedData >> {self.StoreBufferMatchIn.addr[1:0], 3'b000};
+                self.StoreBufferMatchOut.mask =
+                    matchedMask >> self.StoreBufferMatchIn.addr[1:0];
             end else begin
-                for (i = 0; i < STORE_BUFFER_DEPTH; i++) begin
-                    idx = head + StoreBufferIndexPath'(i);
-                    if (i < count && valid[idx] && entries[idx].valid &&
-                        entries[idx].addr[ADDR_WIDTH-1:2] == self.StoreBufferMatchIn.addr[ADDR_WIDTH-1:2]) begin
-                        entryMask = entries[idx].wstrb << entries[idx].addr[1:0];
-                        if ((entryMask & self.StoreBufferMatchIn.rstrb) != '0) begin
-                            self.StoreBufferMatchOut.block = 1'b1;
-                        end
-                    end
+                shiftedMask = matchedMask >> self.StoreBufferMatchIn.addr[1:0];
+                if (matchedMask != '0) begin
+                    self.StoreBufferMatchOut.data =
+                        matchedData >> {self.StoreBufferMatchIn.addr[1:0], 3'b000};
+                    self.StoreBufferMatchOut.mask = shiftedMask;
                 end
+                // Partial overlaps are not a structural hazard here: MEM issue
+                // is kept in program order by IssueQueue, and ExecuteMemStage
+                // merges these forwarded bytes with the later DRAM return.
             end
         end
     end

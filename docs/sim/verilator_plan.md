@@ -150,6 +150,7 @@ tb/verilator/src_profiles.json
 | checker | 行为 |
 | --- | --- |
 | `ledseg` | 使用 LED PASS/FAIL signature，并在 LED PASS 后检查 SEG BCD 和 virtual SEG。 |
+| `ledonly` | 只使用 LED PASS/FAIL signature；用于最终不保持 SEG 计数格式的 profile。 |
 | `observe` | 不武断给 PASS/FAIL，只记录 LED/SEG/counter/DRAM 结果区行为，直到超时。 |
 | `memcnt` | 支持 DRAM pass/fail counter；只有配置 `expected_pass_count` 后才会按 pass counter 给 PASS。 |
 | `lampseg` | 面向 `srcWithMext/srcWithoutMext` 的新灯位协议：识别最终 ✅/❎ 图案、8 个测试灯和 SEG 测试条数。 |
@@ -175,7 +176,8 @@ CPU 运行
 
 | profile | checker | 说明 |
 | --- | --- | --- |
-| `src0/src1/src2/srcSmoke` | `ledseg` | 暂按参考 LED/SEG 流程判定，后续可按 dump/规则调整。 |
+| `src0/src1/src2` | `ledseg` | 暂按参考 LED/SEG 流程判定，后续可按 dump/规则调整。 |
+| `srcSmoke` | `ledonly` | 实测最终先停止 counter、写 `SEG=0`，再写旧 LED PASS `0x01221c08`；因此用 LED PASS/FAIL 判定，SEG/counter 只作为性能观测字段记录。 |
 | `srcWithMext` | `lampseg` | 使用新 LED/SEG 协议：8 个测试灯 mask 为 `0x03030303`，PASS 图案 `0x04887020`，FAIL 图案 `0x90606090`，要求 RV32I 条数 37、M/Z 类条数 8。 |
 | `srcWithoutMext` | `lampseg` | 使用新 LED/SEG 协议：8 个测试灯 mask 为 `0x03030303`，PASS 图案 `0x04887020`，FAIL 图案 `0x90606090`，要求 RV32I 条数 37。 |
 
@@ -268,9 +270,11 @@ scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --build-only
 
 | 命令 | 结果 | 含义 |
 | --- | --- | --- |
-| `scripts/run_verilator.py rv32 --test rv32ui-p-simple --max-cycles 20000 --no-build` | FAIL，tohost 写 `0xffffffc4` | TB 正确捕获 tohost 非 pass 值；DUT 当前未通过。 |
-| `scripts/run_verilator.py src --test srcSmoke --max-cycles 200000 --counter-cycles-per-ms 50 --no-build` | TIMEOUT，`checker_kind=src_ledseg` | TB 正常输出超时和 perf 字段；当前未观察到 LED PASS 写。 |
+| `scripts/run_verilator.py rv32 --suite rv32ui --max-cycles 30000 --no-build` | PASS | 当前 `rv32ui` 回归通过。 |
+| `scripts/run_verilator.py rv32 --suite rv32mi --max-cycles 30000 --no-build` | PASS | 当前支持的 `rv32mi` SYS/CSR 路径回归通过。 |
+| `scripts/run_verilator.py rv32 --suite rv32um --max-cycles 30000 --no-build` | PASS | 当前 RV32M mul/div/rem 回归通过。 |
+| `scripts/run_verilator.py src --test srcSmoke --max-cycles 80000000 --no-build` | PASS，`checker_kind=src_ledonly` | 周期 `72813551`，观察到 LED PASS；counter 停止约在 `72813238` 周期，`counter_ms=1456`。 |
 | `scripts/run_verilator.py src --test srcWithMext --max-cycles 200000 --counter-cycles-per-ms 50 --no-build` | TIMEOUT，`checker_kind=src_lampseg` | TB 正常使用新灯位协议；当前未观察到最终 PASS/FAIL 图案。 |
 | `scripts/run_verilator.py src --test srcWithoutMext --max-cycles 200000 --counter-cycles-per-ms 50 --no-build` | TIMEOUT，`checker_kind=src_lampseg` | TB 正常使用新灯位协议；当前未观察到最终 PASS/FAIL 图案。 |
 
-这些 smoke 只证明 TB 和 Verilator 链路可执行，不代表 RTL 正确。
+这些 smoke 说明 `myCPU` 主 DUT、Verilator harness、rv32 tohost checker 和 `srcSmoke` LED-only checker 当前可执行。`srcWithMext/srcWithoutMext` 仍需更长周期或继续定位 DUT 性能/功能问题。

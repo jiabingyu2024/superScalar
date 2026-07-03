@@ -16,6 +16,9 @@ std::unique_ptr<Checker> make_checker(const Options& opt) {
         if (opt.src_checker == "ledseg") {
             return std::make_unique<SrcLedSegChecker>(opt);
         }
+        if (opt.src_checker == "ledonly") {
+            return std::make_unique<SrcLedOnlyChecker>(opt);
+        }
         if (opt.src_checker == "observe") {
             return std::make_unique<SrcObserveChecker>(opt);
         }

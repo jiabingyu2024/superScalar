@@ -155,11 +155,13 @@ PF 每周期最多产生 2 个 `PfToIfPath`。如果 lane0 预测 taken，则 la
 
 | 结构 | 当前实现 |
 | --- | --- |
-| BTB | 32 entry，直接索引，保存 tag 和 target。 |
-| BHB | local/global 两套 2-bit PHT + chooser，global history 6 位，local history 4 位。 |
+| BTB | 256 entry，直接索引，12-bit tag，保存 target。 |
+| BHB | local/global 两套 2-bit PHT + chooser，global history 8 位，local history 4 位。 |
 | 更新来源 | CommitStage 对已退休分支发 `commitBranchUpdate*`，RecoveryManager 打一拍给 BPU。 |
 
-维护注意：预测器只在提交后更新，因此恢复路径正确性优先于预测器性能调优。
+预测命中 BTB 后，若 BHB 判断 taken，或 BTB target 小于当前 PC（后向分支启发式），则预测 taken；同包内只允许第一条 taken 指令生效，后续 lane 被压掉。
+
+维护注意：预测器只在提交后更新，因此恢复路径正确性优先于预测器性能调优。后向分支启发式是 src 循环性能优化，不应改变 miss recovery 的精确性。
 
 ## 8. Decode 拆包规则
 
@@ -308,15 +310,16 @@ Load 查询 StoreBuffer：
 | 查询结果 | 行为 |
 | --- | --- |
 | 完全命中所需字节 | 直接转发数据到 WB。 |
-| 部分字节冲突 | `block=1`，MEM 拉 `exStallReq` 等待。 |
+| 部分命中所需字节 | 将命中字节作为 `forwardData/forwardMask` 送入 load metadata，等待 DRAM 返回后逐字节合并。 |
 | 无冲突 | 发起 DRAM read。 |
 
 维护注意：
 
 1. store 对外提交时不在 core 内按 `addr[1:0]` 左移，统一交给 `dram_driver` 或 TB memory model 对齐。
 2. StoreBuffer 内部 forwarding 仍需按 entry 地址临时对齐 `data/wstrb`，再按 load 地址右移成外部 DRAM 返回格式，保证 store-to-load forwarding 和外部 load 返回语义一致。
-3. StoreBuffer 不用“尚未填充的任意 store entry”阻塞 load；这会把年轻 store 误当 older store，造成 `load` 卡住 EX、older store 又无法进入 EX 的死锁。older store/load 的程序序职责放在 IssueQueue MEM 保序中。
-4. store 每周期分配限制已经由 Decode/Dispatch 配合保证。
+3. StoreBuffer 不用“部分命中”阻塞 load；`ExecuteMemStage` 会把 StoreBuffer 给出的字节和两拍后的 DRAM word 合并，再做 LB/LH/LW 的符号/零扩展。
+4. StoreBuffer 不用“尚未填充的任意 store entry”阻塞 load；这会把年轻 store 误当 older store，造成 `load` 卡住 EX、older store 又无法进入 EX 的死锁。older store/load 的程序序职责放在 IssueQueue MEM 保序中。
+5. store 每周期分配限制已经由 Decode/Dispatch 配合保证。
 
 ## 12. ReadReg、Bypass 和 PRF
 
@@ -372,6 +375,8 @@ T0: dram.exReadEn && exReadReady，记录 loadIssueMeta -> loadMetaPipe0
 T1: loadMetaPipe0 -> loadMetaPipe1
 T2: loadMetaPipe1.valid 时，使用 dram.exReadData 生成 WB 结果
 ```
+
+若 load 对 StoreBuffer 有部分字节命中，T0 同时把命中字节保存到 `loadIssueMeta.forwardData/forwardMask`。T2 用 `forwardMask` 覆盖 `dram.exReadData` 中对应字节，再执行 load subtype 的符号/零扩展。该路径用于处理同 word 的 `SB/SH` 后跟 `LW/LH/LB`，同时保持 core 对外仍输出 raw store data/mask。
 
 如果 `loadMetaPipe1.valid` 且当前 MEM pipe 又有新有效 uop，则 `loadReturnBlocked` 拉高，阻塞 EX，避免 load 返回和新 MEM 输入抢同一输出口。
 
@@ -500,7 +505,7 @@ commitRecoveryReq > writeBackRecoveryReq
 6. `IssueQueue` 的 delay/shift 机制和 WB wakeup 同时存在，实际 ready 是否过早或过晚，需要用 load-use、mul-use、div-use 测试验证。
 7. `RegFile` 负沿写是重要时序假设，Verilator 和 FPGA 综合行为都要确认符合预期。
 8. `ExecuteMemStage` 一次只允许一个 load，且 load 返回会阻塞当前 MEM uop；性能优化前先保证正确性。
-9. `StoreBuffer` 对 load forwarding 的多 entry 字节合并要验证 store-load、partial byte、同 word 多 store 场景。
+9. `StoreBuffer` 对 load forwarding 的多 entry 字节合并要验证 store-load、partial byte、同 word 多 store 场景；特别是 `SH` 后紧跟 `LW` 时，不能因为部分命中把 MEM 永久 stall。
 10. `CommitStage` 对 branch 和 exception 的 checkpoint/free 恢复路径不同，是后续精确异常和分支恢复 debug 的重点。
 11. `RecoveryManager` 将恢复事件打一拍，Ctrl flush 也因此打一拍；调试 branch miss 时要按这个时序看波形。
 12. `WriteBackStage` 当前不发起实际 recovery，`writeBackRecoveryReq` 保留但清零；如果未来要做早恢复，需要重新定义优先级和精确状态边界。

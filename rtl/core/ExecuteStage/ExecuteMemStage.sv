@@ -18,6 +18,8 @@ module ExecuteMemStage(
         ExMemToWbPath wb;
         MemSubType    memSubType;
         AddrPath      addr;
+        DataPath      forwardData;
+        logic [3:0]   forwardMask;
     } LoadMetaPath;
 
     LoadMetaPath loadMetaPipe0;
@@ -56,6 +58,22 @@ module ExecuteMemStage(
             MEM_SUBTYPE_LHU: extend_load_data = {16'b0, data[15:0]};
             default:         extend_load_data = data;
         endcase
+    endfunction
+
+    function automatic DataPath merge_forward_data(
+        input DataPath    memData,
+        input DataPath    forwardData,
+        input logic [3:0] forwardMask
+    );
+        DataPath merged;
+
+        merged = memData;
+        for (int b = 0; b < 4; b++) begin
+            if (forwardMask[b]) begin
+                merged[b*8 +: 8] = forwardData[b*8 +: 8];
+            end
+        end
+        return merged;
     endfunction
 
     always_ff @(posedge self.clk or posedge self.rst) begin
@@ -114,9 +132,14 @@ module ExecuteMemStage(
         ctrl.memStageEmpty = !loadMetaPipe0.valid && !loadMetaPipe1.valid;
 
         if (loadMetaPipe1.valid) begin
+            DataPath mergedLoadData;
+
+            mergedLoadData = merge_forward_data(dram.exReadData,
+                                                loadMetaPipe1.forwardData,
+                                                loadMetaPipe1.forwardMask);
             self.nextMemToStage[0] = loadMetaPipe1.wb;
             self.nextMemToStage[0].data =
-                extend_load_data(loadMetaPipe1.memSubType, dram.exReadData);
+                extend_load_data(loadMetaPipe1.memSubType, mergedLoadData);
         end
 
         for (int i = 0; i < WAY_NUM; i++) begin
@@ -161,6 +184,8 @@ module ExecuteMemStage(
                     loadIssueMeta.wb.Rd = pipeReg[i].Rd;
                     loadIssueMeta.wb.writeRd = pipeReg[i].writeRd;
                     loadIssueMeta.wb.robIndex = pipeReg[i].robIndex;
+                    loadIssueMeta.forwardData = storeBuffer.StoreBufferMatchOut.data;
+                    loadIssueMeta.forwardMask = storeBuffer.StoreBufferMatchOut.mask;
 
                     if (storeBuffer.StoreBufferMatchOut.hit) begin
                         self.nextMemToStage[loadMetaPipe1.valid ? 1 : 0].valid = 1'b1;
