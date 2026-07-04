@@ -21,6 +21,13 @@ module myCPU (
     output logic [3:0]  perip_mask,
     output logic [31:0] perip_wdata,
     input  logic [31:0] perip_rdata
+`ifdef VERILATOR_TB
+    ,
+    output logic [63:0] dbg_perf_cycle,
+    output logic [63:0] dbg_perf_commit,
+    output logic [63:0] dbg_perf_branch,
+    output logic [63:0] dbg_perf_branch_miss
+`endif
 );
 
     IromAccessIF iromAccess(cpu_clk, cpu_rst);
@@ -49,6 +56,13 @@ module myCPU (
         dromAccess.readData = perip_rdata;
         dromAccess.accessReady = 1'b1;
     end
+
+`ifdef VERILATOR_TB
+    assign dbg_perf_cycle = perfIF.cycle;
+    assign dbg_perf_commit = perfIF.commitCnt;
+    assign dbg_perf_branch = perfIF.branchCnt;
+    assign dbg_perf_branch_miss = perfIF.branchMissCnt;
+`endif
 
     core u_core (
         .clk        (cpu_clk),

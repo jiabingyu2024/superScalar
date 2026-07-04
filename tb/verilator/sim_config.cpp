@@ -9,6 +9,9 @@ Options parse_args(int argc, char** argv) {
     Options opt;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
+        if (!arg.empty() && arg[0] == '+') {
+            continue;
+        }
         auto take_value = [&](const std::string& key, std::string& dst) {
             if (arg == key && i + 1 < argc) {
                 dst = argv[++i];

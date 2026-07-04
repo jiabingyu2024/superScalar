@@ -35,7 +35,18 @@ module student_top#(
     input  [P_SW_CNT  - 1:0]                    virtual_sw    ,
 
     output [P_LED_CNT - 1:0]                    virtual_led   ,
-    output [P_SEG_CNT - 1:0]                    virtual_seg   
+    output [P_SEG_CNT - 1:0]                    virtual_seg
+`ifdef VERILATOR_TB
+    ,
+    output logic [31:0]                         dbg_perip_addr ,
+    output logic [31:0]                         dbg_perip_wdata,
+    output logic [3:0]                          dbg_perip_mask ,
+    output logic                                dbg_perip_wen,
+    output logic [63:0]                         dbg_perf_cycle,
+    output logic [63:0]                         dbg_perf_commit,
+    output logic [63:0]                         dbg_perf_branch,
+    output logic [63:0]                         dbg_perf_branch_miss
+`endif
 );
 
     // IROM
@@ -52,6 +63,12 @@ module student_top#(
     logic [31:0] perip_addr, perip_wdata, perip_rdata;
     logic perip_wen;
     logic [3:0] perip_mask;
+`ifdef VERILATOR_TB
+    logic [63:0] perf_cycle;
+    logic [63:0] perf_commit;
+    logic [63:0] perf_branch;
+    logic [63:0] perf_branch_miss;
+`endif
 
     // 16KB = 2^12 * 32bit
     assign inst_addrA = irom_addrA[13:2];
@@ -98,7 +115,14 @@ module student_top#(
         .perip_wen          (perip_wen),     
         .perip_mask         (perip_mask),   
         .perip_wdata        (perip_wdata),    
-        .perip_rdata        (perip_rdata)     
+        .perip_rdata        (perip_rdata)
+`ifdef VERILATOR_TB
+        ,
+        .dbg_perf_cycle      (perf_cycle),
+        .dbg_perf_commit     (perf_commit),
+        .dbg_perf_branch     (perf_branch),
+        .dbg_perf_branch_miss(perf_branch_miss)
+`endif
     );
 
     IROM_0 Mem_IROM (
@@ -129,5 +153,16 @@ module student_top#(
         .virtual_seg_output	(virtual_seg),
         .virtual_led_output (virtual_led)
     );
+
+`ifdef VERILATOR_TB
+    assign dbg_perip_addr  = perip_addr;
+    assign dbg_perip_wdata = perip_wdata;
+    assign dbg_perip_mask  = perip_mask;
+    assign dbg_perip_wen   = perip_wen;
+    assign dbg_perf_cycle = perf_cycle;
+    assign dbg_perf_commit = perf_commit;
+    assign dbg_perf_branch = perf_branch;
+    assign dbg_perf_branch_miss = perf_branch_miss;
+`endif
 
 endmodule

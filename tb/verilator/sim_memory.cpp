@@ -1,7 +1,5 @@
 #include "sim_memory.h"
 
-#include "VmyCPU.h"
-
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
@@ -158,25 +156,6 @@ void MemoryModel::tick_posedge(const Request& req, uint64_t cycles_per_ms) {
     }
 
     tick_counter(cycles_per_ms);
-}
-
-void drive_inputs(VmyCPU& top, const MemoryModel& mem) {
-    top.irom_dataA = mem.irom_data_a();
-    top.irom_dataB = mem.irom_data_b();
-    top.perip_rdata = mem.current_perip_rdata();
-}
-
-Request capture_request(const VmyCPU& top) {
-    Request req;
-    req.irom_addr_a = top.irom_addrA;
-    req.irom_addr_b = top.irom_addrB;
-    req.irom_ena_a = top.irom_enaA;
-    req.irom_ena_b = top.irom_enaB;
-    req.perip_addr = top.perip_addr;
-    req.perip_wdata = top.perip_wdata;
-    req.perip_mask = top.perip_mask & 0xfu;
-    req.perip_wen = top.perip_wen;
-    return req;
 }
 
 }  // namespace sim

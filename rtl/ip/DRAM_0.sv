@@ -4,9 +4,11 @@
  * @module DRAM
  * @description 32-bit data RAM, depth 65536 words.
  *              Port names match the generated BRAM IP used by the FPGA build.
- *              Read data has a two-cycle registered latency from an accepted
- *              read address. Address alignment and byte lane shifting are handled by
- *              `dram_driver`, so `addra` is already a word address.
+ *              Read cycles register the word address and update douta on the
+ *              next clock from the previous read address; write cycles do not
+ *              advance the read-return pipeline. Address alignment and byte lane
+ *              shifting are handled by `dram_driver`, so `addra` is already a
+ *              word address.
  */
 module DRAM_0 #(
     parameter int unsigned ADDR_WIDTH = 16,
@@ -24,26 +26,29 @@ module DRAM_0 #(
     localparam int unsigned DEPTH = (1 << ADDR_WIDTH);
 
     logic [DATA_WIDTH-1:0] mem [0:DEPTH-1];
-    logic [ADDR_WIDTH-1:0] rd_addr_pipe0;
-    logic [ADDR_WIDTH-1:0] rd_addr_pipe1;
-    logic                  rd_valid_pipe0;
-    logic                  rd_valid_pipe1;
+    logic [ADDR_WIDTH-1:0] rd_addr_q;
+    logic                  rd_valid_q;
+    logic                  read_en;
+
+    assign read_en = ena && (wea == '0);
 
     initial begin
-        if (INIT_FILE != "") begin
+        string runtime_init_file;
+
+        if ($value$plusargs("dram_hex=%s", runtime_init_file)) begin
+            $readmemh(runtime_init_file, mem);
+        end else if (INIT_FILE != "") begin
             $readmemh(INIT_FILE, mem);
         end
     end
 
     always_ff @(posedge clka) begin
-        rd_valid_pipe0 <= ena;
-        rd_valid_pipe1 <= rd_valid_pipe0;
-        if (ena) begin
-            rd_addr_pipe0 <= addra;
+        rd_valid_q <= read_en;
+        if (read_en) begin
+            rd_addr_q <= addra;
         end
-        rd_addr_pipe1 <= rd_addr_pipe0;
-        if (rd_valid_pipe1) begin
-            douta <= mem[rd_addr_pipe1];
+        if (rd_valid_q) begin
+            douta <= mem[rd_addr_q];
         end
 
         if (ena) begin

@@ -17,7 +17,7 @@ myCPU
        -> RecoveryManager/Ctrl
 ```
 
-主仿真 DUT 约定为 `myCPU`。`core` 适合内部结构阅读和未来模块级测试，`student_top` 只作为 SoC 集成 smoke。
+仿真 DUT 按目标分流：rv32 正确性测试使用 `myCPU`，src 类测试使用 `student_top`。`core` 适合内部结构阅读和未来模块级测试。
 
 ## 2. 全局参数
 

@@ -2,20 +2,21 @@
 
 ## 主仿真 DUT
 
-主 Verilator DUT 使用 `myCPU`，不是 `core`，也不是 `student_top`。
+当前 Verilator DUT 按测试类型分流：
 
-原因：
+| 测试类型 | DUT | 原因 |
+| --- | --- | --- |
+| rv32 | `myCPU` | 保持最小外部平台，方便生成波形、抓 core/接口信号和定位 ISA 正确性问题。 |
+| src | `student_top` | src 目标更接近赛事 SoC 路径，需要覆盖 IROM/DRAM/perip_bridge/counter/display 的真实集成行为。 |
 
-1. `core` 外部是 SystemVerilog interface，C++ testbench 直接驱动不如扁平端口稳定，并且会绕过真实赛事 CPU 适配层。
-2. `student_top` 包含 SoC 壳、外设桥、IP 行为模型、显示/counter/按键开关同步等逻辑，早期 debug 范围过大。
-3. `myCPU` 端口扁平，同时覆盖 core 到赛事接口的关键适配行为。
+`core` 外部是 SystemVerilog interface，C++ testbench 直接驱动不如扁平端口稳定，并且会绕过真实赛事 CPU 适配层，因此不作为主 Verilator DUT。
 
 ## DUT 分层
 
 | 层级 | DUT | 用途 |
 | --- | --- | --- |
-| L1 | `myCPU` | rv32 正确性和 src 性能仿真的主入口。 |
-| L2 | `student_top` | L1 稳定后的 SoC 壳集成 smoke。 |
+| L1 | `myCPU` | rv32 正确性仿真的主入口。 |
+| L2 | `student_top` | src 类测试和 SoC 集成路径仿真的主入口。 |
 | L3 | `top` | FPGA/Vivado 上板入口。 |
 
 ## IROM 契约
@@ -74,7 +75,7 @@ store 写入同样在命令被接受的周期生效。当前约定为“core 发
 | `SW` | `perip_wdata[31:0]` 有效，`perip_mask=4'b1111` | word 写入。 |
 | load | `readData` 已由外部按 `addr[1:0]` 右移 | `ExecuteMemStage` 只按 load subtype 做符号/零扩展。 |
 
-这样 `myCPU` Verilator TB 和 `student_top/perip_bridge/dram_driver` 的对齐点一致。后续 Verilator memory model 必须保留两拍 load 返回关系，并复刻 `dram_driver` 的读右移、写左移行为，否则可能出现仿真通过但 FPGA 失败。
+rv32 的 `myCPU` Verilator memory model 必须保留两拍 load 返回关系，并复刻 `dram_driver` 的读右移、写左移行为，否则可能出现 rv32 仿真通过但 src/FPGA 路径失败。src 使用 `student_top` 时，该职责由 RTL `perip_bridge/dram_driver/DRAM_0` 承担，C++ 侧不再模拟 DRAM 数据返回。
 
 ### SoC 地址划分
 
@@ -119,7 +120,15 @@ StoreBuffer 不再把部分命中视为必须等待的 hazard。更老 store 和
 
 ### 延迟风险
 
-`perip_bridge` 用 `dram_read_sel_d2` 选择 DRAM 返回，`dram_driver` 用 `offset_d2` 对读数据右移。需要后续用 `student_top` 定向 smoke 确认该相位与真实 Vivado `DRAM_0`/当前行为模型完全一致。若发现 `DRAM_0.douta` 比 `dram_read_sel_d2` 晚一拍，应统一调整 `DRAM_0` 行为模型或 `perip_bridge` select 延迟，并同步 core load metadata。
+`perip_bridge` 用 `dram_read_sel_d2` 选择 DRAM 返回，`dram_driver` 用 `offset_d2` 对读数据右移。src 已切到 `student_top` 后，这条路径会直接参与 src 结果；若 src 在 `myCPU` 平台通过但在 `student_top` 平台长期无 MMIO 进展，应优先检查 `DRAM_0` 读延迟、`dram_read_sel_d2` 和 core load metadata 的相位是否一致。
+
+当前 Verilator `DRAM_0` 行为模型约束：
+
+1. 只有 `ena && wea == 0` 的 read 周期推进读地址寄存。
+2. 下一拍输出上一拍读地址对应的数据，供 `perip_bridge.dram_read_sel_d2` 选择，并与 core `ExecuteMemStage` 的 `loadMetaPipe1` 对齐。
+3. write 周期只按 byte enable 更新 memory，不推进读地址/valid 管线，避免 store 污染后续 load 返回地址。
+
+如果把 write 周期也送进读管线，`srcSmoke` 会很早读到错误数据，表现为 `student_top` 下长期只访问 DRAM 而不写 SEG/LED/CNT。
 
 ## CSR 和无 cache 约束
 
@@ -152,8 +161,9 @@ CSR 当前只承诺测试子集：
 
 ## src 测试契约
 
-src 测试有独立通过逻辑，后续由用户补充。框架需要预留：
+src 测试有独立通过逻辑，当前通过 `student_top` Verilator harness 运行。框架需要预留：
 
 1. 用户提供的 src pass/fail 规则。
-2. 赛事 counter/MMIO 行为。
-3. 在不修改 `myCPU.sv` 端口的前提下，尽量保留内部性能指标观测能力。
+2. 赛事 counter/MMIO 行为；`counter.sv` 不修改，Verilator 中按 RTL 固定 `50000` 个 `w_clk_50Mhz` 周期加 1ms。
+3. src harness 通过 `VERILATOR_TB` 条件编译从 `student_top` 暴露 `dbg_perip_*` 观测口，只用于仿真采样，不进入 FPGA 综合接口。
+4. 在不修改正式综合端口的前提下，尽量保留内部性能指标观测能力。

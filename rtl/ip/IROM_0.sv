@@ -28,7 +28,11 @@ module IROM_0 #(
     logic [ADDR_WIDTH-1:0] addrb_q;
 
     initial begin
-        if (INIT_FILE != "") begin
+        string runtime_init_file;
+
+        if ($value$plusargs("irom_hex=%s", runtime_init_file)) begin
+            $readmemh(runtime_init_file, mem);
+        end else if (INIT_FILE != "") begin
             $readmemh(INIT_FILE, mem);
         end
     end

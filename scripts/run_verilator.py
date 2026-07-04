@@ -13,24 +13,74 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 BUILD_DIR = REPO / "build"
-VERILATOR_DIR = BUILD_DIR / "verilator" / "mycpu"
-BIN = VERILATOR_DIR / "sim_mycpu"
 RESULT_DIR = BUILD_DIR / "result"
 LOG_DIR = BUILD_DIR / "log"
 WAVE_DIR = BUILD_DIR / "wave"
 SRC_PROFILE_FILE = REPO / "tb" / "verilator" / "src_profiles.json"
-TB_SOURCES = [
-    "tb/verilator/main.cpp",
+
+COMMON_TB_SOURCES = [
     "tb/verilator/sim_common.cpp",
     "tb/verilator/sim_config.cpp",
     "tb/verilator/sim_memory.cpp",
     "tb/verilator/sim_display.cpp",
     "tb/verilator/sim_trace.cpp",
+    "tb/verilator/sim_control.cpp",
+    "tb/verilator/sim_result.cpp",
     "tb/verilator/perf_stats.cpp",
     "tb/verilator/checker.cpp",
     "tb/verilator/checker_rv32.cpp",
     "tb/verilator/checker_src.cpp",
 ]
+MYCPU_TB_SOURCES = [
+    "tb/verilator/main_mycpu.cpp",
+    "tb/verilator/dut_mycpu_io.cpp",
+    *COMMON_TB_SOURCES,
+]
+STUDENT_TOP_TB_SOURCES = [
+    "tb/verilator/main_student_top.cpp",
+    "tb/verilator/dut_student_top_io.cpp",
+    *COMMON_TB_SOURCES,
+]
+
+
+@dataclass(frozen=True)
+class BuildTarget:
+    name: str
+    top_module: str
+    filelist: Path
+    sources: list[str]
+    out_dir: Path
+    bin_path: Path
+    log_path: Path
+    defines: tuple[str, ...] = ()
+
+
+def build_target_for_mode(mode: str) -> BuildTarget:
+    if mode == "rv32":
+        out_dir = BUILD_DIR / "verilator" / "mycpu"
+        return BuildTarget(
+            name="mycpu",
+            top_module="myCPU",
+            filelist=REPO / "scripts" / "filelists" / "verilator_mycpu.f",
+            sources=MYCPU_TB_SOURCES,
+            out_dir=out_dir,
+            bin_path=out_dir / "sim_mycpu",
+            log_path=LOG_DIR / "build_mycpu.log",
+            defines=("VERILATOR_TB",),
+        )
+    if mode == "src":
+        out_dir = BUILD_DIR / "verilator" / "student_top"
+        return BuildTarget(
+            name="student_top",
+            top_module="student_top",
+            filelist=REPO / "scripts" / "filelists" / "verilator_student_top.f",
+            sources=STUDENT_TOP_TB_SOURCES,
+            out_dir=out_dir,
+            bin_path=out_dir / "sim_student_top",
+            log_path=LOG_DIR / "build_student_top.log",
+            defines=("VERILATOR_TB",),
+        )
+    raise SystemExit(f"unknown mode: {mode}")
 
 
 def collect_filelist_sources(path: Path, seen: set[Path] | None = None) -> list[Path]:
@@ -95,24 +145,24 @@ def run(cmd: list[str], *, cwd: Path = REPO, log: Path | None = None) -> int:
     return proc.returncode
 
 
-def source_newer_than_bin() -> bool:
-    if not BIN.exists():
+def source_newer_than_bin(target: BuildTarget) -> bool:
+    if not target.bin_path.exists():
         return True
-    bin_mtime = BIN.stat().st_mtime
-    candidates = [REPO / src for src in TB_SOURCES]
+    bin_mtime = target.bin_path.stat().st_mtime
+    candidates = [REPO / src for src in target.sources]
     candidates.extend((REPO / "tb" / "verilator").glob("*.h"))
     candidates.extend((REPO / "scripts" / "filelists").glob("*.f"))
-    candidates.extend(collect_filelist_sources(REPO / "scripts" / "filelists" / "verilator_mycpu.f"))
+    candidates.extend(collect_filelist_sources(target.filelist))
     for path in candidates:
         if path.exists() and path.stat().st_mtime > bin_mtime:
             return True
     return False
 
 
-def build_verilator(force: bool, jobs: int, cxx: str | None) -> None:
-    if not force and not source_newer_than_bin():
+def build_verilator(target: BuildTarget, force: bool, jobs: int, cxx: str | None) -> None:
+    if not force and not source_newer_than_bin(target):
         return
-    VERILATOR_DIR.mkdir(parents=True, exist_ok=True)
+    target.out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "verilator",
         "-sv",
@@ -122,29 +172,32 @@ def build_verilator(force: bool, jobs: int, cxx: str | None) -> None:
         "-j",
         str(jobs),
         "--top-module",
-        "myCPU",
+        target.top_module,
         "--output-split",
         "20000",
         "--output-split-cfuncs",
         "20000",
+    ]
+    for define in target.defines:
+        cmd.append(f"-D{define}")
+    cmd.extend([
         "-f",
-        "scripts/filelists/verilator_mycpu.f",
-        *TB_SOURCES,
+        str(target.filelist.relative_to(REPO)),
+        *target.sources,
         "-Mdir",
-        str(VERILATOR_DIR),
+        str(target.out_dir),
         "-o",
-        BIN.name,
+        target.bin_path.name,
         "--trace-fst",
         "-Wno-fatal",
         "-CFLAGS",
-        "-std=c++17",
-    ]
+        "-std=c++17 -O3",
+    ])
     if cxx:
         cmd.extend(["-MAKEFLAGS", f"CXX={cxx}"])
-    log = LOG_DIR / "build_mycpu.log"
-    rc = run(cmd, log=log)
+    rc = run(cmd, log=target.log_path)
     if rc != 0:
-        raise SystemExit(f"Verilator build failed, see {log}")
+        raise SystemExit(f"Verilator build failed, see {target.log_path}")
 
 
 def parse_tohost(dump: Path) -> int | None:
@@ -267,13 +320,14 @@ def write_unsupported_result(test: TestCase, reason: str) -> Path:
     return path
 
 
-def run_test(test: TestCase, args: argparse.Namespace) -> tuple[str, Path]:
+def run_test(test: TestCase, args: argparse.Namespace, target: BuildTarget) -> tuple[str, Path]:
     result = RESULT_DIR / test.mode / f"{test.name}.json"
     log = LOG_DIR / test.mode / f"{test.name}.log"
     wave = WAVE_DIR / test.mode / f"{test.name}.fst"
     result.parent.mkdir(parents=True, exist_ok=True)
     log.parent.mkdir(parents=True, exist_ok=True)
     wave.parent.mkdir(parents=True, exist_ok=True)
+    result.unlink(missing_ok=True)
 
     if test.mode == "rv32" and test.tohost is None:
         path = write_unsupported_result(test, "tohost symbol not found in dump")
@@ -286,7 +340,7 @@ def run_test(test: TestCase, args: argparse.Namespace) -> tuple[str, Path]:
         max_cycles = 2000000
 
     cmd = [
-        str(BIN),
+        str(target.bin_path),
         f"--mode={test.mode}",
         f"--test-name={test.name}",
         f"--irom-hex={test.irom_hex}",
@@ -296,6 +350,8 @@ def run_test(test: TestCase, args: argparse.Namespace) -> tuple[str, Path]:
     if test.mode == "rv32":
         cmd.append(f"--tohost=0x{test.tohost:08x}")
     if test.mode == "src":
+        cmd.insert(1, f"+dram_hex={test.dram_hex}")
+        cmd.insert(1, f"+irom_hex={test.irom_hex}")
         cmd.append(f"--dram-hex={test.dram_hex}")
         cmd.append(f"--src-checker={test.src_checker}")
         cmd.append(f"--src-seg-grace={args.src_seg_grace}")
@@ -336,7 +392,7 @@ def run_test(test: TestCase, args: argparse.Namespace) -> tuple[str, Path]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build and run Verilator myCPU tests.")
+    parser = argparse.ArgumentParser(description="Build and run Verilator rv32/src tests.")
     sub = parser.add_subparsers(dest="mode", required=True)
 
     def add_common(p: argparse.ArgumentParser) -> None:
@@ -362,8 +418,9 @@ def main() -> int:
     p_src.add_argument("--counter-cycles-per-ms", type=int, default=50000)
 
     args = parser.parse_args()
+    target = build_target_for_mode(args.mode)
     if not args.no_build:
-        build_verilator(force=args.build, jobs=args.build_jobs, cxx=args.build_cxx)
+        build_verilator(target, force=args.build, jobs=args.build_jobs, cxx=args.build_cxx)
     if args.build_only:
         return 0
 
@@ -374,7 +431,7 @@ def main() -> int:
     summary: list[dict[str, str]] = []
     bad = False
     for test in tests:
-        status, result = run_test(test, args)
+        status, result = run_test(test, args, target)
         print(f"{test.name}: {status} ({result})")
         summary.append({"test": test.name, "mode": test.mode, "status": status,
                         "result": str(result)})

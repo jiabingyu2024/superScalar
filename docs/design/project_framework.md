@@ -18,7 +18,7 @@
 | `rtl/soc/` | 赛事 SoC 壳、外设桥、UART/display glue、FPGA 顶层集成逻辑。 |
 | `rtl/ip/` | 生成型 FPGA IP 的仿真行为模型。允许修改实现，但对外端口和行为必须与上板 IP 保持一致。 |
 | `data/` | 测试输入。缺失的 `.hex/.dump` 等生成物直接补在原测试目录下。 |
-| `tb/` | 后续 Verilator testbench 源码。主正确性 DUT 使用 `myCPU`，`student_top` 只作为 SoC smoke DUT。 |
+| `tb/` | Verilator testbench 源码。rv32 正确性 DUT 使用 `myCPU`，src 类测试 DUT 使用 `student_top`。 |
 | `scripts/` | 构建辅助脚本和稳定 filelist。后续 Makefile 仍作为用户可见入口。 |
 | `build/` | 编译中间文件、日志、波形、结果汇总等生成物，必须被 git 忽略。 |
 | `docs/design/` | 当前设计事实和工程约定。设计事实变化时必须维护。 |
@@ -34,8 +34,8 @@
 
 ## 后续行动规约
 
-1. Verilator 主正确性/性能 DUT 固定为 `myCPU`。
-2. `student_top` 只在 `myCPU` 仿真稳定后用于 SoC 级 smoke/regression。
+1. rv32 类测试保持 `myCPU` 作为 DUT，方便生成波形和直接抓取 core/接口信号。
+2. src 类测试使用 `student_top` 作为 DUT，覆盖 IROM/DRAM/perip_bridge/counter/display 的 SoC 集成路径。
 3. 默认不修改 `myCPU.sv` 端口。
 4. Makefile 作为用户可见命令入口；脚本可承担测试发现、批量调度、路径展开、结果汇总。
 5. 每次有意义的项目修改都要更新 `docs/archive/`。
@@ -54,4 +54,3 @@ make sim-src TEST=src0
 make sim-src-all
 make fpga-project TEST=src0
 ```
-

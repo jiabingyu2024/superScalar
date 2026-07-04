@@ -70,6 +70,13 @@ struct Request {
     bool perip_wen = false;
 };
 
+struct CorePerfSample {
+    uint64_t cycle = 0;
+    uint64_t commit_count = 0;
+    uint64_t branch_count = 0;
+    uint64_t branch_miss_count = 0;
+};
+
 struct SimResult {
     std::string status = "TIMEOUT";
     std::string reason = "max cycles reached";

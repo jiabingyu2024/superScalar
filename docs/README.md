@@ -7,7 +7,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | `design/project_framework.md` | 项目目录职责、受保护文件、后续行动规约。 |
-| `design/memory_and_test_contract.md` | `myCPU` 主 DUT、IROM/DRAM 时序、rv32/src 测试契约。 |
+| `design/memory_and_test_contract.md` | rv32/src DUT 分流、IROM/DRAM 时序、测试契约。 |
 | `design/rtl_core_design.md` | 当前 `rtl/core` 微架构、流水级、队列资源、恢复路径和维护风险。 |
 
 ## 仿真文档
@@ -37,6 +37,9 @@
 | `archive/2026-07-03/015_rv32ui_mycpu_debug_fixes.md` | 定位并修复 myCPU rv32ui bring-up 问题：store 译码、flush、recovery、wakeup、MEM 保序、Issue/Payload pop 同步。 |
 | `archive/2026-07-03/016_rv32mi_rv32um_debug_fixes.md` | 定位并修复当前 SYS/CSR 与 RV32M div/rem 问题，完成 `rv32mi/rv32um` 回归。 |
 | `archive/2026-07-03/017_srcSmoke_bringup.md` | 完成 `srcSmoke` bring-up：StoreBuffer 部分转发、BPU 小幅调优、LED-only checker 和回归结果。 |
+| `archive/2026-07-03/018_src_student_top_harness.md` | 将 src 类 Verilator DUT 切换到 `student_top`，拆分 rv32/src harness，并记录当前 `srcSmoke` student_top 结果。 |
+| `archive/2026-07-03/019_make_src_entry_and_dram_model_fix.md` | 固定 make 仿真入口，设置 src 默认大周期上限，并修复 `DRAM_0` 行为模型使 `srcSmoke` 在 student_top 下 PASS。 |
+| `archive/2026-07-03/020_result_json_perf_and_interrupt.md` | 精简结果 JSON，加入分支命中率统计，并支持 TIMEOUT/中断时输出部分结果。 |
 
 ## 后续维护规则
 

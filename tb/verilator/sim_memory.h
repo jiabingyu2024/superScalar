@@ -8,8 +8,6 @@
 #include <string>
 #include <vector>
 
-class VmyCPU;
-
 namespace sim {
 
 class MemoryModel {
@@ -52,8 +50,6 @@ private:
 };
 
 std::vector<uint32_t> load_words(const std::string& path);
-void drive_inputs(VmyCPU& top, const MemoryModel& mem);
-Request capture_request(const VmyCPU& top);
 
 }  // namespace sim
 

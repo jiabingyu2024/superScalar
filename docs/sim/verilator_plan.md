@@ -1,10 +1,17 @@
 # Verilator 仿真说明
 
-当前 Verilator TB 已按 `docs/archive/2026-07-02/008_tb_replan_after_review.md` 拆分为公共 harness、memory model、rv32 checker、src profile checker 和性能统计模块。RTL 当前仍可能 FAIL/TIMEOUT，这类结果只表示 DUT 行为未通过，不表示 TB 链路失败。
+当前 Verilator TB 按测试类型拆成两个 DUT 入口：
+
+| 测试类型 | DUT | 可执行文件 | 定位 |
+| --- | --- | --- | --- |
+| rv32 | `myCPU` | `build/verilator/mycpu/sim_mycpu` | 最小平台，方便抓 core/接口波形，主打 ISA 正确性定位。 |
+| src | `student_top` | `build/verilator/student_top/sim_student_top` | SoC 集成平台，覆盖 IROM/DRAM/perip_bridge/counter/display 路径。 |
+
+公共 checker、性能统计、结果 JSON、参数解析仍复用同一套 C++ 代码。RTL 当前仍可能 FAIL/TIMEOUT，这类结果只表示 DUT 行为未通过，不表示 TB 链路失败。
 
 ## 用户入口
 
-当前 Makefile 是用户可见入口，`scripts/run_verilator.py` 在背后负责 Verilator 编译、测试发现、路径展开、批量执行和结果汇总。
+当前 Makefile 是用户可见入口，`scripts/run_verilator.py` 只作为 Makefile 背后的实现脚本，负责 Verilator 编译、测试发现、路径展开、批量执行和结果汇总。日常运行仿真默认使用 `make`。
 
 常用命令：
 
@@ -16,27 +23,28 @@ make sim-src TEST=srcSmoke
 make sim-src-all
 ```
 
-直接使用脚本时：
+常用 make 变量：
+
+| 变量 | 示例 | 作用 |
+| --- | --- | --- |
+| `TEST` | `make sim-src TEST=srcSmoke` | 选择单个测试。 |
+| `SUITE` | `make sim-rv32 SUITE=rv32ui` | 选择 rv32 套件。 |
+| `MAX_CYCLES` | `make sim-src TEST=srcSmoke MAX_CYCLES=200000000` | 覆盖仿真最大 CPU 周期数。 |
+| `SRC_MAX_CYCLES` | `make sim-src TEST=srcSmoke SRC_MAX_CYCLES=120000000` | 只覆盖 src 默认最大周期；未设置 `MAX_CYCLES` 时生效。 |
+| `TRACE` | `make sim-rv32 TEST=rv32ui-p-simple TRACE=1` | 生成 FST 波形。 |
+| `BUILD` | `make sim-src TEST=srcSmoke BUILD=1` | 强制重编后运行。 |
+| `NO_BUILD` | `make sim-rv32 TEST=rv32ui-p-simple NO_BUILD=1` | 跳过重编，复用已有二进制。 |
+| `BUILD_JOBS` | `make verilator-build BUILD_JOBS=1` | 设置 Verilator build 并行度。 |
+| `BUILD_CXX` | `make verilator-build BUILD_CXX=clang++` | 设置 Verilator 生成 C++ 的编译器。 |
+| `SRC_SEG_GRACE` | `make sim-src TEST=src0 SRC_SEG_GRACE=1024` | 设置 ledseg checker 的 SEG 宽限周期。 |
+
+src 默认最大周期：
 
 ```sh
-scripts/run_verilator.py rv32 --test rv32ui-p-simple
-scripts/run_verilator.py rv32 --suite rv32ui
-scripts/run_verilator.py src --test srcSmoke
-scripts/run_verilator.py src --all
+SRC_MAX_CYCLES ?= 100000000
 ```
 
-可选参数：
-
-| 参数 | 作用 |
-| --- | --- |
-| `--build` | 强制重编 Verilator。 |
-| `--build-only` | 只编译，不运行测试。 |
-| `--build-jobs N` | 设置 Verilator `--build` 的 make 并行度，默认取 `VERILATOR_BUILD_JOBS`，未设置时为 0。内存紧张或调试时建议用 1。 |
-| `--build-cxx CXX` | 通过 Verilator `-MAKEFLAGS` 指定 C++ 编译器，也可用 `VERILATOR_CXX`。当前环境下 GCC 13 可能在大 Verilator 文件上 ICE，推荐 `--build-cxx clang++`。 |
-| `--max-cycles N` | 设置最大 CPU 周期数。 |
-| `--trace` | 生成 FST 波形到 `build/wave/<mode>/<test>.fst`。 |
-| `--counter-cycles-per-ms N` | src counter 模型每 N 个 CPU 周期加 1ms，默认 50000。 |
-| `--src-seg-grace N` | LED PASS 后等待 SEG 匹配的窗口，默认 512 周期。 |
+因此 `make sim-src TEST=srcSmoke` 默认会用 `100000000` 周期上限，避免 src 类长程序被脚本默认短上限过早截断。需要更短 debug 时显式设置 `MAX_CYCLES`。
 
 ### 重编译判定
 
@@ -44,9 +52,9 @@ scripts/run_verilator.py src --all
 
 1. `tb/verilator/*.cpp/*.h`
 2. `scripts/filelists/*.f`
-3. `scripts/filelists/verilator_mycpu.f` 递归包含的 RTL/package/header 源文件
+3. 当前 mode 对应 filelist 递归包含的 RTL/package/header 源文件
 
-只要这些文件比 `build/verilator/mycpu/sim_mycpu` 新，就会自动重编。调试 RTL 时优先使用默认行为或显式 `--build`；只有明确要复用旧二进制时才使用 `--no-build`。
+rv32 检查 `build/verilator/mycpu/sim_mycpu`，src 检查 `build/verilator/student_top/sim_student_top`。调试 RTL 时优先使用默认行为或显式 `--build`；只有明确要复用旧二进制时才使用 `--no-build`。
 
 当前构建命令默认加入：
 
@@ -54,10 +62,10 @@ scripts/run_verilator.py src --all
 --output-split 20000 --output-split-cfuncs 20000
 ```
 
-目的是拆小 Verilator 生成的 C++ 翻译单元，降低 GCC/clang 编译内存压力。若并行重编中断或编译器 ICE，应先清理 `build/verilator/mycpu` 后单线程重建：
+目的是拆小 Verilator 生成的 C++ 翻译单元，降低 GCC/clang 编译内存压力。若并行重编中断或编译器 ICE，应先清理对应 `build/verilator/<target>` 后单线程重建：
 
 ```sh
-scripts/run_verilator.py rv32 --suite rv32ui --build --build-jobs 1 --build-cxx clang++
+make sim-rv32 SUITE=rv32ui BUILD=1 BUILD_JOBS=1 BUILD_CXX=clang++
 ```
 
 ## 测试选择粒度
@@ -86,8 +94,8 @@ src 测试需要支持：
 | `core.f` | core package、interface、module、`core` 和 `myCPU`。 |
 | `soc.f` | SoC wrapper RTL。 |
 | `ip_verilator.f` | 仅 Verilator/仿真使用的 IP 行为模型。 |
-| `verilator_mycpu.f` | 主 DUT `myCPU` 的仿真 filelist。 |
-| `verilator_student_top.f` | SoC smoke DUT 的仿真 filelist。 |
+| `verilator_mycpu.f` | rv32 DUT `myCPU` 的仿真 filelist。 |
+| `verilator_student_top.f` | src DUT `student_top` 的仿真 filelist。 |
 
 注意：`core.f` 中 package 顺序必须满足 Verilator 声明依赖。当前 `StoreBufferTypes.sv`、`ROBTypes.sv`、`RecoveryTypes.sv` 放在 `PipelineTypes.sv` 前，避免 `StoreBufferIndexPath` 声明前引用。
 
@@ -96,11 +104,15 @@ src 测试需要支持：
 主 testbench 位于 `tb/verilator/`：
 
 ```text
-main.cpp                  # 公共仿真入口：clock/reset/主循环/JSON 输出
+main_mycpu.cpp            # rv32/myCPU 仿真入口
+main_student_top.cpp      # src/student_top 仿真入口
+dut_mycpu_io.cpp/.h       # myCPU 端口驱动和 perip/irom 请求采样
+dut_student_top_io.cpp/.h # student_top 的 Verilator-only dbg_perip_* 采样
 sim_config.cpp/.h          # 命令行参数
 sim_memory.cpp/.h          # IROM/DRAM/MMIO/counter 行为模型
 sim_display.cpp/.h         # seg7/virtual_seg 编码和检查工具
 sim_trace.cpp/.h           # FST 波形封装
+sim_result.cpp/.h          # JSON 输出、关键 MMIO 日志、统一 finish
 perf_stats.cpp/.h          # 外部可观测性能统计
 checker.cpp/.h             # checker 工厂和公共接口
 checker_rv32.cpp/.h        # rv32 tohost checker
@@ -108,7 +120,9 @@ checker_src.cpp/.h         # src ledseg/observe/memcnt checker
 src_profiles.json          # src profile 到 checker 的映射
 ```
 
-当前只实例化 `myCPU`，不实例化 `student_top`。TB 负责模拟 `myCPU` 外部环境：
+### rv32/myCPU 平台
+
+rv32 只实例化 `myCPU`。TB 负责模拟 `myCPU` 外部环境：
 
 | 通道 | TB 行为 |
 | --- | --- |
@@ -116,13 +130,26 @@ src_profiles.json          # src profile 到 checker 的映射
 | DRAM/普通内存 | 上升沿采样请求；读返回走两级 pipeline；读数据按 `addr[1:0]` 右移；写数据和 mask 按 `addr[1:0]` 左移，匹配 `dram_driver` 行为。 |
 | MMIO | 支持 `SW0/SW1/KEY/SEG/LED/CNT` 地址；写 SEG/LED/CNT 更新 TB 内部寄存器。 |
 | counter | 写 `0x80200050 = 0x80000000` 启动，写 `0xffffffff` 停止；默认每 50000 个 CPU 周期加 1ms，可由参数调整。 |
-| virtual_seg | 按 `display_seg`/`seg7` 编码模型生成，并在 src 判定中检查能否还原当前 `seg_wdata`。 |
+| virtual_seg | myCPU 平台保留 C++ 编码模型，主要用于早期 src checker 调试；当前正式 src 路径使用 `student_top` 内 RTL `display_seg`。 |
 
 TB 在 CPU 上升沿前捕获 `perip_*` 请求，在上升沿后推进外部模型。日志中会记录关键 MMIO 写：
 
 ```text
 cycle 299 write addr=0x80001000 data=0xffffffc4 mask=0xf
 ```
+
+### src/student_top 平台
+
+src 实例化 `student_top`，不再由 C++ 模拟 IROM/DRAM 返回数据：
+
+| 通道 | 行为 |
+| --- | --- |
+| IROM | 使用 RTL `IROM_0`，通过 Verilator plusarg `+irom_hex=<path>` 在仿真启动时 `$readmemh`。 |
+| DRAM | 使用 RTL `perip_bridge/dram_driver/DRAM_0`，通过 `+dram_hex=<path>` 初始化 `DRAM_0.mem[0]` 起始内容。 |
+| MMIO/counter/display | 使用 RTL `perip_bridge/counter/display_seg`；`counter.sv` 不修改，固定 50000 个 `w_clk_50Mhz` 周期加 1ms。 |
+| checker 采样 | `student_top.sv` 在 `VERILATOR_TB` 下暴露 `dbg_perip_addr/dbg_perip_wdata/dbg_perip_mask/dbg_perip_wen`，只用于 Verilator，不改变 FPGA 接口。 |
+
+src harness 中 `w_cpu_clk` 和 `w_clk_50Mhz` 当前同频同相翻转，因此 counter 的 1ms 对应 50000 个 CPU 周期。`--counter-cycles-per-ms` 对 src/student_top 平台不能改成非 50000，否则 C++ 镜像统计和 RTL `counter.sv` 会不一致。
 
 ## rv32 判定
 
@@ -203,28 +230,56 @@ CPU 运行
 
 因此，当前 `srcWithMext/srcWithoutMext` 若超时，只表示尚未观察到最终 PASS/FAIL 图案，不代表 TB 判定错误。
 
-## src 性能统计
+## 结果 JSON
 
-src 结果需要同时输出正确性和性能信息。
+每个测试会输出：
 
-当前第一阶段不改 RTL 端口，已记录外部可观测数据：
+```text
+build/result/<mode>/<test>.json
+```
+
+JSON 分为三层：
 
 | 字段 | 含义 |
 | --- | --- |
-| `cycles` | 仿真 CPU 周期 |
-| `result_cycle` | PASS/FAIL/TIMEOUT 周期 |
-| `counter_ms` | TB counter 最终值 |
-| `counter_start_cycle/counter_stop_cycle` | 程序控制计数器的周期 |
-| `mmio_write_count` | MMIO 写次数 |
-| `dram_read_count/dram_write_count` | DRAM 访问次数 |
-| `first/last_led_write` | LED 写观测 |
-| `first/last_seg_write` | SEG 写观测 |
-| `checker_kind` | 本 profile 使用的判定器 |
-| `last_src_test_lamps` | `lampseg` checker 观测到的 8 个测试灯 bit。 |
-| `last_rv32i_count` | 从 SEG 高两位 BCD 解出的 RV32I 通过条数。 |
-| `last_mext_count` | `srcWithMext` 中从 SEG 对应位解出的 M/Z 类测试条数。 |
+| `test/mode/checker/status/reason/cycles/max_cycles` | 测试名、测试类型、checker、结果、原因、实际周期和上限。 |
+| `correctness` | 正确性相关观测，rv32 主要是 `tohost`，src 主要是 LED/SEG/counter/lamp marker。 |
+| `perf` | 性能和访存统计，包含 commit、IPC、分支预测、DRAM/MMIO 访问、counter、LED/SEG 写历史。 |
 
-第二阶段再读取内部 perf/debug 信号，目标包括 `commit_count`、`ipc`、`branch_count`、`branch_miss_count`、访存提交数和恢复/停顿计数。优先通过 Verilator hierarchical/public 信号或薄 SV wrapper 暴露，不先修改 `myCPU` 的综合接口。
+src 的 `correctness` 关键字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `correctness.led.pass_seen` | 是否观察到 LED PASS signature。 |
+| `correctness.led.pass_cycle` | LED PASS 所在 CPU 周期。 |
+| `correctness.led.last_value` | 最后一次 LED 写值。 |
+| `correctness.seg.current_value` | 当前/最后一次 SEG 写值；有些程序最终会清零。 |
+| `correctness.seg.pass_display_value` | 最后一次非零 SEG 写值，用来保留 `0x37......` 这类通过条数/计时显示。 |
+| `correctness.seg.pass_display_cycle` | `pass_display_value` 写入周期。 |
+| `correctness.seg.value_at_last_led_write` | 最后一次 LED 写发生时 TB 记录到的 SEG 值。 |
+| `correctness.counter.ms` | counter 当前毫秒值，单位 ms；src/student_top 下来自 RTL counter 的同频镜像。 |
+| `correctness.counter.start_cycle/stop_cycle` | 程序写 counter start/stop 的周期。 |
+| `correctness.src_lamps.*` | `lampseg` checker 下的新灯位协议观测。 |
+
+`perf` 关键字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `perf.core_cycle` | core 内部 perf cycle。 |
+| `perf.commit_count` | 已提交指令数。 |
+| `perf.ipc` | `commit_count / cycles`。 |
+| `perf.branch_count` | 已提交分支数。 |
+| `perf.branch_miss_count` | 已提交分支中预测错误数。 |
+| `perf.branch_hit_count` | `branch_count - branch_miss_count`。 |
+| `perf.branch_hit_rate` | `branch_hit_count / branch_count`；无分支时为 0。 |
+| `perf.memory.dram_read_count/dram_write_count` | DUT 对 DRAM 区域的读/写请求数。 |
+| `perf.memory.mmio_read_count/mmio_write_count` | DUT 对 MMIO 区域的读/写请求数。 |
+| `perf.counter` | counter 起停周期和最终 ms。 |
+| `perf.led/perf.seg` | LED/SEG 首次、末次、非零写入值和周期。 |
+
+rv32/myCPU 和 src/student_top 都通过 `VERILATOR_TB` 条件编译读取 core `PerfIF`，不改变 FPGA 正式接口。
+
+当测试 PASS/FAIL、跑到 `MAX_CYCLES` 上限，或收到键盘中断 `SIGINT`/`SIGTERM` 时，TB 都会输出当前已经累计的 JSON。中断时 `status` 为 `INTERRUPTED`，`perf.branch_hit_rate` 等字段表示已运行部分的统计结果。
 
 ## 生成输出
 
@@ -273,8 +328,10 @@ scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --build-only
 | `scripts/run_verilator.py rv32 --suite rv32ui --max-cycles 30000 --no-build` | PASS | 当前 `rv32ui` 回归通过。 |
 | `scripts/run_verilator.py rv32 --suite rv32mi --max-cycles 30000 --no-build` | PASS | 当前支持的 `rv32mi` SYS/CSR 路径回归通过。 |
 | `scripts/run_verilator.py rv32 --suite rv32um --max-cycles 30000 --no-build` | PASS | 当前 RV32M mul/div/rem 回归通过。 |
-| `scripts/run_verilator.py src --test srcSmoke --max-cycles 80000000 --no-build` | PASS，`checker_kind=src_ledonly` | 周期 `72813551`，观察到 LED PASS；counter 停止约在 `72813238` 周期，`counter_ms=1456`。 |
-| `scripts/run_verilator.py src --test srcWithMext --max-cycles 200000 --counter-cycles-per-ms 50 --no-build` | TIMEOUT，`checker_kind=src_lampseg` | TB 正常使用新灯位协议；当前未观察到最终 PASS/FAIL 图案。 |
-| `scripts/run_verilator.py src --test srcWithoutMext --max-cycles 200000 --counter-cycles-per-ms 50 --no-build` | TIMEOUT，`checker_kind=src_lampseg` | TB 正常使用新灯位协议；当前未观察到最终 PASS/FAIL 图案。 |
+| `make sim-src TEST=srcSmoke NO_BUILD=1` | PASS，`checker_kind=src_ledonly` | Makefile 默认 `SRC_MAX_CYCLES=100000000`；在 `72813551` 周期观察到 LED PASS，`counter_ms=1456`。 |
+| `make sim-src TEST=srcSmoke MAX_CYCLES=10000 NO_BUILD=1` | TIMEOUT，但早期 MMIO 正常 | `2496` 周期写 `SEG=0x37000000`，`2569` 周期开始写 counter start，用于快速确认 student_top DRAM 时序未退化。 |
+| `make sim-src TEST=srcSmoke MAX_CYCLES=5000 TRACE=1 NO_BUILD=1` | TIMEOUT，生成 FST | 用于确认 student_top 下 PC/commit/perip/DRAM 关键信号可抓取。 |
+| `make sim-src TEST=srcWithMext MAX_CYCLES=200000 NO_BUILD=1` | 未重新回归 | 已具备 student_top 入口，待后续按 profile 跑长回归。 |
+| `make sim-src TEST=srcWithoutMext MAX_CYCLES=200000 NO_BUILD=1` | 未重新回归 | 已具备 student_top 入口，待后续按 profile 跑长回归。 |
 
-这些 smoke 说明 `myCPU` 主 DUT、Verilator harness、rv32 tohost checker 和 `srcSmoke` LED-only checker 当前可执行。`srcWithMext/srcWithoutMext` 仍需更长周期或继续定位 DUT 性能/功能问题。
+这些 smoke 说明 rv32/myCPU harness 保持可用，src/student_top harness 已能完整跑通 `srcSmoke`。此前 `student_top` 下 timeout 的直接原因是 `DRAM_0` 仿真行为模型读返回相位和写周期处理不匹配：write 周期污染读地址管线，且读数据比 `perip_bridge`/core load metadata 期望晚一拍。当前 `DRAM_0` 已改为 read-only 推进读地址寄存，下一拍输出上一拍读地址数据，write 周期只更新 memory。
