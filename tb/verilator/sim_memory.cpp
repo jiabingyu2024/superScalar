@@ -95,8 +95,8 @@ uint32_t MemoryModel::current_perip_rdata() const {
     if (read_valid_pipe1_) {
         return read_shifted_word(read_addr_pipe1_);
     }
-    if (mmio_sel_q_) {
-        switch (mmio_addr_q_) {
+    if (mmio_sel_pipe1_) {
+        switch (mmio_addr_pipe1_) {
             case SW0_ADDR: return sw0;
             case SW1_ADDR: return sw1;
             case KEY_ADDR: return key & 0xffu;
@@ -104,7 +104,7 @@ uint32_t MemoryModel::current_perip_rdata() const {
             default: return 0xdeadbeefu;
         }
     }
-    if (cnt_sel_q_) {
+    if (cnt_sel_pipe1_) {
         return counter_ms;
     }
     return 0;
@@ -138,9 +138,12 @@ void MemoryModel::tick_posedge(const Request& req, uint64_t cycles_per_ms) {
     read_valid_pipe0_ = is_normal_mem_read;
     if (is_normal_mem_read) read_addr_pipe0_ = req.perip_addr;
 
-    mmio_sel_q_ = is_mmio_read;
-    cnt_sel_q_ = is_counter_read;
-    mmio_addr_q_ = req.perip_addr;
+    mmio_sel_pipe1_ = mmio_sel_pipe0_;
+    cnt_sel_pipe1_ = cnt_sel_pipe0_;
+    mmio_addr_pipe1_ = mmio_addr_pipe0_;
+    mmio_sel_pipe0_ = is_mmio_read;
+    cnt_sel_pipe0_ = is_counter_read;
+    mmio_addr_pipe0_ = req.perip_addr;
 
     if (req.perip_wen) {
         if (req.perip_addr == LED_ADDR) {

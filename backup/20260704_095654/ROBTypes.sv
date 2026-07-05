@@ -26,7 +26,6 @@ package ROBTypes;
         PhyRegNumPath       phyPrevRegNum;
 
         logic               isBranch;
-        BrcSubType          brcSubType;
         logic               takenPred;
         logic               takenActual;
         logic               isMiss;

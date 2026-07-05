@@ -75,6 +75,12 @@ struct CorePerfSample {
     uint64_t commit_count = 0;
     uint64_t branch_count = 0;
     uint64_t branch_miss_count = 0;
+    uint64_t cond_branch_count = 0;
+    uint64_t cond_branch_miss_count = 0;
+    uint64_t jal_count = 0;
+    uint64_t jal_miss_count = 0;
+    uint64_t jalr_count = 0;
+    uint64_t jalr_miss_count = 0;
 };
 
 struct SimResult {
@@ -107,6 +113,8 @@ struct SimResult {
 
 std::string hex32(uint32_t value);
 std::string json_escape(const std::string& value);
+uint32_t encode_bcd6(uint32_t value);
+uint32_t src_expected_seg_value(uint32_t counter_ms);
 bool parse_u64(const std::string& text, uint64_t& out);
 bool parse_u32(const std::string& text, uint32_t& out);
 bool is_known_mmio_addr(uint32_t addr);

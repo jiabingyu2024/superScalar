@@ -20,6 +20,12 @@ public:
     uint64_t commit_count = 0;
     uint64_t branch_count = 0;
     uint64_t branch_miss_count = 0;
+    uint64_t cond_branch_count = 0;
+    uint64_t cond_branch_miss_count = 0;
+    uint64_t jal_count = 0;
+    uint64_t jal_miss_count = 0;
+    uint64_t jalr_count = 0;
+    uint64_t jalr_miss_count = 0;
     uint64_t mmio_read_count = 0;
     uint64_t mmio_write_count = 0;
     uint64_t dram_read_count = 0;

@@ -28,6 +28,20 @@ std::string json_escape(const std::string& value) {
     return os.str();
 }
 
+uint32_t encode_bcd6(uint32_t value) {
+    value %= 1000000u;
+    uint32_t encoded = 0;
+    for (int i = 0; i < 6; ++i) {
+        encoded |= (value % 10u) << (i * 4);
+        value /= 10u;
+    }
+    return encoded;
+}
+
+uint32_t src_expected_seg_value(uint32_t counter_ms) {
+    return 0x37000000u | encode_bcd6(counter_ms);
+}
+
 bool parse_u64(const std::string& text, uint64_t& out) {
     char* end = nullptr;
     out = std::strtoull(text.c_str(), &end, 0);

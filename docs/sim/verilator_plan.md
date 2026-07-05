@@ -257,6 +257,10 @@ src 的 `correctness` 关键字段：
 | `correctness.seg.pass_display_value` | 最后一次非零 SEG 写值，用来保留 `0x37......` 这类通过条数/计时显示。 |
 | `correctness.seg.pass_display_cycle` | `pass_display_value` 写入周期。 |
 | `correctness.seg.value_at_last_led_write` | 最后一次 LED 写发生时 TB 记录到的 SEG 值。 |
+| `correctness.seg.expected_counter_value` | 按 `counter.ms` 重新编码出的期望显示值：高两位固定 `37`，低六位为 counter ms 的 BCD，例如 1456ms 对应 `0x37001456`。 |
+| `correctness.seg.current_matches_counter_ms` | 当前/最后 SEG 写值是否等于 `expected_counter_value`。 |
+| `correctness.seg.pass_display_matches_counter_ms` | 最后一次非零 SEG 写值是否等于 `expected_counter_value`。 |
+| `correctness.seg.value_at_last_led_matches_counter_ms` | 最后一次 LED 写入时 SEG 是否等于 `expected_counter_value`。 |
 | `correctness.counter.ms` | counter 当前毫秒值，单位 ms；src/student_top 下来自 RTL counter 的同频镜像。 |
 | `correctness.counter.start_cycle/stop_cycle` | 程序写 counter start/stop 的周期。 |
 | `correctness.src_lamps.*` | `lampseg` checker 下的新灯位协议观测。 |
@@ -272,10 +276,30 @@ src 的 `correctness` 关键字段：
 | `perf.branch_miss_count` | 已提交分支中预测错误数。 |
 | `perf.branch_hit_count` | `branch_count - branch_miss_count`。 |
 | `perf.branch_hit_rate` | `branch_hit_count / branch_count`；无分支时为 0。 |
+| `perf.branch_miss_rate` | `branch_miss_count / branch_count`；无分支时为 0。 |
+| `perf.branch_breakdown.conditional` | 条件分支提交数、miss 数和 miss rate。 |
+| `perf.branch_breakdown.jal` | `JAL` 提交数、miss 数和 miss rate。 |
+| `perf.branch_breakdown.jalr` | `JALR` 提交数、miss 数和 miss rate。 |
 | `perf.memory.dram_read_count/dram_write_count` | DUT 对 DRAM 区域的读/写请求数。 |
 | `perf.memory.mmio_read_count/mmio_write_count` | DUT 对 MMIO 区域的读/写请求数。 |
 | `perf.counter` | counter 起停周期和最终 ms。 |
 | `perf.led/perf.seg` | LED/SEG 首次、末次、非零写入值和周期。 |
+
+SEG/counter 显示的判断口径：
+
+```text
+expected_counter_value = 0x37000000 | bcd6(counter_ms)
+```
+
+其中 `bcd6` 只编码低六位十进制数字。若 `counter.ms=1456`，期望显示值为 `0x37001456`。`srcSmoke` 当前 profile 仍使用 `ledonly` checker，因此 LED PASS 可使测试 PASS；但若三个 `*_matches_counter_ms` 字段均为 `false`，说明本次运行没有观察到最终 SEG 保持 `0x37xxxxxx` 且低六位对应 counter ms。这应按“LED-only 通过，完整 SEG/counter 协议未满足”理解，不能当成正式 src 显示协议已经通过。
+
+IPC 的判断口径：
+
+```text
+perf.ipc = perf.commit_count / cycles
+```
+
+`commit_count` 和 `branch_*` 来自 core 的 `PerfIF` debug 口，不按 TB wall-clock 或 MMIO 访问数估算。`PerfIF` 在每个 core 周期累加 `cycle`，按两路 `commitValid` 累加提交指令数，按 commit 阶段分支更新/branch miss 累加分支统计，并按 `conditional/JAL/JALR` 细分。因此 IPC 低首先表示 core 在该 workload 下实际提交密度低；后续需要结合 `branch_breakdown`、store/mem 阻塞、分支提交停止后续 commit、恢复 flush 代价等 RTL 行为分析。
 
 rv32/myCPU 和 src/student_top 都通过 `VERILATOR_TB` 条件编译读取 core `PerfIF`，不改变 FPGA 正式接口。
 
@@ -328,7 +352,7 @@ scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --build-only
 | `scripts/run_verilator.py rv32 --suite rv32ui --max-cycles 30000 --no-build` | PASS | 当前 `rv32ui` 回归通过。 |
 | `scripts/run_verilator.py rv32 --suite rv32mi --max-cycles 30000 --no-build` | PASS | 当前支持的 `rv32mi` SYS/CSR 路径回归通过。 |
 | `scripts/run_verilator.py rv32 --suite rv32um --max-cycles 30000 --no-build` | PASS | 当前 RV32M mul/div/rem 回归通过。 |
-| `make sim-src TEST=srcSmoke NO_BUILD=1` | PASS，`checker_kind=src_ledonly` | Makefile 默认 `SRC_MAX_CYCLES=100000000`；在 `72813551` 周期观察到 LED PASS，`counter_ms=1456`。 |
+| `make sim-src TEST=srcSmoke NO_BUILD=1` | PASS，`checker_kind=src_ledonly` | Makefile 默认 `SRC_MAX_CYCLES=100000000`；在 `72814875` 周期观察到 LED PASS，`counter_ms=1456`，最终 SEG 为 `0x37001456`，三个 SEG/counter match 字段均为 true。 |
 | `make sim-src TEST=srcSmoke MAX_CYCLES=10000 NO_BUILD=1` | TIMEOUT，但早期 MMIO 正常 | `2496` 周期写 `SEG=0x37000000`，`2569` 周期开始写 counter start，用于快速确认 student_top DRAM 时序未退化。 |
 | `make sim-src TEST=srcSmoke MAX_CYCLES=5000 TRACE=1 NO_BUILD=1` | TIMEOUT，生成 FST | 用于确认 student_top 下 PC/commit/perip/DRAM 关键信号可抓取。 |
 | `make sim-src TEST=srcWithMext MAX_CYCLES=200000 NO_BUILD=1` | 未重新回归 | 已具备 student_top 入口，待后续按 profile 跑长回归。 |

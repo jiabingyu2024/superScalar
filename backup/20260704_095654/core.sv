@@ -112,12 +112,6 @@ module core(
             perf.commitCnt <= '0;
             perf.branchCnt <= '0;
             perf.branchMissCnt <= '0;
-            perf.condBranchCnt <= '0;
-            perf.condBranchMissCnt <= '0;
-            perf.jalCnt <= '0;
-            perf.jalMissCnt <= '0;
-            perf.jalrCnt <= '0;
-            perf.jalrMissCnt <= '0;
         end else begin
             int commitThisCycle;
             commitThisCycle = 0;
@@ -130,19 +124,9 @@ module core(
             perf.commitCnt <= perf.commitCnt + commitThisCycle;
             if (recoveryManagerIF.commitBranchUpdateValid) begin
                 perf.branchCnt <= perf.branchCnt + 1'b1;
-                unique case (cmStageIF.commitBranchSubType)
-                    BRC_SUBTYPE_JAL:  perf.jalCnt <= perf.jalCnt + 1'b1;
-                    BRC_SUBTYPE_JALR: perf.jalrCnt <= perf.jalrCnt + 1'b1;
-                    default:          perf.condBranchCnt <= perf.condBranchCnt + 1'b1;
-                endcase
             end
             if (cmStageIF.commitBranchMiss) begin
                 perf.branchMissCnt <= perf.branchMissCnt + 1'b1;
-                unique case (cmStageIF.commitBranchSubType)
-                    BRC_SUBTYPE_JAL:  perf.jalMissCnt <= perf.jalMissCnt + 1'b1;
-                    BRC_SUBTYPE_JALR: perf.jalrMissCnt <= perf.jalrMissCnt + 1'b1;
-                    default:          perf.condBranchMissCnt <= perf.condBranchMissCnt + 1'b1;
-                endcase
             end
         end
     end

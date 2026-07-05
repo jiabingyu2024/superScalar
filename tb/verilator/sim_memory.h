@@ -44,9 +44,12 @@ private:
     uint32_t read_addr_pipe1_ = 0;
     bool read_valid_pipe0_ = false;
     bool read_valid_pipe1_ = false;
-    bool mmio_sel_q_ = false;
-    bool cnt_sel_q_ = false;
-    uint32_t mmio_addr_q_ = 0;
+    bool mmio_sel_pipe0_ = false;
+    bool mmio_sel_pipe1_ = false;
+    bool cnt_sel_pipe0_ = false;
+    bool cnt_sel_pipe1_ = false;
+    uint32_t mmio_addr_pipe0_ = 0;
+    uint32_t mmio_addr_pipe1_ = 0;
 };
 
 std::vector<uint32_t> load_words(const std::string& path);

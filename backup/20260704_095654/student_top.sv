@@ -45,13 +45,7 @@ module student_top#(
     output logic [63:0]                         dbg_perf_cycle,
     output logic [63:0]                         dbg_perf_commit,
     output logic [63:0]                         dbg_perf_branch,
-    output logic [63:0]                         dbg_perf_branch_miss,
-    output logic [63:0]                         dbg_perf_cond_branch,
-    output logic [63:0]                         dbg_perf_cond_branch_miss,
-    output logic [63:0]                         dbg_perf_jal,
-    output logic [63:0]                         dbg_perf_jal_miss,
-    output logic [63:0]                         dbg_perf_jalr,
-    output logic [63:0]                         dbg_perf_jalr_miss
+    output logic [63:0]                         dbg_perf_branch_miss
 `endif
 );
 
@@ -74,12 +68,6 @@ module student_top#(
     logic [63:0] perf_commit;
     logic [63:0] perf_branch;
     logic [63:0] perf_branch_miss;
-    logic [63:0] perf_cond_branch;
-    logic [63:0] perf_cond_branch_miss;
-    logic [63:0] perf_jal;
-    logic [63:0] perf_jal_miss;
-    logic [63:0] perf_jalr;
-    logic [63:0] perf_jalr_miss;
 `endif
 
     // 16KB = 2^12 * 32bit
@@ -133,13 +121,7 @@ module student_top#(
         .dbg_perf_cycle      (perf_cycle),
         .dbg_perf_commit     (perf_commit),
         .dbg_perf_branch     (perf_branch),
-        .dbg_perf_branch_miss(perf_branch_miss),
-        .dbg_perf_cond_branch(perf_cond_branch),
-        .dbg_perf_cond_branch_miss(perf_cond_branch_miss),
-        .dbg_perf_jal(perf_jal),
-        .dbg_perf_jal_miss(perf_jal_miss),
-        .dbg_perf_jalr(perf_jalr),
-        .dbg_perf_jalr_miss(perf_jalr_miss)
+        .dbg_perf_branch_miss(perf_branch_miss)
 `endif
     );
 
@@ -181,12 +163,6 @@ module student_top#(
     assign dbg_perf_commit = perf_commit;
     assign dbg_perf_branch = perf_branch;
     assign dbg_perf_branch_miss = perf_branch_miss;
-    assign dbg_perf_cond_branch = perf_cond_branch;
-    assign dbg_perf_cond_branch_miss = perf_cond_branch_miss;
-    assign dbg_perf_jal = perf_jal;
-    assign dbg_perf_jal_miss = perf_jal_miss;
-    assign dbg_perf_jalr = perf_jalr;
-    assign dbg_perf_jalr_miss = perf_jalr_miss;
 `endif
 
 endmodule

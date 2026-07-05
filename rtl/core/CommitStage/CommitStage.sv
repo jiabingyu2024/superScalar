@@ -37,6 +37,7 @@ module CommitStage(
         freeList.freeListChkptFree = '0;
         self.commitException = 1'b0;
         self.commitBranchMiss = 1'b0;
+        self.commitBranchSubType = BRC_SUBTYPE_BEQ;
     endtask
 
     task automatic commit_dst(
@@ -64,6 +65,7 @@ module CommitStage(
         recovery.commitBranchPc = entry.pc;
         recovery.commitBranchTaken = entry.takenActual;
         recovery.commitBranchTarget = entry.truePc;
+        self.commitBranchSubType = entry.brcSubType;
     endtask
 
     task automatic free_checkpoint(

@@ -26,13 +26,7 @@ module myCPU (
     output logic [63:0] dbg_perf_cycle,
     output logic [63:0] dbg_perf_commit,
     output logic [63:0] dbg_perf_branch,
-    output logic [63:0] dbg_perf_branch_miss,
-    output logic [63:0] dbg_perf_cond_branch,
-    output logic [63:0] dbg_perf_cond_branch_miss,
-    output logic [63:0] dbg_perf_jal,
-    output logic [63:0] dbg_perf_jal_miss,
-    output logic [63:0] dbg_perf_jalr,
-    output logic [63:0] dbg_perf_jalr_miss
+    output logic [63:0] dbg_perf_branch_miss
 `endif
 );
 
@@ -68,12 +62,6 @@ module myCPU (
     assign dbg_perf_commit = perfIF.commitCnt;
     assign dbg_perf_branch = perfIF.branchCnt;
     assign dbg_perf_branch_miss = perfIF.branchMissCnt;
-    assign dbg_perf_cond_branch = perfIF.condBranchCnt;
-    assign dbg_perf_cond_branch_miss = perfIF.condBranchMissCnt;
-    assign dbg_perf_jal = perfIF.jalCnt;
-    assign dbg_perf_jal_miss = perfIF.jalMissCnt;
-    assign dbg_perf_jalr = perfIF.jalrCnt;
-    assign dbg_perf_jalr_miss = perfIF.jalrMissCnt;
 `endif
 
     core u_core (

@@ -58,12 +58,12 @@ accessReady: 本周期地址/命令被接受
 readData: 固定延迟后的读返回数据
 ```
 
-`myCPU` 当前固定 `accessReady=1'b1`，语义是“本周期命令被接收”，不是“读数据本周期有效”。DRAM 读返回固定两拍：
+`myCPU` 当前固定 `accessReady=1'b1`，语义是“本周期命令被接收”，不是“读数据本周期有效”。所有 load 读返回，包括 DRAM、SEG/SW/KEY MMIO 和 counter，都必须按 core 的固定两拍 load metadata 对齐：
 
 | 周期 | 行为 |
 | --- | --- |
-| T0 | `ExecuteMemStage` 发起 load，`readEn=1`，地址被 DRAM 接收；load 的 ROB/Rd/addr/subtype 进入 `loadMetaPipe0`。 |
-| T1 | load metadata 从 `loadMetaPipe0` 推进到 `loadMetaPipe1`，DRAM 内部读地址/valid 继续推进。 |
+| T0 | `ExecuteMemStage` 发起 load，`readEn=1`，地址被接收；load 的 ROB/Rd/addr/subtype 进入 `loadMetaPipe0`。 |
+| T1 | load metadata 从 `loadMetaPipe0` 推进到 `loadMetaPipe1`，外部读选择信号继续推进。 |
 | T2 | `readData` 有效，`ExecuteMemStage` 用 `loadMetaPipe1` 的 metadata 做符号/零扩展后生成 WB 结果。 |
 
 store 写入同样在命令被接受的周期生效。当前约定为“core 发 raw data/raw mask，外部 memory model 负责按地址 offset 对齐”：
@@ -75,7 +75,7 @@ store 写入同样在命令被接受的周期生效。当前约定为“core 发
 | `SW` | `perip_wdata[31:0]` 有效，`perip_mask=4'b1111` | word 写入。 |
 | load | `readData` 已由外部按 `addr[1:0]` 右移 | `ExecuteMemStage` 只按 load subtype 做符号/零扩展。 |
 
-rv32 的 `myCPU` Verilator memory model 必须保留两拍 load 返回关系，并复刻 `dram_driver` 的读右移、写左移行为，否则可能出现 rv32 仿真通过但 src/FPGA 路径失败。src 使用 `student_top` 时，该职责由 RTL `perip_bridge/dram_driver/DRAM_0` 承担，C++ 侧不再模拟 DRAM 数据返回。
+rv32 的 `myCPU` Verilator memory model 必须保留两拍 load 返回关系，并复刻 `dram_driver` 的读右移、写左移行为；MMIO/counter 读也不能一拍返回，否则 core 会在第二拍看到默认 0。src 使用 `student_top` 时，该职责由 RTL `perip_bridge/dram_driver/DRAM_0/counter` 承担，C++ 侧不再模拟 DRAM 数据返回，只镜像结果用于 checker/perf。
 
 ### SoC 地址划分
 
@@ -120,7 +120,9 @@ StoreBuffer 不再把部分命中视为必须等待的 hazard。更老 store 和
 
 ### 延迟风险
 
-`perip_bridge` 用 `dram_read_sel_d2` 选择 DRAM 返回，`dram_driver` 用 `offset_d2` 对读数据右移。src 已切到 `student_top` 后，这条路径会直接参与 src 结果；若 src 在 `myCPU` 平台通过但在 `student_top` 平台长期无 MMIO 进展，应优先检查 `DRAM_0` 读延迟、`dram_read_sel_d2` 和 core load metadata 的相位是否一致。
+`perip_bridge` 用 `dram_read_sel_d2/mmio_sel_d2/cnt_sel_d2` 选择读返回，`dram_driver` 用 `offset_d2` 对读数据右移。src 已切到 `student_top` 后，这条路径会直接参与 src 结果；若 src 在 `myCPU` 平台通过但在 `student_top` 平台长期无 MMIO 进展，应优先检查 `DRAM_0` 读延迟、`dram_read_sel_d2/mmio_sel_d2/cnt_sel_d2` 和 core load metadata 的相位是否一致。
+
+历史问题：`perip_bridge` 曾经只对 MMIO/counter 读打一拍，导致 `srcSmoke` 收尾阶段读 counter 和读 SEG 时 core 实际采到 0，最终写出 `SEG=0`。当前已统一为两拍选择后，`srcSmoke` 最终显示 `0x37001456`。
 
 当前 Verilator `DRAM_0` 行为模型约束：
 

@@ -16,6 +16,7 @@ interface CommitStageIF( input logic clk, rst );
     PcPath commitPc    [WAY_NUM];
     logic  commitException;
     logic  commitBranchMiss;
+    BrcSubType commitBranchSubType;
 
 
     modport CommitStage(
@@ -26,7 +27,8 @@ interface CommitStageIF( input logic clk, rst );
         commitValid,
         commitPc,
         commitException,
-        commitBranchMiss
+        commitBranchMiss,
+        commitBranchSubType
     );
 
     modport Perf(
@@ -34,7 +36,8 @@ interface CommitStageIF( input logic clk, rst );
         commitValid,
         commitPc,
         commitException,
-        commitBranchMiss
+        commitBranchMiss,
+        commitBranchSubType
     );
     
 endinterface

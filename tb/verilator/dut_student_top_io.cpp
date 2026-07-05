@@ -27,6 +27,12 @@ CorePerfSample capture_student_top_perf(const Vstudent_top& top) {
     sample.commit_count = top.dbg_perf_commit;
     sample.branch_count = top.dbg_perf_branch;
     sample.branch_miss_count = top.dbg_perf_branch_miss;
+    sample.cond_branch_count = top.dbg_perf_cond_branch;
+    sample.cond_branch_miss_count = top.dbg_perf_cond_branch_miss;
+    sample.jal_count = top.dbg_perf_jal;
+    sample.jal_miss_count = top.dbg_perf_jal_miss;
+    sample.jalr_count = top.dbg_perf_jalr;
+    sample.jalr_miss_count = top.dbg_perf_jalr_miss;
     return sample;
 }
 

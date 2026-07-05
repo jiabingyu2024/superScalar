@@ -40,6 +40,9 @@
 | `archive/2026-07-03/018_src_student_top_harness.md` | 将 src 类 Verilator DUT 切换到 `student_top`，拆分 rv32/src harness，并记录当前 `srcSmoke` student_top 结果。 |
 | `archive/2026-07-03/019_make_src_entry_and_dram_model_fix.md` | 固定 make 仿真入口，设置 src 默认大周期上限，并修复 `DRAM_0` 行为模型使 `srcSmoke` 在 student_top 下 PASS。 |
 | `archive/2026-07-03/020_result_json_perf_and_interrupt.md` | 精简结果 JSON，加入分支命中率统计，并支持 TIMEOUT/中断时输出部分结果。 |
+| `archive/2026-07-04/021_srcSmoke_seg_and_ipc_review.md` | 审查 `srcSmoke` 最终 SEG/counter 显示是否满足 `0x37xxxxxx`，并分析当前 IPC 偏低是否为 TB 统计问题。 |
+| `archive/2026-07-04/022_srcSmoke_seg_fix_and_ipc_breakdown.md` | 修复 SoC MMIO/counter 读返回相位，使 `srcSmoke` 最终 SEG 正常，并用分支分类计数定位 IPC 低的主要来源。 |
+| `archive/2026-07-05/023_srcSmoke_ipc_low_deep_rtl_analysis.md` | 深入分析 `srcSmoke` IPC 偏低的 RTL 原因，估算分支命中率提升到 90% 后的理论 IPC 上限。 |
 
 ## 后续维护规则
 

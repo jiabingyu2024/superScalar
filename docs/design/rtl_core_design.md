@@ -87,7 +87,7 @@ CM: ROB head 顺序退休，更新 ArchRAT/FreeList，提交 store 或发起恢�
 | `IromAccessIF.core` | output/input | 前端取指通道，输出 `ena/iromAddr`，输入 `inst[2]`。 |
 | `DramAccessIF` | output/input | MEM load 和 StoreBuffer commit store 共享的数据访问通道。 |
 | `DebugIF.core` | input | 当前只有 `halt`，顶层固定为 0，RTL 内尚未实际使用。 |
-| `PerfIF.core` | output | `cycle/commitCnt/branchCnt/branchMissCnt`。 |
+| `PerfIF.core` | output | `cycle/commitCnt/branchCnt/branchMissCnt`，以及 `conditional/JAL/JALR` 分类计数。 |
 
 ### 5.2 `myCPU`
 
@@ -162,6 +162,31 @@ PF 每周期最多产生 2 个 `PfToIfPath`。如果 lane0 预测 taken，则 la
 预测命中 BTB 后，若 BHB 判断 taken，或 BTB target 小于当前 PC（后向分支启发式），则预测 taken；同包内只允许第一条 taken 指令生效，后续 lane 被压掉。
 
 维护注意：预测器只在提交后更新，因此恢复路径正确性优先于预测器性能调优。后向分支启发式是 src 循环性能优化，不应改变 miss recovery 的精确性。
+
+当前没有 return address stack。`JALR` 统一走普通 BTB/BHB 预测，因此函数返回类间接跳转在多调用点、helper 嵌套或历史冲突下容易 miss；这会直接触发 frontend/backend flush。
+
+### 7.3 Branch miss 恢复代价
+
+当前 branch miss 不是“前端 redirect 一下就结束”，而是 commit-based 精确恢复：
+
+```text
+BRC 执行算出 taken/target
+  -> WB 回填 ROB done/isMiss
+  -> 分支到达 ROB head 后 CommitStage 判断 miss
+  -> RecoveryManager 下一拍 emit recoveryInfo
+  -> Ctrl 对 PF/IF/ID 和 RN/DS/IS/RR/EX/WB 全部 flush
+  -> PreFetch 重定向 IROM
+  -> 新路径重新经过 IF/ID/RN/DS/IS/RR/EX/WB/CM
+```
+
+关键 RTL 后果：
+
+1. `request_branch_recovery()` 设置 `frontendFlush=1` 和 `backendFlush=1`，并清 ROB/StoreBuffer 投机状态；一次 miss 会把后端窗口全部打空。
+2. `RecoveryManager` 把恢复请求打一拍，因此 commit 发现 miss 后下一拍才对 Ctrl 生效。
+3. `CommitStage` 对 branch 无论预测对错都会 `stopCommit=1`；branch 在 lane0 时，同周期 lane1 不能继续提交。
+4. BPU/BTB/BHB 只在 commit 后更新，紧密循环和 helper 内数据相关分支会用较晚的历史信息训练。
+
+因此当前 miss penalty 至少是 10 拍量级，且如果 ROB 中已经有较多错误路径 uop，还会额外损失窗口填充和后端重新热身时间。
 
 ## 8. Decode 拆包规则
 
@@ -490,8 +515,119 @@ commitRecoveryReq > writeBackRecoveryReq
 | `perf.commitCnt` | 每周期累加 `cmStageIF.commitValid` 数量。 |
 | `perf.branchCnt` | `commitBranchUpdateValid` 时加 1。 |
 | `perf.branchMissCnt` | `commitBranchMiss` 时加 1。 |
+| `perf.condBranchCnt/condBranchMissCnt` | 条件分支提交数和 miss 数。 |
+| `perf.jalCnt/jalMissCnt` | `JAL` 提交数和 miss 数。 |
+| `perf.jalrCnt/jalrMissCnt` | `JALR` 提交数和 miss 数。 |
 
-注意：`PerfIF` 没有从 `myCPU` 端口引出。后续若 testbench 需要读这些计数，应通过层级访问或 Verilator public 机制，默认不改 `myCPU.sv` 端口。
+这些计数通过 `VERILATOR_TB` 条件编译从 `myCPU/student_top` debug 口引出，不改变 FPGA 正式端口。
+
+`srcSmoke` 当前实测 IPC 约 `0.422`，不是 TB wall-clock 口径，而是 `commitCnt / cycles`。分类计数显示：
+
+| 类型 | count | miss_count | miss_rate |
+| --- | --- | --- | --- |
+| conditional | 12055013 | 3117626 | 0.258617 |
+| JAL | 400076 | 80 | 0.000199962 |
+| JALR | 400067 | 200064 | 0.500076 |
+
+已定位的主要瓶颈：
+
+1. `srcSmoke` 性能循环里每轮调用软件除法/取模 helper，dump 中 `0x800004dc/0x800004f4` 调到 `0x800013ac/0x80001328`，再进入 `0x80001330` 的移位减法循环。该 helper 内有大量数据相关条件分支，造成约 311 万次条件分支 miss。
+2. 当前无 RAS，`JALR` 返回靠普通 BTB 预测，`srcSmoke` 中约 40 万次 `JALR` 有约 20 万次 miss。
+3. CommitStage 对 branch miss 发 `REC_BRANCH_MISS`，frontend/backend 都 flush；同时 branch 提交后 `stopCommit=1`，同周期不继续提交后续 ROB 项。高 miss 率会显著压低二路提交利用率。
+
+因此当前低 IPC 是 workload 和微架构共同造成的真实问题，不是结果 JSON 或 TB 统计错误。优化优先级建议：先让有 M 扩展的 src profile 使用硬件 DIV/REM，或增加 RAS/改善条件分支预测；再考虑 commit 对正确预测 branch 的同周期继续提交策略。
+
+### 17.1 为什么二发乱序没有 IPC > 1
+
+`srcSmoke` 不是能自然喂满二发后端的顺序算术程序。当前动态特征：
+
+```text
+commit_count  = 30,758,700
+cycles        = 72,814,875
+IPC           = 0.422
+branch_count  = 12,855,156
+branch ratio  = 41.8% of committed instructions
+branch miss   = 3,317,770
+```
+
+和顺序单发 `IPC=0.75` 比较，同样指令数理论周期约：
+
+```text
+30,758,700 / 0.75 = 41,011,600 cycles
+```
+
+当前多出的周期约：
+
+```text
+72,814,875 - 41,011,600 = 31,803,275 cycles
+```
+
+除以 branch miss 数：
+
+```text
+31,803,275 / 3,317,770 ~= 9.6 cycles / miss
+```
+
+这个反推值和当前 RTL 的 commit-based 全后端 flush 代价同量级，说明 branch miss 已足以解释“为什么比单发顺序还慢”。二发乱序的理论宽度被以下结构性因素压住：
+
+| 因素 | 当前 RTL 行为 | 对 IPC 的影响 |
+| --- | --- | --- |
+| Branch miss 全后端恢复 | `REC_BRANCH_MISS` 同时 flush frontend/backend，并清 ROB/StoreBuffer | 每次 miss 都丢掉窗口内投机工作，前端重新填管。 |
+| Commit 保守停止 | branch/store/exception/未完成 head 都会 `stopCommit=1` | 高 branch 密度下平均 commit width 难接近 2。 |
+| Decode 拆包 | 同包多 branch、多 store、serial+其他都会拆成 replay | branch 密集代码前端实际注入宽度低于 2。 |
+| Rename checkpoint 限制 | branch/serial 需要 checkpoint，`chkptCount > 1` stall | 分支密集 packet 难持续双发。 |
+| Issue MEM 保序单发 | IssueQueue 对 MEM uop 保序，且每周期最多选一个 MEM | 访存片段不能利用二路 MEM 并行。 |
+| ExecuteMem load 返回阻塞 | `loadMetaPipe1.valid && currentMemValid` 时 stall EX | load 返回和当前 MEM uop 冲突时会反压后端。 |
+| 无 RAS | `JALR` return 走普通 BTB/BHB | return miss 约 50%，造成额外恢复。 |
+| 软件除法 helper | `srcSmoke` 中 `0x80001330` 有大量数据相关条件分支 | 条件分支 miss 是最大来源。 |
+
+结论：二发乱序只有在前端持续供给、预测稳定、窗口不频繁 flush、后端资源不退化单发时才可能 IPC > 1。当前 workload 和 RTL 都不满足这些条件。
+
+### 17.2 分支命中率提升的理论上限
+
+用当前实测数据做估算：
+
+```text
+branch_count = 12,855,156
+current miss = 3,317,770  // hit rate ~= 74.19%
+```
+
+若总命中率提升到 90%，miss 数变为：
+
+```text
+12,855,156 * 10% ~= 1,285,516
+```
+
+减少 miss：
+
+```text
+3,317,770 - 1,285,516 ~= 2,032,254
+```
+
+按每次 miss 节省 10~12 cycle 估算：
+
+| 假设 miss penalty | 90% hit 后 cycles | 估算 IPC |
+| --- | --- | --- |
+| 8 cycles | 56.56M | 0.544 |
+| 10 cycles | 52.49M | 0.586 |
+| 12 cycles | 48.43M | 0.635 |
+| 15 cycles | 42.33M | 0.727 |
+
+所以只把总分支命中率拉到 90%，大概率不能让 IPC 到 1。原因是：
+
+1. 90% 命中率仍有约 128.6 万次 miss。
+2. 即使 miss 完全消除，当前 commit/dispatch/MEM/Decode 的保守规则仍会限制宽度。
+3. 当前条件分支占比极高，预测命中率提升会明显变快，但不等于二发持续满发。
+
+若按 10~12 cycle/miss 的现实区间，90% 命中率后 IPC 约 `0.58~0.64`；按更乐观的 15 cycle/miss，约 `0.73`。要仅靠分支预测把 IPC 推到 1，必须接近 99% 命中率，或者当前每次 miss 的真实平均损失超过 20 cycle，这与现有反推不太一致。
+
+更现实的优化路线：
+
+1. 先跑 `srcWithMext`，确认是否用硬件 DIV/REM 消掉软件除法 helper。若动态条件分支大幅下降，IPC 会比单纯改 BPU 更明显。
+2. 增加 RAS，目标是把 `JALR` return miss 从约 50% 降到接近 0，能节省约 200k 次恢复。
+3. 给 BPU 增加 per-PC miss 统计，先定位 `0x80001330` helper 中哪些条件分支最差，再决定扩大 PHT/历史长度还是做 loop/biased predictor。
+4. 优化 miss recovery：研究是否可在 branch execute/WB 早恢复，而不是等 commit；但这会改变精确恢复边界，风险高于加 RAS。
+5. 优化 commit：正确预测 branch 是否可以 pop 后继续看 lane1，store commit 是否可以与后一条无关指令同周期提交。这类改动能提高“预测已经正确”时的宽度。
 
 ## 18. 当前维护风险与自检点
 

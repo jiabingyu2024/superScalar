@@ -68,6 +68,12 @@ void PerfStats::observe_core(uint64_t cycle, const CorePerfSample& sample) {
     commit_count = sample.commit_count;
     branch_count = sample.branch_count;
     branch_miss_count = sample.branch_miss_count;
+    cond_branch_count = sample.cond_branch_count;
+    cond_branch_miss_count = sample.cond_branch_miss_count;
+    jal_count = sample.jal_count;
+    jal_miss_count = sample.jal_miss_count;
+    jalr_count = sample.jalr_count;
+    jalr_miss_count = sample.jalr_miss_count;
 }
 
 void PerfStats::write_json_fields(std::ostream& out) const {
@@ -76,8 +82,15 @@ void PerfStats::write_json_fields(std::ostream& out) const {
     double branch_hit_rate =
         branch_count == 0 ? 0.0 : static_cast<double>(branch_hit_count) /
                                   static_cast<double>(branch_count);
+    double branch_miss_rate =
+        branch_count == 0 ? 0.0 : static_cast<double>(branch_miss_count) /
+                                  static_cast<double>(branch_count);
     double ipc = cycles == 0 ? 0.0 : static_cast<double>(commit_count) /
                                   static_cast<double>(cycles);
+    auto miss_rate = [](uint64_t miss, uint64_t total) {
+        return total == 0 ? 0.0 : static_cast<double>(miss) /
+                                static_cast<double>(total);
+    };
 
     out << "  \"perf\": {\n";
     out << "    \"core_cycle\": " << core_cycle << ",\n";
@@ -87,6 +100,25 @@ void PerfStats::write_json_fields(std::ostream& out) const {
     out << "    \"branch_hit_count\": " << branch_hit_count << ",\n";
     out << "    \"branch_miss_count\": " << branch_miss_count << ",\n";
     out << "    \"branch_hit_rate\": " << branch_hit_rate << ",\n";
+    out << "    \"branch_miss_rate\": " << branch_miss_rate << ",\n";
+    out << "    \"branch_breakdown\": {\n";
+    out << "      \"conditional\": {\n";
+    out << "        \"count\": " << cond_branch_count << ",\n";
+    out << "        \"miss_count\": " << cond_branch_miss_count << ",\n";
+    out << "        \"miss_rate\": " << miss_rate(cond_branch_miss_count,
+                                               cond_branch_count) << "\n";
+    out << "      },\n";
+    out << "      \"jal\": {\n";
+    out << "        \"count\": " << jal_count << ",\n";
+    out << "        \"miss_count\": " << jal_miss_count << ",\n";
+    out << "        \"miss_rate\": " << miss_rate(jal_miss_count, jal_count) << "\n";
+    out << "      },\n";
+    out << "      \"jalr\": {\n";
+    out << "        \"count\": " << jalr_count << ",\n";
+    out << "        \"miss_count\": " << jalr_miss_count << ",\n";
+    out << "        \"miss_rate\": " << miss_rate(jalr_miss_count, jalr_count) << "\n";
+    out << "      }\n";
+    out << "    },\n";
     out << "    \"memory\": {\n";
     out << "      \"dram_read_count\": " << dram_read_count << ",\n";
     out << "      \"dram_write_count\": " << dram_write_count << ",\n";

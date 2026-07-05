@@ -26,6 +26,10 @@ void write_result_json(const Options& opt, const SimResult& result,
         out << "    \"tohost_addr\": \"" << hex32(opt.tohost_addr) << "\",\n";
         out << "    \"tohost_value\": \"" << hex32(result.fail_code) << "\"\n";
     } else {
+        uint32_t expected_seg = src_expected_seg_value(perf.final_counter_ms);
+        bool current_seg_matches = perf.last_seg_write == expected_seg;
+        bool display_seg_matches = perf.last_nonzero_seg_write == expected_seg;
+        bool led_time_seg_matches = perf.seg_at_last_led_write == expected_seg;
         out << "    \"led\": {\n";
         out << "      \"pass_seen\": " << (result.saw_led_pass ? "true" : "false") << ",\n";
         out << "      \"pass_cycle\": " << result.led_pass_cycle << ",\n";
@@ -35,7 +39,14 @@ void write_result_json(const Options& opt, const SimResult& result,
         out << "      \"current_value\": \"" << hex32(perf.last_seg_write) << "\",\n";
         out << "      \"pass_display_value\": \"" << hex32(perf.last_nonzero_seg_write) << "\",\n";
         out << "      \"pass_display_cycle\": " << perf.last_nonzero_seg_cycle << ",\n";
-        out << "      \"value_at_last_led_write\": \"" << hex32(perf.seg_at_last_led_write) << "\"\n";
+        out << "      \"value_at_last_led_write\": \"" << hex32(perf.seg_at_last_led_write) << "\",\n";
+        out << "      \"expected_counter_value\": \"" << hex32(expected_seg) << "\",\n";
+        out << "      \"current_matches_counter_ms\": "
+            << (current_seg_matches ? "true" : "false") << ",\n";
+        out << "      \"pass_display_matches_counter_ms\": "
+            << (display_seg_matches ? "true" : "false") << ",\n";
+        out << "      \"value_at_last_led_matches_counter_ms\": "
+            << (led_time_seg_matches ? "true" : "false") << "\n";
         out << "    },\n";
         out << "    \"counter\": {\n";
         out << "      \"ms\": " << perf.final_counter_ms << ",\n";
