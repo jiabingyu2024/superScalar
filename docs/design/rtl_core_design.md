@@ -431,7 +431,7 @@ T2: loadMetaPipe1.valid 时，使用 dram.exReadData 生成 WB 结果
 
 若 load 对 StoreBuffer 有部分字节命中，T0 同时把命中字节保存到 `loadIssueMeta.forwardData/forwardMask`。T2 用 `forwardMask` 覆盖 `dram.exReadData` 中对应字节，再执行 load subtype 的符号/零扩展。该路径用于处理同 word 的 `SB/SH` 后跟 `LW/LH/LB`，同时保持 core 对外仍输出 raw store data/mask。
 
-如果 `loadMetaPipe1.valid` 且当前 MEM pipe 又有新有效 uop，则 `loadReturnBlocked` 拉高，阻塞 EX，避免 load 返回和新 MEM 输入抢同一输出口。
+load 返回结果固定写入 `nextMemToStage[0]`。若同周期当前 MEM pipe 里只有一条新 uop，则该 uop 的即时结果写入 `nextMemToStage[1]`，允许“上一条 load 返回 + 当前一条 store/forward-hit load/新 load 发起”同周期通过。只有当 `loadMetaPipe1.valid` 且当前 MEM pipe 已占满两个有效 uop 时，才拉 `loadReturnBlocked` 阻塞 EX，避免两个 WB lane 不够用。
 
 ### 13.3 M 扩展执行单元与 MUL_0/DIV_0 IP
 
@@ -480,6 +480,8 @@ ExecuteMulStage
 | 输出 | `m_axis_dout_tdata[31:0] = quotient`，`[63:32] = remainder` |
 | 延迟 | 34 个 clk pipeline stage |
 | 吞吐 | 目标配置为每周期可接收一个输入，当前 core 仍只给单 M lane 输入 |
+
+Vivado Tcl 将 `DIV_0` 配成 `FlowControl=Blocking`，因此输出侧没有 `m_axis_dout_tready` 端口。当前 core 也不支持除法输出反压，`ExecuteMulStage` 在 `m_axis_dout_tvalid=1` 且 metadata 到达第 34 拍时直接写回结果。
 
 RISC-V signed 语义不交给 `DIV_0`：
 
@@ -664,7 +666,7 @@ branch miss   = 3,317,770
 | Decode 拆包 | 同包多 branch、多 store、serial+其他都会拆成 replay | branch 密集代码前端实际注入宽度低于 2。 |
 | Rename checkpoint 限制 | branch/serial 需要 checkpoint，`chkptCount > 1` stall | 分支密集 packet 难持续双发。 |
 | Issue MEM 保序单发 | IssueQueue 对 MEM uop 保序，且每周期最多选一个 MEM | 访存片段不能利用二路 MEM 并行。 |
-| ExecuteMem load 返回阻塞 | `loadMetaPipe1.valid && currentMemValid` 时 stall EX | load 返回和当前 MEM uop 冲突时会反压后端。 |
+| ExecuteMem load 返回合并 | load 返回占 MEM WB lane0；同周期单个当前 MEM uop 可占 lane1 | 避免 load-heavy 程序形成“返回一拍、发射一拍”的 0.5 IPC 节奏；两个当前 MEM uop 与返回 load 同时争用时仍保守 stall。 |
 | 无 RAS | `JALR` return 走普通 BTB/BHB | return miss 约 50%，造成额外恢复。 |
 | 软件除法 helper | `srcSmoke` 中 `0x80001330` 有大量数据相关条件分支 | 条件分支 miss 是最大来源。 |
 

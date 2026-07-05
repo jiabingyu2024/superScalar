@@ -18,7 +18,6 @@ module DIV_0 (
     output logic        s_axis_divisor_tready,
     input  logic [31:0] s_axis_divisor_tdata,
     output logic        m_axis_dout_tvalid,
-    input  logic        m_axis_dout_tready,
     output logic [63:0] m_axis_dout_tdata
 );
     localparam int DIV_LATENCY = 34;
@@ -51,10 +50,8 @@ module DIV_0 (
             validPipe[i] <= validPipe[i-1];
         end
 
-        if (m_axis_dout_tready) begin
-            m_axis_dout_tdata <= dataPipe[DIV_LATENCY-1];
-            m_axis_dout_tvalid <= validPipe[DIV_LATENCY-1];
-        end
+        m_axis_dout_tdata <= dataPipe[DIV_LATENCY-1];
+        m_axis_dout_tvalid <= validPipe[DIV_LATENCY-1];
     end
 
 endmodule

@@ -276,12 +276,13 @@ module DIV_0 (
     output logic        s_axis_divisor_tready,
     input  logic [31:0] s_axis_divisor_tdata,
     output logic        m_axis_dout_tvalid,
-    input  logic        m_axis_dout_tready,
     output logic [63:0] m_axis_dout_tdata
 );
 ```
 
 当前 core 只例化一颗 `DIV_0`，并只允许 issue slot 0 发射 `TUBE_TYPE_MUL`。`DIV_0` 只做 unsigned 32/32，RISC-V 的 signed 语义、除零、`0x80000000 / -1` 溢出都在 `ExecuteMulStage` 外围处理。
+
+`DIV_0` 在 Tcl 中按 `FlowControl=Blocking` 配置。该配置下 Vivado 生成的输出通道只有 `m_axis_dout_tvalid/tdata`，没有 `m_axis_dout_tready`。core 现有 M 扩展写回路径也没有对除法输出做反压，因此 RTL 和 `rtl/ip/DIV_0.sv` 行为模型都采用“输出 valid 后立即消费”的边界。
 
 32 bit quotient/remainder 的输出打包约定：
 

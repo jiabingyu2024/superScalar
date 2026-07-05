@@ -55,6 +55,8 @@
 | `archive/2026-07-05/027_commit_width_branch_store.md` | 保守放开 lane0 正确 branch/store 后的 lane1 普通提交，并记录 checkpoint free 覆盖问题和回归结果。 |
 | `archive/2026-07-05/028_vivado_tcl_console_profile_fix.md` | 修正 Vivado GUI Tcl Console 中 profile 参数传递方式，区分 `source` 与命令行 `-tclargs`。 |
 | `archive/2026-07-05/029_vivado_package_constant_visibility_fix.md` | 整理 `types/package` 的包内可见性与编译顺序，修复 Vivado 综合对 `WAY_NUM` 等共享常量的可见性问题。 |
+| `archive/2026-07-05/030_div_ip_blocking_output_port_fix.md` | 修正 `DIV_0` blocking flow-control 输出端口契约，删除不存在的 `m_axis_dout_tready` 连接。 |
+| `archive/2026-07-05/031_execute_mem_load_return_merge.md` | 优化 ExecuteMem load 返回与当前单个 MEM uop 的同周期合并，减少 load-heavy 路径全局 stall。 |
 
 ## 后续维护规则
 

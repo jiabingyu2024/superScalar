@@ -145,7 +145,6 @@ module ExecuteMulStage(
         .s_axis_divisor_tready   (divDivisorReady),
         .s_axis_divisor_tdata    (divDivisor),
         .m_axis_dout_tvalid      (divOutputValid),
-        .m_axis_dout_tready      (1'b1),
         .m_axis_dout_tdata       (divOutputData)
     );
 

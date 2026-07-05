@@ -96,7 +96,8 @@ serial + 其他指令
 `ExecuteMemStage`：
 
 - 一次只发一个 load。
-- load 返回时如果当前 MEM pipeReg 有有效 uop，会拉 `exStallReq`。
+- 旧实现中，load 返回时如果当前 MEM pipeReg 有有效 uop，会拉 `exStallReq`。
+- 该点已由 `031_execute_mem_load_return_merge.md` 部分修正：load 返回占 MEM WB lane0，当前单个 MEM uop 可占 lane1，同周期通过；两个当前 MEM uop 与返回 load 争用时仍会保守 stall。
 
 虽然 `srcSmoke` 当前 DRAM 访问数不是最大瓶颈，但这类结构会进一步削弱二发利用率。
 

@@ -108,7 +108,7 @@ module ExecuteMemStage(
 
     always_comb begin
         logic currentLoadSelected;
-        logic currentMemValid;
+        int   currentMemCount;
         logic loadReturnBlocked;
         logic loadAccessBlocked;
 
@@ -118,17 +118,21 @@ module ExecuteMemStage(
         storeBuffer.StoreBufferPushReq = '0;
         loadIssueMeta = '0;
         currentLoadSelected = 1'b0;
-        currentMemValid = 1'b0;
+        currentMemCount = 0;
         loadReturnBlocked = 1'b0;
         loadAccessBlocked = 1'b0;
 
         for (int i = 0; i < BYPASS_READ_PORT_NUM; i++) bypass.memReadReq[i] = '0;
         for (int i = 0; i < WAY_NUM; i++) begin
             self.nextMemToStage[i] = '0;
-            currentMemValid |= pipeReg[i].valid && !ctrl.exPipe.flush;
+            if (pipeReg[i].valid && !ctrl.exPipe.flush) begin
+                currentMemCount++;
+            end
         end
 
-        loadReturnBlocked = loadMetaPipe1.valid && currentMemValid && !ctrl.exPipe.flush;
+        loadReturnBlocked = loadMetaPipe1.valid &&
+                            (currentMemCount >= WAY_NUM) &&
+                            !ctrl.exPipe.flush;
         ctrl.memStageEmpty = !loadMetaPipe0.valid && !loadMetaPipe1.valid;
 
         if (loadMetaPipe1.valid) begin
@@ -146,9 +150,11 @@ module ExecuteMemStage(
             DataPath base;
             DataPath dataB;
             AddrPath effAddr;
+            int      resultSlot;
 
             base = pipeReg[i].dataA;
             dataB = pipeReg[i].dataB;
+            resultSlot = loadMetaPipe1.valid ? 1 : i;
             bypass.memReadReq[i*2+0].valid = pipeReg[i].valid && pipeReg[i].srcAIsRs1;
             bypass.memReadReq[i*2+0].phyRegNum = pipeReg[i].Rs1;
             bypass.memReadReq[i*2+1].valid = pipeReg[i].valid && pipeReg[i].srcBIsRs2;
@@ -167,10 +173,10 @@ module ExecuteMemStage(
                     storeBuffer.StoreBufferPushReq.wstrb =
                         store_wstrb(pipeReg[i].subType.memSubType);
 
-                    self.nextMemToStage[i].valid = 1'b1;
-                    self.nextMemToStage[i].Rd = pipeReg[i].Rd;
-                    self.nextMemToStage[i].writeRd = 1'b0;
-                    self.nextMemToStage[i].robIndex = pipeReg[i].robIndex;
+                    self.nextMemToStage[resultSlot].valid = 1'b1;
+                    self.nextMemToStage[resultSlot].Rd = pipeReg[i].Rd;
+                    self.nextMemToStage[resultSlot].writeRd = 1'b0;
+                    self.nextMemToStage[resultSlot].robIndex = pipeReg[i].robIndex;
                 end else if (!currentLoadSelected) begin
                     storeBuffer.StoreBufferMatchIn.valid = 1'b1;
                     storeBuffer.StoreBufferMatchIn.addr = effAddr;
@@ -188,11 +194,11 @@ module ExecuteMemStage(
                     loadIssueMeta.forwardMask = storeBuffer.StoreBufferMatchOut.mask;
 
                     if (storeBuffer.StoreBufferMatchOut.hit) begin
-                        self.nextMemToStage[loadMetaPipe1.valid ? 1 : 0].valid = 1'b1;
-                        self.nextMemToStage[loadMetaPipe1.valid ? 1 : 0].Rd = loadIssueMeta.wb.Rd;
-                        self.nextMemToStage[loadMetaPipe1.valid ? 1 : 0].writeRd = loadIssueMeta.wb.writeRd;
-                        self.nextMemToStage[loadMetaPipe1.valid ? 1 : 0].robIndex = loadIssueMeta.wb.robIndex;
-                        self.nextMemToStage[loadMetaPipe1.valid ? 1 : 0].data =
+                        self.nextMemToStage[resultSlot].valid = 1'b1;
+                        self.nextMemToStage[resultSlot].Rd = loadIssueMeta.wb.Rd;
+                        self.nextMemToStage[resultSlot].writeRd = loadIssueMeta.wb.writeRd;
+                        self.nextMemToStage[resultSlot].robIndex = loadIssueMeta.wb.robIndex;
+                        self.nextMemToStage[resultSlot].data =
                             extend_load_data(pipeReg[i].subType.memSubType,
                                              storeBuffer.StoreBufferMatchOut.data);
                     end else if (storeBuffer.StoreBufferMatchOut.block) begin
