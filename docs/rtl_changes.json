@@ -1,0 +1,76 @@
+{
+  "timestamp": "2026-07-05T22:50:36+08:00",
+  "trigger": "docs/archive/2026-07-05/035_ipc_lt05_root_cause_and_optimization.md stage 1 and stage 2 execution",
+  "backup_dir": "backup/20260705_225036",
+  "files_modified": [
+    {
+      "path": "rtl/core/ExecuteStage/ExecuteMemStage.sv",
+      "lines_changed": "25-294",
+      "change_type": "logic_fix",
+      "notes": "Added 1-entry MEM load return result buffer and removed global EX stall on load return plus current MEM uop."
+    },
+    {
+      "path": "rtl/core/DramAccessIF.sv",
+      "lines_changed": "11-63",
+      "change_type": "logic_fix",
+      "notes": "Added store aging arbitration with actual read/write grant ready signals."
+    },
+    {
+      "path": "rtl/core/core.sv",
+      "lines_changed": "185-188",
+      "change_type": "perf_counter_fix",
+      "notes": "Changed store blocked by load counter to use arbitrated readEn."
+    },
+    {
+      "path": "rtl/core/BasicTypes.sv",
+      "lines_changed": "47",
+      "change_type": "parameter_change",
+      "notes": "Increased ROB_DEPTH from 16 to 32."
+    },
+    {
+      "path": "rtl/core/DispatchStage/DispatchStage.sv",
+      "lines_changed": "192-193",
+      "change_type": "logic_fix",
+      "notes": "Calibrated non-DIV/REM MUL predicted wakeup delay to 4 scheduling intervals."
+    },
+    {
+      "path": "rtl/core/DispatchStage/IssueQueue.sv",
+      "lines_changed": "25-217",
+      "change_type": "logic_fix",
+      "notes": "Enabled predicted wakeup for ALU and calibrated non-DIV/REM MUL producers only."
+    },
+    {
+      "path": "docs/archive/2026-07-05/035_ipc_lt05_root_cause_and_optimization.md",
+      "lines_changed": "15-150",
+      "change_type": "documentation",
+      "notes": "Recorded stage 1/2 implementation, validation results, and updated performance bottleneck."
+    }
+  ],
+  "cascade_scope": "full_reverify",
+  "verification": [
+    "make verilator-build BUILD_JOBS=4 BUILD_CXX=g++ OBJCACHE=",
+    "make verilator-build-src BUILD_JOBS=4 BUILD_CXX=g++ OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-lw NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-sw NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-lb NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-lh NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-lbu NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-lhu NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-sb NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-sh NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-simple NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-add NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-sub NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-and NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-or NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32ui-p-jal NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32um-p-mul NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32um-p-mulh NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32um-p-mulhu NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32um-p-mulhsu NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32um-p-div NO_BUILD=1 OBJCACHE=",
+    "make sim-rv32 TEST=rv32um-p-rem NO_BUILD=1 OBJCACHE=",
+    "make sim-src TEST=srcWithMext MAX_CYCLES=200000 NO_BUILD=1 OBJCACHE= (expected TIMEOUT; performance JSON collected)"
+  ],
+  "notes": "srcWithMext 200k IPC improved from 0.4977 to 0.7658; load_return_block_cycles and ex_stall_cycles dropped to 0. New dominant bottleneck is issue_queue_full_cycles."
+}

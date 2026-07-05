@@ -185,7 +185,7 @@ module core(
             perf.storeCommitBlockedByLoadCycles <= perf.storeCommitBlockedByLoadCycles +
                 (storeBufferIF.StoreBufferCommitReq.valid &&
                  storeBufferIF.StoreBufferCommit.valid &&
-                 dromAccess.readEn);
+                 dromAccess.exReadEn);
             perf.recoveryCycles <= perf.recoveryCycles + recoveryManagerIF.recoveryInfo.valid;
             unique case (dispatchThisCycle)
                 0: perf.dispatchWidth0Cycles <= perf.dispatchWidth0Cycles + 1'b1;

@@ -22,12 +22,6 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
         end
     endfunction
 
-    function automatic logic predict_wakeup_allowed(input IssueEntryPath entry);
-        predict_wakeup_allowed =
-            (entry.delay == ShiftType'(1)) ||
-            (entry.tubeType == TUBE_TYPE_MUL && entry.delay == (ShiftType'(1) << 3));
-    endfunction
-
     always_comb begin
         logic [ISSUE_QUEUE_DEPTH-1:0] selected;
         logic [ISSUE_QUEUE_DEPTH-1:0] allocMask;
@@ -209,13 +203,13 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
                         end
                         if (valid[j] && self.IssuePopRes[i].entry.writeDst) begin
                             if (entries[j].srcA == self.IssuePopRes[i].entry.dst && !entries[j].srcARdy) begin
-                                if (predict_wakeup_allowed(self.IssuePopRes[i].entry)) begin
+                                if (self.IssuePopRes[i].entry.delay == ShiftType'(1)) begin
                                     entries[j].srcAMatched <= 1'b1;
                                     entries[j].srcAShift <= self.IssuePopRes[i].entry.delay;
                                 end
                             end
                             if (entries[j].srcB == self.IssuePopRes[i].entry.dst && !entries[j].srcBRdy) begin
-                                if (predict_wakeup_allowed(self.IssuePopRes[i].entry)) begin
+                                if (self.IssuePopRes[i].entry.delay == ShiftType'(1)) begin
                                     entries[j].srcBMatched <= 1'b1;
                                     entries[j].srcBShift <= self.IssuePopRes[i].entry.delay;
                                 end

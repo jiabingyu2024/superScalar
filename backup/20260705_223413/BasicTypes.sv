@@ -44,7 +44,7 @@ package BasicTypes;
 
     // Backend global indexes. Keep these here so pipeline/recovery/rename
     // types do not depend on one concrete module package.
-    localparam ROB_DEPTH = 32;
+    localparam ROB_DEPTH = 16;
     localparam ROB_DEPTH_WIDTH = $clog2(ROB_DEPTH);
     typedef logic [ROB_DEPTH_WIDTH-1:0] RobIndexPath;
 

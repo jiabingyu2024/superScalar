@@ -9,8 +9,6 @@
 import BasicTypes::*;
 
 interface DramAccessIF(input logic clk, rst);
-    localparam logic [3:0] STORE_STARVE_LIMIT = 4'd2;
-
     logic    exReadEn;
     AddrPath exReadAddr;
     DataPath exReadData;
@@ -30,39 +28,16 @@ interface DramAccessIF(input logic clk, rst);
     DataPath readData;
     logic    accessReady;
 
-    logic [3:0] storeStarveCnt;
-    logic       storeForce;
-    logic       readGrant;
-    logic       writeGrant;
-
     always_comb begin
-        storeForce = storeWriteEn && (storeStarveCnt >= STORE_STARVE_LIMIT);
-        readGrant = exReadEn && !storeForce;
-        writeGrant = storeWriteEn && (!exReadEn || storeForce);
-
-        readEn = readGrant;
-        writeEn = writeGrant;
-        accessAddr = readGrant ? exReadAddr : storeWriteAddr;
+        readEn = exReadEn;
+        writeEn = !exReadEn && storeWriteEn;
+        accessAddr = exReadEn ? exReadAddr : storeWriteAddr;
         writeData = storeWriteData;
         writeMask = storeWriteMask;
 
         exReadData = readData;
-        exReadReady = accessReady && readGrant;
-        storeWriteReady = accessReady && writeGrant;
-    end
-
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            storeStarveCnt <= '0;
-        end else if (storeWriteReady) begin
-            storeStarveCnt <= '0;
-        end else if (storeWriteEn && exReadEn && readGrant && accessReady) begin
-            if (storeStarveCnt != 4'hf) begin
-                storeStarveCnt <= storeStarveCnt + 1'b1;
-            end
-        end else if (!storeWriteEn) begin
-            storeStarveCnt <= '0;
-        end
+        exReadReady = accessReady;
+        storeWriteReady = accessReady && !exReadEn;
     end
 
     modport core(
