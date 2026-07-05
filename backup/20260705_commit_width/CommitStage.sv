@@ -71,12 +71,10 @@ module CommitStage(
     task automatic free_checkpoint(
         input RobEntryPath entry
     );
-        if (entry.chkptValid) begin
-            specRAT.specRATChkptFree.ChkptFreeEn = 1'b1;
-            specRAT.specRATChkptFree.ChkptFreeIndex = entry.specRATChkptIndex;
-            freeList.freeListChkptFree.ChkptFreeEn = 1'b1;
-            freeList.freeListChkptFree.ChkptFreeIndex = entry.freeListChkptIndex;
-        end
+        specRAT.specRATChkptFree.ChkptFreeEn = entry.chkptValid;
+        specRAT.specRATChkptFree.ChkptFreeIndex = entry.specRATChkptIndex;
+        freeList.freeListChkptFree.ChkptFreeEn = entry.chkptValid;
+        freeList.freeListChkptFree.ChkptFreeIndex = entry.freeListChkptIndex;
     endtask
 
     task automatic request_exception_recovery(
@@ -115,15 +113,6 @@ module CommitStage(
         storeBuffer.flush = 1'b1;
     endtask
 
-    function automatic logic can_follow_complex_lane0(input RobEntryPath entry);
-        return entry.done &&
-               !entry.exception &&
-               !entry.isBranch &&
-               !entry.isStore &&
-               !entry.isSerial &&
-               !entry.chkptValid;
-    endfunction
-
     always_comb begin
         logic stopCommit;
 
@@ -152,16 +141,11 @@ module CommitStage(
                         commit_dst(i, entry);
                         if (entry.isMiss) begin
                             request_branch_recovery(entry);
-                            stopCommit = 1'b1;
                         end else begin
                             rob.RobPopReq[i].req = 1'b1;
                             free_checkpoint(entry);
-                            if (i != 0 ||
-                                !rob.RobPopRes[1].valid ||
-                                !can_follow_complex_lane0(rob.RobPopRes[1].entry)) begin
-                                stopCommit = 1'b1;
-                            end
                         end
+                        stopCommit = 1'b1;
                     end else if (entry.isStore) begin
                         if (storeBuffer.StoreBufferCommit.valid &&
                             storeBuffer.StoreBufferCommit.index == entry.storeBufferIndex) begin
@@ -172,12 +156,7 @@ module CommitStage(
                             commit_pop(i);
                             free_checkpoint(entry);
                         end
-                        if (i != 0 ||
-                            !storeBuffer.StoreBufferCommitReady ||
-                            !rob.RobPopRes[1].valid ||
-                            !can_follow_complex_lane0(rob.RobPopRes[1].entry)) begin
-                            stopCommit = 1'b1;
-                        end
+                        stopCommit = 1'b1;
                     end else begin
                         commit_pop(i);
                         commit_dst(i, entry);

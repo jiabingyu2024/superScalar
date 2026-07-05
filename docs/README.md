@@ -52,6 +52,7 @@
 | `archive/2026-07-05/024_single_mul_ip_replacement.md` | 将乘法路径替换为单实例 `MUL_0` IP 边界，并更新 Verilator/Vivado filelist 与验证记录。 |
 | `archive/2026-07-05/025_single_div_ip_replacement.md` | 将除法/取余路径替换为单实例 `DIV_0` IP 边界，固定 34 拍，并更新回归记录。 |
 | `archive/2026-07-05/026_tcl_review_and_cpu_freq_sim.md` | 审查并修正 Vivado Tcl 输入路径/IP 参数诊断，新增 src 仿真 CPU 频率 make 参数和双时钟推进。 |
+| `archive/2026-07-05/027_commit_width_branch_store.md` | 保守放开 lane0 正确 branch/store 后的 lane1 普通提交，并记录 checkpoint free 覆盖问题和回归结果。 |
 
 ## 后续维护规则
 

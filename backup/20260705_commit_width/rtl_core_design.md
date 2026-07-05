@@ -183,7 +183,7 @@ BRC 执行算出 taken/target
 
 1. `request_branch_recovery()` 设置 `frontendFlush=1` 和 `backendFlush=1`，并清 ROB/StoreBuffer 投机状态；一次 miss 会把后端窗口全部打空。
 2. `RecoveryManager` 把恢复请求打一拍，因此 commit 发现 miss 后下一拍才对 Ctrl 生效。
-3. `CommitStage` 对 branch miss 仍会停止并发起恢复；但 lane0 branch 若预测正确，且 lane1 是已 done 的普通非 serial、非 store、非 branch、非 exception、无 checkpoint 指令，则允许 lane1 同周期提交。
+3. `CommitStage` 对 branch 无论预测对错都会 `stopCommit=1`；branch 在 lane0 时，同周期 lane1 不能继续提交。
 4. BPU/BTB/BHB 只在 commit 后更新，紧密循环和 helper 内数据相关分支会用较晚的历史信息训练。
 
 因此当前 miss penalty 至少是 10 拍量级，且如果 ROB 中已经有较多错误路径 uop，还会额外损失窗口填充和后端重新热身时间。
@@ -506,8 +506,8 @@ Commit 从 ROB head 开始按程序序最多查看 2 条。重要规则：
 | --- | --- |
 | 未 done | 停止提交；如果是 serial，拉 `serialBlock`。 |
 | 普通写寄存器 | pop ROB，更新 ArchRAT，释放旧物理寄存器。 |
-| branch | 更新 BPU；如果 miss 则发 recovery 并停止；如果 lane0 预测正确，则 pop 并释放 checkpoint，且可继续提交安全的 lane1 普通指令。lane1 branch 仍不同周期提交，避免双 BPU update/双 checkpoint free。 |
-| store | 等 StoreBuffer head 对应 entry 写出成功后再 pop；如果 lane0 store commit ready，且 lane1 是安全普通指令，则允许 lane1 同周期提交。lane1 store/branch/exception/serial 仍保守停止。 |
+| branch | 更新 BPU；如果命中预测则 pop 并释放 checkpoint；如果 miss 则发 recovery 并停止。 |
+| store | 等 StoreBuffer head 对应 entry 写出成功后再 pop。 |
 | exception | 发 recovery，flush ROB/StoreBuffer，并停止。 |
 
 ### 15.1 Branch miss recovery
@@ -592,9 +592,9 @@ commitRecoveryReq > writeBackRecoveryReq
 
 1. `srcSmoke` 性能循环里每轮调用软件除法/取模 helper，dump 中 `0x800004dc/0x800004f4` 调到 `0x800013ac/0x80001328`，再进入 `0x80001330` 的移位减法循环。该 helper 内有大量数据相关条件分支，造成约 311 万次条件分支 miss。
 2. 当前无 RAS，`JALR` 返回靠普通 BTB 预测，`srcSmoke` 中约 40 万次 `JALR` 有约 20 万次 miss。
-3. CommitStage 对 branch miss 发 `REC_BRANCH_MISS`，frontend/backend 都 flush；正确预测 lane0 branch 现在可与 lane1 安全普通指令同周期提交，但 miss 恢复仍会显著压低二路提交利用率。
+3. CommitStage 对 branch miss 发 `REC_BRANCH_MISS`，frontend/backend 都 flush；同时 branch 提交后 `stopCommit=1`，同周期不继续提交后续 ROB 项。高 miss 率会显著压低二路提交利用率。
 
-因此当前低 IPC 是 workload 和微架构共同造成的真实问题，不是结果 JSON 或 TB 统计错误。当前已完成保守 commit 宽度优化：lane0 正确预测 branch 或 commit-ready store 后，可继续提交 lane1 安全普通指令。后续更大的优化优先级仍是让有 M 扩展的 src profile 使用硬件 DIV/REM，或增加 RAS/改善条件分支预测。
+因此当前低 IPC 是 workload 和微架构共同造成的真实问题，不是结果 JSON 或 TB 统计错误。优化优先级建议：先让有 M 扩展的 src profile 使用硬件 DIV/REM，或增加 RAS/改善条件分支预测；再考虑 commit 对正确预测 branch 的同周期继续提交策略。
 
 ### 17.1 为什么二发乱序没有 IPC > 1
 
@@ -632,7 +632,7 @@ branch miss   = 3,317,770
 | 因素 | 当前 RTL 行为 | 对 IPC 的影响 |
 | --- | --- | --- |
 | Branch miss 全后端恢复 | `REC_BRANCH_MISS` 同时 flush frontend/backend，并清 ROB/StoreBuffer | 每次 miss 都丢掉窗口内投机工作，前端重新填管。 |
-| Commit 保守停止 | miss branch、exception、未完成 head 仍停止；lane0 正确 branch/store 已允许跟随 lane1 安全普通提交 | 高 branch/store 密度下仍受限，但正确路径退休宽度比旧实现更高。 |
+| Commit 保守停止 | branch/store/exception/未完成 head 都会 `stopCommit=1` | 高 branch 密度下平均 commit width 难接近 2。 |
 | Decode 拆包 | 同包多 branch、多 store、serial+其他都会拆成 replay | branch 密集代码前端实际注入宽度低于 2。 |
 | Rename checkpoint 限制 | branch/serial 需要 checkpoint，`chkptCount > 1` stall | 分支密集 packet 难持续双发。 |
 | Issue MEM 保序单发 | IssueQueue 对 MEM uop 保序，且每周期最多选一个 MEM | 访存片段不能利用二路 MEM 并行。 |
@@ -686,7 +686,7 @@ current miss = 3,317,770  // hit rate ~= 74.19%
 2. 增加 RAS，目标是把 `JALR` return miss 从约 50% 降到接近 0，能节省约 200k 次恢复。
 3. 给 BPU 增加 per-PC miss 统计，先定位 `0x80001330` helper 中哪些条件分支最差，再决定扩大 PHT/历史长度还是做 loop/biased predictor。
 4. 优化 miss recovery：研究是否可在 branch execute/WB 早恢复，而不是等 commit；但这会改变精确恢复边界，风险高于加 RAS。
-5. 继续优化 commit：当前只放开 lane1 安全普通指令；若要进一步允许 lane1 branch/store，需要补双 BPU update、双 checkpoint free 或 store commit 仲裁。
+5. 优化 commit：正确预测 branch 是否可以 pop 后继续看 lane1，store commit 是否可以与后一条无关指令同周期提交。这类改动能提高“预测已经正确”时的宽度。
 
 ## 18. 当前维护风险与自检点
 
