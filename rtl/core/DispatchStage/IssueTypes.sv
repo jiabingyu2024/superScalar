@@ -11,6 +11,7 @@ import PipelineTypes::*;
 import StoreBufferTypes::*;
 
 package IssueTypes;
+    import BasicTypes::*;
     import StoreBufferTypes::*;
 
     localparam SHIFT_WIDTH = 36;
@@ -18,7 +19,7 @@ package IssueTypes;
 
     localparam ISSUE_QUEUE_DEPTH = 16;
     localparam ISSUE_QUEUE_WIDTH = $clog2(ISSUE_QUEUE_DEPTH);
-    localparam ISSUE_WAKEUP_PORT_NUM = WAY_NUM * 5;
+    localparam ISSUE_WAKEUP_PORT_NUM = BasicTypes::WAY_NUM * 5;
     typedef logic [ISSUE_QUEUE_WIDTH:0] IssueFreeCountPath;
     typedef logic [ISSUE_QUEUE_WIDTH-1:0] IssueIndexPath;
 

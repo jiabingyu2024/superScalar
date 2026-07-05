@@ -53,6 +53,8 @@
 | `archive/2026-07-05/025_single_div_ip_replacement.md` | 将除法/取余路径替换为单实例 `DIV_0` IP 边界，固定 34 拍，并更新回归记录。 |
 | `archive/2026-07-05/026_tcl_review_and_cpu_freq_sim.md` | 审查并修正 Vivado Tcl 输入路径/IP 参数诊断，新增 src 仿真 CPU 频率 make 参数和双时钟推进。 |
 | `archive/2026-07-05/027_commit_width_branch_store.md` | 保守放开 lane0 正确 branch/store 后的 lane1 普通提交，并记录 checkpoint free 覆盖问题和回归结果。 |
+| `archive/2026-07-05/028_vivado_tcl_console_profile_fix.md` | 修正 Vivado GUI Tcl Console 中 profile 参数传递方式，区分 `source` 与命令行 `-tclargs`。 |
+| `archive/2026-07-05/029_vivado_package_constant_visibility_fix.md` | 整理 `types/package` 的包内可见性与编译顺序，修复 Vivado 综合对 `WAY_NUM` 等共享常量的可见性问题。 |
 
 ## 后续维护规则
 

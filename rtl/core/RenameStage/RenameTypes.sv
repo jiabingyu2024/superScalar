@@ -10,14 +10,15 @@
 import BasicTypes::*;
 
 package RenameTypes;
+    import BasicTypes::*;
 
 
-    localparam SPECRAT_READ_PORT_NUM =  WAY_NUM * 3;  
-    localparam SPECRAT_WRITE_PORT_NUM = WAY_NUM;
+    localparam SPECRAT_READ_PORT_NUM =  BasicTypes::WAY_NUM * 3;
+    localparam SPECRAT_WRITE_PORT_NUM = BasicTypes::WAY_NUM;
 
-    localparam SPECRAT_ENTRY_NUM = LOGICREG_NUM;
+    localparam SPECRAT_ENTRY_NUM = BasicTypes::LOGICREG_NUM;
 
-    localparam ARCHRAT_WRITE_PORT_NUM = WAY_NUM;
+    localparam ARCHRAT_WRITE_PORT_NUM = BasicTypes::WAY_NUM;
 
     // update RAT
     typedef struct packed {
@@ -53,7 +54,7 @@ package RenameTypes;
 
     // FreeList
 
-    localparam FREE_LIST_WIDTH = $clog2(PHYREG_NUM);
+    localparam FREE_LIST_WIDTH = $clog2(BasicTypes::PHYREG_NUM);
     typedef logic [FREE_LIST_WIDTH-1:0] FreeListCountPath;
 
 

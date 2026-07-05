@@ -10,6 +10,7 @@
 import BasicTypes::*;
 
 package StoreBufferTypes;
+    import BasicTypes::*;
 
     localparam STORE_BUFFER_DEPTH = 8;
     localparam STORE_BUFFER_WIDTH = $clog2(STORE_BUFFER_DEPTH);

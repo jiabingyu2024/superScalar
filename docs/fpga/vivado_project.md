@@ -29,7 +29,7 @@ fpga/build/digital_twin_<profile>/digital_twin.xpr
 3. 在 Tcl Console 中进入仓库根目录：
 
 ```tcl
-cd /home/jiabingyu/prj/26_myprj/superScalar
+cd E:/Resources/03_competitions/26_03_jcs/2607round/superScalar
 ```
 
 Windows Vivado 中使用 Windows 路径，例如：
@@ -38,11 +38,14 @@ Windows Vivado 中使用 Windows 路径，例如：
 cd D:/your/path/to/superScalar
 ```
 
-4. 运行工程生成脚本，最后一个参数是测试 profile 名：
+4. 设置测试 profile 名并运行工程生成脚本：
 
 ```tcl
-source fpga/create_vivado_project.tcl -tclargs srcSmoke
+set ::env(FPGA_MEM_PROFILE) srcSmoke
+source fpga/create_vivado_project.tcl
 ```
+
+注意：`-tclargs` 只能用于外部命令行启动 Vivado 时的 `vivado -source ... -tclargs ...`，不能写在 Vivado Tcl Console 的 `source` 命令后面。若在 Tcl Console 里执行 `source fpga/create_vivado_project.tcl -tclargs srcSmoke`，Vivado 会报 `Unknown option '-tclargs'`。
 
 5. 脚本完成后打开生成的工程：
 
@@ -85,7 +88,7 @@ open_project fpga/build/digital_twin_srcSmoke/digital_twin.xpr
 
 ## 选择 COE/Profile
 
-`-tclargs` 后面的第一个参数就是 profile 名。Tcl 会查找该 profile 下的 `irom.coe` 和 `dram.coe`。
+命令行启动 Vivado 时，`-tclargs` 后面的第一个参数就是 profile 名。Tcl 会查找该 profile 下的 `irom.coe` 和 `dram.coe`。
 
 示例：
 
@@ -93,6 +96,19 @@ open_project fpga/build/digital_twin_srcSmoke/digital_twin.xpr
 vivado -mode batch -source fpga/create_vivado_project.tcl -tclargs src0
 vivado -mode batch -source fpga/create_vivado_project.tcl -tclargs srcSmoke
 vivado -mode batch -source fpga/create_vivado_project.tcl -tclargs srcWithMext
+```
+
+在 Vivado Tcl Console 里已经进入 GUI 后，不使用 `-tclargs`，改用环境变量：
+
+```tcl
+set ::env(FPGA_MEM_PROFILE) srcWithMext
+source fpga/create_vivado_project.tcl
+```
+
+脚本读取 profile 的优先级为：
+
+```text
+命令行 -tclargs/argv > FPGA_MEM_PROFILE 环境变量 > 默认 src0
 ```
 
 查找顺序：
@@ -173,17 +189,19 @@ set FPGA_CPU_CLK_MHZ=
 在 `source` 前设置环境变量：
 
 ```tcl
+set ::env(FPGA_MEM_PROFILE) srcSmoke
 set ::env(FPGA_CPU_CLK_MHZ) 150.000
-source fpga/create_vivado_project.tcl -tclargs srcSmoke
+source fpga/create_vivado_project.tcl
 ```
 
 如果也要显式设置输入差分时钟和 SoC 时钟：
 
 ```tcl
+set ::env(FPGA_MEM_PROFILE) srcSmoke
 set ::env(FPGA_INPUT_CLK_MHZ) 200.000
 set ::env(FPGA_SYS_CLK_MHZ) 50.000
 set ::env(FPGA_CPU_CLK_MHZ) 150.000
-source fpga/create_vivado_project.tcl -tclargs srcSmoke
+source fpga/create_vivado_project.tcl
 ```
 
 ### 直接修改 Tcl 默认值

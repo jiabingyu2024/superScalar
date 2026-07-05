@@ -2,9 +2,11 @@
 #
 # Usage:
 #   vivado -mode batch -source fpga/create_vivado_project.tcl -tclargs src0
+#   set ::env(FPGA_MEM_PROFILE) src0; source fpga/create_vivado_project.tcl
 #   vivado fpga/build/digital_twin_src0/digital_twin.xpr
 #
 # Optional environment overrides:
+#   FPGA_MEM_PROFILE=src0
 #   FPGA_INPUT_CLK_MHZ=200.000
 #   FPGA_PART=xc7k325tffg900-2
 #   FPGA_SYS_CLK_MHZ=50.000
@@ -15,7 +17,10 @@ set repo_dir   [file normalize [file join $script_dir ..]]
 
 set project_name digital_twin
 set mem_profile src0
-if {[llength $argv] >= 1} {
+if {[info exists ::env(FPGA_MEM_PROFILE)]} {
+    set mem_profile $::env(FPGA_MEM_PROFILE)
+}
+if {[info exists argv] && [llength $argv] >= 1} {
     set mem_profile [lindex $argv 0]
 }
 
@@ -126,7 +131,7 @@ set rtl_files  [lsort [concat $core_files $soc_files]]
 # Keep packages and shared type files ahead of users; Vivado will still update
 # compile order after all sources and IP are present.
 set ordered_rtl {}
-foreach special [list BasicTypes.sv PipelineTypes.sv RecoveryTypes.sv DecodeTypes.sv RenameTypes.sv IssueTypes.sv ROBTypes.sv StoreBufferTypes.sv ReadRegTypes.sv] {
+foreach special [list BasicTypes.sv StoreBufferTypes.sv ROBTypes.sv RecoveryTypes.sv PipelineTypes.sv DecodeTypes.sv RenameTypes.sv ReadRegTypes.sv IssueTypes.sv] {
     foreach src $rtl_files {
         if {[file tail $src] eq $special} {
             lappend ordered_rtl $src

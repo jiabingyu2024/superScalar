@@ -9,7 +9,7 @@ import BasicTypes::*;
 import ReadRegTypes::*;
 
 interface ReadyTableIF(input logic clk, rst);
-    localparam int READY_READ_PORT_NUM = WAY_NUM * 2;
+    localparam int READY_READ_PORT_NUM = BasicTypes::WAY_NUM * 2;
 
     typedef struct packed {
         logic         valid;
@@ -24,8 +24,8 @@ interface ReadyTableIF(input logic clk, rst);
     ReadyReadReqPath readReq [READY_READ_PORT_NUM];
     logic            readReady [READY_READ_PORT_NUM];
 
-    ReadyMarkReqPath markBusy [WAY_NUM];
-    ReadyMarkReqPath markReady [BYPASS_WB_PORT_NUM];
+    ReadyMarkReqPath markBusy [BasicTypes::WAY_NUM];
+    ReadyMarkReqPath markReady [ReadRegTypes::BYPASS_WB_PORT_NUM];
     logic            recoverReadyAll;
 
     modport ReadyTable(

@@ -2,7 +2,7 @@ import BasicTypes::*;
 import ReadRegTypes::*;
 
 module ReadyTable(ReadyTableIF.ReadyTable self);
-    localparam int READY_READ_PORT_NUM = WAY_NUM * 2;
+    localparam int READY_READ_PORT_NUM = BasicTypes::WAY_NUM * 2;
 
     logic [PHYREG_NUM-1:0] readyMask;
 
@@ -32,12 +32,12 @@ module ReadyTable(ReadyTableIF.ReadyTable self);
             readyMask <= '1;
             readyMask[0] <= 1'b1;
         end else begin
-            for (int i = 0; i < WAY_NUM; i++) begin
+            for (int i = 0; i < BasicTypes::WAY_NUM; i++) begin
                 if (self.markBusy[i].valid && self.markBusy[i].phyRegNum != '0) begin
                     readyMask[self.markBusy[i].phyRegNum] <= 1'b0;
                 end
             end
-            for (int i = 0; i < BYPASS_WB_PORT_NUM; i++) begin
+            for (int i = 0; i < ReadRegTypes::BYPASS_WB_PORT_NUM; i++) begin
                 if (self.markReady[i].valid && self.markReady[i].phyRegNum != '0) begin
                     readyMask[self.markReady[i].phyRegNum] <= 1'b1;
                 end

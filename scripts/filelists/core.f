@@ -8,8 +8,8 @@ rtl/core/CommitStage/RecoveryTypes.sv
 rtl/core/PipelineTypes.sv
 rtl/core/DecodeStage/DecodeTypes.sv
 rtl/core/RenameStage/RenameTypes.sv
-rtl/core/DispatchStage/IssueTypes.sv
 rtl/core/ReadRegStage/ReadRegTypes.sv
+rtl/core/DispatchStage/IssueTypes.sv
 
 rtl/core/IromAccessIF.sv
 rtl/core/DramAccessIF.sv

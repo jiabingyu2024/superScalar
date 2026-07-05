@@ -26,7 +26,7 @@ interface ROBIF( input logic clk, rst );
     RobFreeCountPath    RobFreeCount;
     logic               RobFlush;
 
-    localparam int ROB_DONE_PORT_NUM = WAY_NUM * 5;
+    localparam int ROB_DONE_PORT_NUM = BasicTypes::WAY_NUM * 5;
 
     RobDoneReqPath      RobDoneReq [ROB_DONE_PORT_NUM];
 
