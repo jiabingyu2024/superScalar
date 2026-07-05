@@ -6,9 +6,6 @@
 // 前递结果中选择最新操作数。旁路源只来自 WB，不从 EX stage 直接前递。
 //------------------------------------------------------------------------------
 
-import BasicTypes::*;
-import PipelineTypes::*;
-
 package ReadRegTypes;
     import BasicTypes::*;
 

@@ -6,10 +6,8 @@
 // 它不分配物理寄存器、不访问 ROB，也不做恢复决策。
 //------------------------------------------------------------------------------
 
-import BasicTypes::*;
-import PipelineTypes::*;
-
 package DecodeTypes;
+    import BasicTypes::*;
 
     localparam OP_LUI      = 7'b0110111;
     localparam OP_AUIPC    = 7'b0010111;
@@ -43,6 +41,27 @@ package DecodeTypes;
     localparam logic [6:0] F7_BASE   = 7'b0000000;
     localparam logic [6:0] F7_SUBSRA = 7'b0100000;
     localparam logic [6:0] F7_MULDIV = 7'b0000001;
+
+    typedef struct packed {
+        logic           valid;
+        logic           isSerial;
+        logic           writeReg;
+
+        TubeTypePath    tubeType;
+        SubTypePath     SubType;
+
+        OperandTypePath opTypeA;
+        OperandTypePath opTypeB;
+    } InstInfoPath;
+
+    typedef struct packed {
+        logic         lgcRegNumSrcAValid;
+        logic         lgcRegNumSrcBValid;
+        logic         lgcRegNumDstValid;
+        LgcRegNumPath lgcRegNumSrcA;
+        LgcRegNumPath lgcRegNumSrcB;
+        LgcRegNumPath lgcRegNumDst;
+    } LgcRegInfoPath;
 
     function automatic void SetInvalidDecode(
         output InstInfoPath    instInfo,

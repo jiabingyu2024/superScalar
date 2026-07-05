@@ -2,9 +2,9 @@
 // BasicTypes.sv
 // 作用：定义全核共享的基础宽度、通用索引和指令分类枚举。
 // 微架构定位：这是所有 stage/type/interface 的最底层依赖，只放不会归属到
-// 某个具体硬件队列或流水级的全局概念，例如 PC、物理寄存器号、ROB 索引、
-// checkpoint 索引、执行管线类型和操作数来源。具体 ROB entry、恢复请求、
-// StoreBuffer 协议不放在这里，避免基础类型层被上层模块污染。
+// 某个具体硬件队列或流水级的全局概念，例如 PC、预测信息、物理寄存器号、
+// ROB 索引、checkpoint 索引、执行管线类型和操作数来源。具体 ROB entry、
+// 恢复请求、StoreBuffer 协议不放在这里，避免基础类型层被上层模块污染。
 //------------------------------------------------------------------------------
 
 // 规定一些基本的类型，供整个CPU使用
@@ -72,6 +72,14 @@ package BasicTypes;
         logic taken;
         PcPath target;
     } BpuPrdPath;
+
+    // Frontend prediction metadata carried by later backend payloads as part of
+    // branch verification. Keep it at the base layer so IssueTypes does not
+    // depend on all PipelineTypes just to store payload entries.
+    typedef struct packed {
+        PcPath pcPred;
+        logic  isPred;
+    } PredInfoPath;
 
 
 

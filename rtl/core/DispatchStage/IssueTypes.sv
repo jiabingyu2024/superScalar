@@ -6,10 +6,6 @@
 // ReadReg。这里描述调度队列/载荷存储协议，不描述通用级间寄存器。
 //------------------------------------------------------------------------------
 
-import BasicTypes::*;
-import PipelineTypes::*;
-import StoreBufferTypes::*;
-
 package IssueTypes;
     import BasicTypes::*;
     import StoreBufferTypes::*;

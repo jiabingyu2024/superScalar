@@ -7,18 +7,15 @@
 // Types package 的 export，是为了兼容已有 IF 文件，后续可逐步改成直接 import。
 //------------------------------------------------------------------------------
 
-import BasicTypes::*;
-import ROBTypes::*;
-import StoreBufferTypes::*;
-import RecoveryTypes::*;
-
 package PipelineTypes;
 
     import BasicTypes::*;
+    import DecodeTypes::*;
     import ROBTypes::*;
     import StoreBufferTypes::*;
     import RecoveryTypes::*;
 
+    export DecodeTypes::*;
     export ROBTypes::*;
     export StoreBufferTypes::*;
     export RecoveryTypes::*;
@@ -30,11 +27,6 @@ package PipelineTypes;
     } PipeCtrlPath;
 
     // PF to IF
-    typedef struct packed {
-        PcPath pcPred; // 来自分支预测器的预测PC地址
-        logic  isPred;
-    } PredInfoPath;
-
     typedef struct packed {
         PcPath       pc;
         PredInfoPath predInfo;
@@ -48,28 +40,6 @@ package PipelineTypes;
         logic        valid;
         PredInfoPath predInfo;
     } IfToIdPath;
-
-    // ID to RN
-    typedef struct packed {
-        logic           valid;
-        logic           isSerial;
-        logic           writeReg;
-
-        TubeTypePath    tubeType;
-        SubTypePath     SubType;
-
-        OperandTypePath opTypeA;
-        OperandTypePath opTypeB;
-    } InstInfoPath;
-
-    typedef struct packed {
-        logic         lgcRegNumSrcAValid;
-        logic         lgcRegNumSrcBValid;
-        logic         lgcRegNumDstValid;
-        LgcRegNumPath lgcRegNumSrcA;
-        LgcRegNumPath lgcRegNumSrcB;
-        LgcRegNumPath lgcRegNumDst;
-    } LgcRegInfoPath;
 
     typedef struct packed {
         logic         PhyRegNumSrcAValid;

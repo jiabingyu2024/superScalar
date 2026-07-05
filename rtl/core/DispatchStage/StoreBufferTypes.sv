@@ -7,8 +7,6 @@
 // 提前生效；StoreBuffer 自己负责驱动 DRAM 并在写请求被接受后释放 entry。
 //------------------------------------------------------------------------------
 
-import BasicTypes::*;
-
 package StoreBufferTypes;
     import BasicTypes::*;
 

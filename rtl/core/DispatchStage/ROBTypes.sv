@@ -6,9 +6,6 @@
 // head 连续退休。这里的类型只描述 ROB 资源本身，不放级间流水 payload。
 //------------------------------------------------------------------------------
 
-import BasicTypes::*;
-import StoreBufferTypes::*;
-
 package ROBTypes;
     import BasicTypes::*;
     import StoreBufferTypes::*;

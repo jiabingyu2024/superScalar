@@ -6,9 +6,8 @@
 // 和 rename checkpoint 恢复；各模块不应私自拉全局 flush。
 //------------------------------------------------------------------------------
 
-import BasicTypes::*;
-
 package RecoveryTypes;
+    import BasicTypes::*;
 
     typedef enum logic [2:0] {
         REC_NONE,

@@ -2,11 +2,11 @@
 # Keep packages/types/interfaces before modules that import or bind them.
 
 rtl/core/BasicTypes.sv
+rtl/core/DecodeStage/DecodeTypes.sv
 rtl/core/DispatchStage/StoreBufferTypes.sv
 rtl/core/DispatchStage/ROBTypes.sv
 rtl/core/CommitStage/RecoveryTypes.sv
 rtl/core/PipelineTypes.sv
-rtl/core/DecodeStage/DecodeTypes.sv
 rtl/core/RenameStage/RenameTypes.sv
 rtl/core/ReadRegStage/ReadRegTypes.sv
 rtl/core/DispatchStage/IssueTypes.sv

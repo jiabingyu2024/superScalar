@@ -38,8 +38,9 @@ myCPU
 
 | 文件/目录 | 职责 |
 | --- | --- |
-| `BasicTypes.sv` | 全局基础宽度、PC/寄存器/ROB/checkpoint 索引、执行管线类型、子操作类型。 |
-| `PipelineTypes.sv` | 各流水级之间传递的 payload，不拥有队列/恢复协议。 |
+| `BasicTypes.sv` | 全局基础宽度、PC/预测元信息、寄存器/ROB/checkpoint 索引、执行管线类型、子操作类型。所有其他 `Types.sv` 的最底层依赖。 |
+| `DecodeStage/DecodeTypes.sv` | 指令 opcode/funct 常量、译码函数、`InstInfoPath` 和 `LgcRegInfoPath`。这些是 decode 语义输出，不放在 `PipelineTypes`。 |
+| `PipelineTypes.sv` | 各流水级之间传递的 payload，不拥有队列/恢复协议；当前 export `DecodeTypes/ROBTypes/StoreBufferTypes/RecoveryTypes` 以兼容已有模块。 |
 | `CtrlIF.sv` / `Ctrl.sv` | 全流水 stall/flush 生成。 |
 | `PreFetchStage/` | PC、BPU、BTB、BHB、PF->IF 取指地址生成。 |
 | `FetchStage/` | 保存 PF payload，并和 IROM 地址寄存后一拍的组合读指令绑定。 |
@@ -53,6 +54,33 @@ myCPU
 | `CommitStage/` | ROB head 顺序退休，更新 ArchRAT/FreeList，处理 branch miss、异常和 store commit。 |
 | `RecoveryManager` | 统一恢复请求、PC redirect、checkpoint 恢复、BPU 更新信息打一拍输出。 |
 | `myCPU.sv` | 将 `core` 的 interface 适配为赛事 CPU 扁平端口。 |
+
+### 3.1 `Types.sv` 编译依赖
+
+Vivado 对 SystemVerilog package 的可见性比 Verilator 更严格，当前维护规则是：package 文件只在 package 作用域内 import 依赖，不依赖文件作用域 import 传播。
+
+推荐依赖拓扑：
+
+```text
+BasicTypes
+  -> DecodeTypes
+  -> StoreBufferTypes
+  -> ROBTypes
+  -> RecoveryTypes
+  -> PipelineTypes
+  -> RenameTypes / ReadRegTypes / IssueTypes
+```
+
+边界约定：
+
+1. `BasicTypes` 只放全局基础概念，例如 `PcPath`、`PredInfoPath`、`RobIndexPath`、`TubeTypePath`。
+2. `DecodeTypes` 拥有 decode 输出控制结构：`InstInfoPath`、`LgcRegInfoPath`。
+3. `PipelineTypes` 只定义级间 payload，例如 `IfToIdPath`、`IdToRnPath`、`RnToDsPath`、`IsToRrPath`。
+4. `IssueTypes` 不能 import `PipelineTypes`；Payload 需要的预测信息从 `BasicTypes::PredInfoPath` 获取。
+5. `ReadRegTypes` 不能 import `PipelineTypes`；bypass 写回记录需要的 ROB index 从 `BasicTypes::RobIndexPath` 获取。
+6. `ROBTypes/StoreBufferTypes/RecoveryTypes` 只描述各自资源/恢复协议，不反向依赖级间流水 payload。
+
+`scripts/filelists/core.f` 和 `fpga/create_vivado_project.tcl` 必须保持上述顺序，否则 Vivado 可能报 `xxx is not declared`。
 
 ## 4. 主流水
 

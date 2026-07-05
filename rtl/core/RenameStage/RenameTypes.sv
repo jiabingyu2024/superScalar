@@ -7,8 +7,6 @@
 // 由 RecoveryManager 触发恢复。全局 checkpoint 索引定义在 BasicTypes。
 //------------------------------------------------------------------------------
 
-import BasicTypes::*;
-
 package RenameTypes;
     import BasicTypes::*;
 

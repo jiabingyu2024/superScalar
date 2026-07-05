@@ -131,7 +131,7 @@ set rtl_files  [lsort [concat $core_files $soc_files]]
 # Keep packages and shared type files ahead of users; Vivado will still update
 # compile order after all sources and IP are present.
 set ordered_rtl {}
-foreach special [list BasicTypes.sv StoreBufferTypes.sv ROBTypes.sv RecoveryTypes.sv PipelineTypes.sv DecodeTypes.sv RenameTypes.sv ReadRegTypes.sv IssueTypes.sv] {
+foreach special [list BasicTypes.sv DecodeTypes.sv StoreBufferTypes.sv ROBTypes.sv RecoveryTypes.sv PipelineTypes.sv RenameTypes.sv ReadRegTypes.sv IssueTypes.sv] {
     foreach src $rtl_files {
         if {[file tail $src] eq $special} {
             lappend ordered_rtl $src
