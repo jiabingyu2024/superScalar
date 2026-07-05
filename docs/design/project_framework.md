@@ -14,7 +14,7 @@
 
 | 路径 | 职责 |
 | --- | --- |
-| `rtl/core/` | CPU 裸核和赛事 CPU 接口适配层 `myCPU`。core RTL 不应依赖 FPGA IP 具体实现。 |
+| `rtl/core/` | CPU 裸核和赛事 CPU 接口适配层 `myCPU`。core 可实例化明确的生成型 IP 边界，例如 `MUL_0/DIV_0`，但不应依赖 `rtl/ip` 行为模型的内部实现。 |
 | `rtl/soc/` | 赛事 SoC 壳、外设桥、UART/display glue、FPGA 顶层集成逻辑。 |
 | `rtl/ip/` | 生成型 FPGA IP 的仿真行为模型。允许修改实现，但对外端口和行为必须与上板 IP 保持一致。 |
 | `data/` | 测试输入。缺失的 `.hex/.dump` 等生成物直接补在原测试目录下。 |

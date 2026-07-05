@@ -19,6 +19,9 @@ public:
     uint32_t irom_data_b() const;
     uint32_t current_perip_rdata() const;
     void tick_posedge(const Request& req, uint64_t cycles_per_ms);
+    void tick_request(const Request& req, bool advance_counter,
+                      uint64_t cycles_per_ms);
+    void tick_counter_clock(uint64_t cycles_per_ms);
 
     uint32_t read_aligned_word(uint32_t addr) const;
     uint32_t read_shifted_word(uint32_t addr) const;

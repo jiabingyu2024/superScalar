@@ -31,8 +31,8 @@ myCPU
 | `ISSUE_QUEUE_DEPTH` | 16 | 调度窗口大小。 |
 | `STORE_BUFFER_DEPTH` | 8 | 投机 store 暂存深度。 |
 | `CHECKPOINT_NUM` | 8 | 分支/serial checkpoint 数量。 |
-| `MUL_LATENCY` | 3 | 乘法流水固定 3 拍。 |
-| `DIV_LATENCY` | 36 | 除法/取余流水固定 36 拍。 |
+| `MUL_LATENCY` | 3 | 乘法 IP 固定 3 拍；当前全 core 只例化一颗 `MUL_0`。 |
+| `DIV_LATENCY` | 34 | 除法/取余 IP 固定 34 拍；当前全 core 只例化一颗 `DIV_0`。 |
 
 ## 3. 文件分层
 
@@ -376,7 +376,7 @@ Bypass 只匹配 WriteBackStage 当前周期的 wbForward
 | ALU | ADD/SUB/SHIFT/LOGIC/SLT | 组合计算，一拍输出 WB payload。 |
 | BRC | branch/JAL/JALR | 计算 taken、真实 target，JAL/JALR 写回 `pc+4`。 |
 | MEM | load/store | store 写 StoreBuffer；load 优先查 StoreBuffer，再发 DRAM read；一次只选一个 load。 |
-| MUL | RV32M mul/div/rem | MUL 3 拍；DIV/REM 对外固定 36 拍，其中只做 32 次有效恢复除法迭代，后 4 拍保留为固定延迟余量；处理除零和有符号溢出。 |
+| MUL | RV32M mul/div/rem | `IssueQueue` 只允许 issue slot 0 发射 `TUBE_TYPE_MUL`，因此每周期最多一条 M 类 uop；MUL 使用单实例 `MUL_0`，33x33 signed，3 拍；DIV/REM 使用单实例 `DIV_0`，unsigned 32/32，34 拍，外围处理 signed、除零和有符号溢出。 |
 | SYS | CSR/ECALL/EBREAK/MRET/FENCE 类 serial | 维护项目 CSR 子集 `mstatus/mtvec/mscratch/mepc/mcause`；ECALL/EBREAK 进入 `mtvec`，MRET 返回 `mepc`；FENCE/FENCE.I 在无 cache 设计中按 serial NOP。 |
 
 ### 13.1 IROM 取指时序
@@ -405,7 +405,66 @@ T2: loadMetaPipe1.valid 时，使用 dram.exReadData 生成 WB 结果
 
 如果 `loadMetaPipe1.valid` 且当前 MEM pipe 又有新有效 uop，则 `loadReturnBlocked` 拉高，阻塞 EX，避免 load 返回和新 MEM 输入抢同一输出口。
 
-### 13.3 CSR/FENCE 支持边界
+### 13.3 M 扩展执行单元与 MUL_0/DIV_0 IP
+
+当前 M 扩展路径的边界：
+
+```text
+IssueQueue
+  -> 只允许 issue slot 0 选择 TUBE_TYPE_MUL
+ReadRegStage
+  -> 将该 uop 放入对应的 nextToMulStage[lane]
+ExecuteMulStage
+  -> 对所有 lane 做 bypass 读请求
+  -> 选择唯一有效的非 div/rem MUL uop 送入单颗 MUL_0
+  -> 选择唯一有效的 DIV/REM uop 送入单颗 DIV_0
+  -> 用 mulMetaPipe 记录 Rd/writeRd/robIndex/lane
+  -> 用 divMetaPipe 记录 Rd/writeRd/robIndex/lane/符号恢复信息
+  -> MUL_0 第 3 拍输出 product 后，按记录 lane 写回 self.nextMulToStage[lane]
+  -> DIV_0 第 34 拍输出 quotient/remainder 后，按记录 lane 写回 self.nextMulToStage[lane]
+```
+
+`MUL_0` 是 FPGA 侧 Vivado `mult_gen` IP 的仿真/综合同名边界。
+
+| 项 | 当前约定 |
+| --- | --- |
+| 实例数 | 1 |
+| 端口 | `CLK/A[32:0]/B[32:0]/P[65:0]` |
+| 有符号性 | `A/B/P` 均按 signed 处理 |
+| 宽度 | 33x33 -> 66 bit |
+| 延迟 | 3 个 clk pipeline stage |
+| reset/CE | 无 reset、无 clock enable；flush 只清 metadata，旧 product 被 valid 丢弃 |
+
+33 位操作数用于统一覆盖 `MULH/MULHSU/MULHU`：
+
+1. `MULHU` 的 `A/B` 都补 0。
+2. `MULHSU` 的 `A` 符号扩展，`B` 补 0。
+3. `MULH` 的 `A/B` 都符号扩展。
+4. `MUL` 只取低 32 位，符号扩展或零扩展不影响低 32 位结果。
+
+`DIV_0` 是 FPGA 侧 Vivado `div_gen` IP 的仿真/综合同名边界：
+
+| 项 | 当前约定 |
+| --- | --- |
+| 实例数 | 1 |
+| 接口 | AXI4-Stream 风格：`s_axis_dividend_*`、`s_axis_divisor_*`、`m_axis_dout_*` |
+| 操作数 | unsigned 32 bit dividend / unsigned 32 bit divisor |
+| 输出 | `m_axis_dout_tdata[31:0] = quotient`，`[63:32] = remainder` |
+| 延迟 | 34 个 clk pipeline stage |
+| 吞吐 | 目标配置为每周期可接收一个输入，当前 core 仍只给单 M lane 输入 |
+
+RISC-V signed 语义不交给 `DIV_0`：
+
+1. `DIV/REM` 在进入 IP 前对操作数取绝对值。
+2. `DIVU/REMU` 直接使用原操作数。
+3. `divisor == 0` 和 `0x80000000 / -1` 溢出仍走 metadata 特例，送给 IP 的是假安全输入，只用于保持 34 拍节奏对齐。
+4. 第 34 拍根据 metadata 对 quotient/remainder 做符号恢复，再选择 `DIV/DIVU` 的商或 `REM/REMU` 的余数。
+
+当前只放一颗 M 类 IP 入口，所以 `IssueQueue` 的 `mulSelected` 会禁止同周期第二条 `TUBE_TYPE_MUL` 被选中，并额外禁止 issue slot 1 选择 M 类 uop。若删掉这些约束，两个 lane 可能同周期进入 `ExecuteMulStage`，第二条 M 类 uop 会被单 IP 选择逻辑丢弃，最终 ROB 等不到对应 done。
+
+后续若要提高 M 扩展吞吐，应先明确是增加第二套 `MUL_0/DIV_0`，还是拆分 MUL/DIV issue 类型和写回端口仲裁。
+
+### 13.4 CSR/FENCE 支持边界
 
 当前 CSR 白名单：
 

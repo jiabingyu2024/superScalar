@@ -356,7 +356,6 @@ def run_test(test: TestCase, args: argparse.Namespace, target: BuildTarget) -> t
         cmd.append(f"--src-checker={test.src_checker}")
         cmd.append(f"--src-seg-grace={args.src_seg_grace}")
         cmd.append(f"--counter-cycles-per-ms={args.counter_cycles_per_ms}")
-        cmd.append(f"--cpu-freq-mhz={args.cpu_freq_mhz}")
         if test.src_led_pass is not None:
             cmd.append(f"--src-led-pass=0x{test.src_led_pass:08x}")
         if test.src_led_fail is not None:
@@ -417,8 +416,6 @@ def main() -> int:
     p_src.add_argument("--all", action="store_true")
     p_src.add_argument("--src-seg-grace", type=int, default=512)
     p_src.add_argument("--counter-cycles-per-ms", type=int, default=50000)
-    p_src.add_argument("--cpu-freq-mhz", type=float,
-                       default=float(os.environ.get("CPU_FREQ_MHZ", "50")))
 
     args = parser.parse_args()
     target = build_target_for_mode(args.mode)

@@ -27,12 +27,10 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
         logic [ISSUE_QUEUE_DEPTH-1:0] allocMask;
         logic [ISSUE_QUEUE_DEPTH-1:0] memBlockedByOlder;
         logic memSelected;
-        logic mulSelected;
         int freeCnt;
         selected = '0;
         memBlockedByOlder = '0;
         memSelected = 1'b0;
-        mulSelected = 1'b0;
         freeCnt = 0;
         for (int k = 0; k < ISSUE_QUEUE_DEPTH; k++) begin
             allocMask[k] = valid[k];
@@ -74,9 +72,7 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
                     entries[j].srcARdy && (entries[j].srcBRdy || entries[j].srcBIsImm) &&
                     !has_same_cycle_raw(entries[j], selected) &&
                     !memBlockedByOlder[j] &&
-                    !(memSelected && entries[j].tubeType == TUBE_TYPE_MEM) &&
-                    !(mulSelected && entries[j].tubeType == TUBE_TYPE_MUL) &&
-                    !(i != 0 && entries[j].tubeType == TUBE_TYPE_MUL)) begin
+                    !(memSelected && entries[j].tubeType == TUBE_TYPE_MEM)) begin
                     if (!self.IssuePopRes[i].done ||
                         older_index(j, selectedIdx)) begin
                         self.IssuePopRes[i].done = 1'b1;
@@ -89,9 +85,6 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
                 selected[self.IssuePopRes[i].entry.payloadIndex] = 1'b1;
                 if (self.IssuePopRes[i].entry.tubeType == TUBE_TYPE_MEM) begin
                     memSelected = 1'b1;
-                end
-                if (self.IssuePopRes[i].entry.tubeType == TUBE_TYPE_MUL) begin
-                    mulSelected = 1'b1;
                 end
             end
         end

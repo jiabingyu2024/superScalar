@@ -9,7 +9,7 @@ module ExecuteMulStage(
     BypassIF.ExecuteMulStage bypass
 );
     localparam int MUL_LATENCY = 3;
-    localparam int DIV_LATENCY = 34;
+    localparam int DIV_LATENCY = 36;
 
     RrToExMulPath pipeReg [WAY_NUM];
 
@@ -37,7 +37,9 @@ module ExecuteMulStage(
 
         DataPath      dividend;
         DataPath      divisor;
-        WayNumPath    lane;
+        DataPath      quotient;
+        logic [32:0]  remainder;
+        logic [5:0]   iterCount;
     } DivPipeEntry;
 
     MulMetaPath mulMetaPipe [0:MUL_LATENCY];
@@ -46,15 +48,9 @@ module ExecuteMulStage(
     logic signed [32:0] mulB;
     logic signed [65:0] mulProduct;
 
-    DivPipeEntry divMetaPipe [0:DIV_LATENCY];
-    DivPipeEntry divLaunch;
-    logic        divInputValid;
-    logic        divDividendReady;
-    logic        divDivisorReady;
-    DataPath     divDividend;
-    DataPath     divDivisor;
-    logic        divOutputValid;
-    logic [63:0] divOutputData;
+    DivPipeEntry divPipe [WAY_NUM][DIV_LATENCY];
+    DivPipeEntry divLaunch [WAY_NUM];
+    ExMulToWbPath divOut [WAY_NUM];
 
     function automatic logic is_divrem(input SubTypePath st);
         return st.mulSubType inside {MUL_SUBTYPE_DIV, MUL_SUBTYPE_DIVU,
@@ -97,16 +93,34 @@ module ExecuteMulStage(
         endcase
     endfunction
 
-    function automatic DataPath div_result(
-        input DivPipeEntry in,
-        input DataPath quotientIn,
-        input DataPath remainderIn
-    );
+    function automatic DivPipeEntry div_step(input DivPipeEntry in);
+        DivPipeEntry out;
+        logic [32:0] trial;
+        logic [32:0] divisorExt;
+
+        out = in;
+        if (in.valid && !in.divByZero && !in.overflow && in.iterCount < 6'd32) begin
+            trial = {in.remainder[31:0], in.dividend[31]};
+            divisorExt = {1'b0, in.divisor};
+            out.dividend = {in.dividend[30:0], 1'b0};
+            out.iterCount = in.iterCount + 6'd1;
+            if (trial >= divisorExt) begin
+                out.remainder = trial - divisorExt;
+                out.quotient = {in.quotient[30:0], 1'b1};
+            end else begin
+                out.remainder = trial;
+                out.quotient = {in.quotient[30:0], 1'b0};
+            end
+        end
+        return out;
+    endfunction
+
+    function automatic DataPath div_result(input DivPipeEntry in);
         DataPath quotient;
         DataPath remainder;
 
-        quotient = in.quotNeg ? DataPath'(~quotientIn + 32'd1) : quotientIn;
-        remainder = in.remNeg ? DataPath'(~remainderIn + 32'd1) : remainderIn;
+        quotient = in.quotNeg ? DataPath'(~in.quotient + 32'd1) : in.quotient;
+        remainder = in.remNeg ? DataPath'(~in.remainder[31:0] + 32'd1) : in.remainder[31:0];
 
         if (in.divByZero) begin
             if (in.subType.mulSubType inside {MUL_SUBTYPE_REM, MUL_SUBTYPE_REMU}) begin
@@ -136,19 +150,6 @@ module ExecuteMulStage(
         .P  (mulProduct)
     );
 
-    DIV_0 div_ip (
-        .aclk                    (self.clk),
-        .s_axis_dividend_tvalid  (divInputValid),
-        .s_axis_dividend_tready  (divDividendReady),
-        .s_axis_dividend_tdata   (divDividend),
-        .s_axis_divisor_tvalid   (divInputValid),
-        .s_axis_divisor_tready   (divDivisorReady),
-        .s_axis_divisor_tdata    (divDivisor),
-        .m_axis_dout_tvalid      (divOutputValid),
-        .m_axis_dout_tready      (1'b1),
-        .m_axis_dout_tdata       (divOutputData)
-    );
-
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
             for (int i = 0; i < WAY_NUM; i++) begin
@@ -168,10 +169,6 @@ module ExecuteMulStage(
         mulLaunch = '0;
         mulA = '0;
         mulB = '0;
-        divLaunch = '0;
-        divInputValid = 1'b0;
-        divDividend = '0;
-        divDivisor = 32'd1;
 
         for (int i = 0; i < BYPASS_READ_PORT_NUM; i++) bypass.mulReadReq[i] = '0;
 
@@ -199,57 +196,42 @@ module ExecuteMulStage(
                 mulB = mul_operand_b(pipeReg[i].subType.mulSubType, b);
             end
 
-            if (pipeReg[i].valid && !ctrl.exPipe.flush && !ctrl.exPipe.stall &&
-                is_divrem(pipeReg[i].subType) && !divLaunch.valid) begin
-                divLaunch.valid = 1'b1;
-                divLaunch.subType = pipeReg[i].subType;
-                divLaunch.Rd = pipeReg[i].Rd;
-                divLaunch.writeRd = pipeReg[i].writeRd;
-                divLaunch.robIndex = pipeReg[i].robIndex;
-                divLaunch.origA = a;
-                divLaunch.lane = WayNumPath'(i);
-                signedOp = pipeReg[i].subType.mulSubType inside {MUL_SUBTYPE_DIV, MUL_SUBTYPE_REM};
-                divLaunch.divByZero = (b == '0);
-                divLaunch.overflow = signedOp && (a == 32'h8000_0000) && (b == 32'hffff_ffff);
-                divLaunch.quotNeg = signedOp && (a[31] ^ b[31]);
-                divLaunch.remNeg = signedOp && a[31];
-                divLaunch.dividend = signedOp ? abs32(a) : a;
-                divLaunch.divisor = signedOp ? abs32(b) : b;
-            end
+            divLaunch[i] = '0;
+            divLaunch[i].valid = pipeReg[i].valid &&
+                                 !ctrl.exPipe.flush &&
+                                 !ctrl.exPipe.stall &&
+                                 is_divrem(pipeReg[i].subType);
+            divLaunch[i].subType = pipeReg[i].subType;
+            divLaunch[i].Rd = pipeReg[i].Rd;
+            divLaunch[i].writeRd = pipeReg[i].writeRd;
+            divLaunch[i].robIndex = pipeReg[i].robIndex;
+            divLaunch[i].origA = a;
+            signedOp = pipeReg[i].subType.mulSubType inside {MUL_SUBTYPE_DIV, MUL_SUBTYPE_REM};
+            divLaunch[i].divByZero = (b == '0);
+            divLaunch[i].overflow = signedOp && (a == 32'h8000_0000) && (b == 32'hffff_ffff);
+            divLaunch[i].quotNeg = signedOp && (a[31] ^ b[31]);
+            divLaunch[i].remNeg = signedOp && a[31];
+            divLaunch[i].dividend = signedOp ? abs32(a) : a;
+            divLaunch[i].divisor = signedOp ? abs32(b) : b;
+            divLaunch[i].quotient = '0;
+            divLaunch[i].remainder = '0;
+            divLaunch[i].iterCount = '0;
 
             ctrl.mulStageEmpty &= !(pipeReg[i].valid && !ctrl.exPipe.flush);
+            for (int s = 0; s < DIV_LATENCY; s++) begin
+                ctrl.mulStageEmpty &= !divPipe[i][s].valid;
+            end
+            ctrl.mulStageEmpty &= !divOut[i].valid;
         end
 
         for (int s = 0; s <= MUL_LATENCY; s++) begin
             ctrl.mulStageEmpty &= !mulMetaPipe[s].valid;
         end
-        for (int s = 0; s <= DIV_LATENCY; s++) begin
-            ctrl.mulStageEmpty &= !divMetaPipe[s].valid;
-        end
-
-        if (divLaunch.valid) begin
-            divInputValid = 1'b1;
-            divDividend = (divLaunch.divByZero || divLaunch.overflow) ? '0 : divLaunch.dividend;
-            divDivisor = (divLaunch.divByZero || divLaunch.overflow) ? 32'd1 : divLaunch.divisor;
-        end
     end
 
     always_comb begin
         for (int i = 0; i < WAY_NUM; i++) begin
-            self.nextMulToStage[i] = '0;
-        end
-
-        if (divMetaPipe[DIV_LATENCY].valid && divOutputValid) begin
-            self.nextMulToStage[divMetaPipe[DIV_LATENCY].lane].valid = 1'b1;
-            self.nextMulToStage[divMetaPipe[DIV_LATENCY].lane].Rd = divMetaPipe[DIV_LATENCY].Rd;
-            self.nextMulToStage[divMetaPipe[DIV_LATENCY].lane].writeRd =
-                divMetaPipe[DIV_LATENCY].writeRd;
-            self.nextMulToStage[divMetaPipe[DIV_LATENCY].lane].data =
-                div_result(divMetaPipe[DIV_LATENCY],
-                           DataPath'(divOutputData[31:0]),
-                           DataPath'(divOutputData[63:32]));
-            self.nextMulToStage[divMetaPipe[DIV_LATENCY].lane].robIndex =
-                divMetaPipe[DIV_LATENCY].robIndex;
+            self.nextMulToStage[i] = divOut[i];
         end
 
         if (mulMetaPipe[MUL_LATENCY].valid) begin
@@ -269,15 +251,21 @@ module ExecuteMulStage(
             for (int s = 0; s <= MUL_LATENCY; s++) begin
                 mulMetaPipe[s] <= '0;
             end
-            for (int s = 0; s <= DIV_LATENCY; s++) begin
-                divMetaPipe[s] <= '0;
+            for (int i = 0; i < WAY_NUM; i++) begin
+                for (int s = 0; s < DIV_LATENCY; s++) begin
+                    divPipe[i][s] <= '0;
+                end
+                divOut[i] <= '0;
             end
         end else if (ctrl.exPipe.flush) begin
             for (int s = 0; s <= MUL_LATENCY; s++) begin
                 mulMetaPipe[s] <= '0;
             end
-            for (int s = 0; s <= DIV_LATENCY; s++) begin
-                divMetaPipe[s] <= '0;
+            for (int i = 0; i < WAY_NUM; i++) begin
+                for (int s = 0; s < DIV_LATENCY; s++) begin
+                    divPipe[i][s] <= '0;
+                end
+                divOut[i] <= '0;
             end
         end else begin
             mulMetaPipe[0] <= mulLaunch;
@@ -285,9 +273,20 @@ module ExecuteMulStage(
                 mulMetaPipe[s] <= mulMetaPipe[s-1];
             end
 
-            divMetaPipe[0] <= divLaunch;
-            for (int s = 1; s <= DIV_LATENCY; s++) begin
-                divMetaPipe[s] <= divMetaPipe[s-1];
+            for (int i = 0; i < WAY_NUM; i++) begin
+                divOut[i] <= '0;
+                if (divPipe[i][DIV_LATENCY-1].valid) begin
+                    divOut[i].valid <= 1'b1;
+                    divOut[i].Rd <= divPipe[i][DIV_LATENCY-1].Rd;
+                    divOut[i].writeRd <= divPipe[i][DIV_LATENCY-1].writeRd;
+                    divOut[i].data <= div_result(divPipe[i][DIV_LATENCY-1]);
+                    divOut[i].robIndex <= divPipe[i][DIV_LATENCY-1].robIndex;
+                end
+
+                divPipe[i][0] <= divLaunch[i];
+                for (int s = 1; s < DIV_LATENCY; s++) begin
+                    divPipe[i][s] <= div_step(divPipe[i][s-1]);
+                end
             end
         end
     end

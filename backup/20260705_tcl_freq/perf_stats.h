@@ -10,14 +10,12 @@ namespace sim {
 
 class PerfStats {
 public:
-    void set_cpu_freq_mhz(double mhz);
     void observe_request(uint64_t cycle, const Request& req);
     void observe_state(uint64_t cycle, uint32_t counter_ms);
     void observe_core(uint64_t cycle, const CorePerfSample& sample);
     void write_json_fields(std::ostream& out) const;
 
     uint64_t cycles = 0;
-    double cpu_freq_mhz = DEFAULT_CPU_FREQ_MHZ;
     uint64_t core_cycle = 0;
     uint64_t commit_count = 0;
     uint64_t branch_count = 0;

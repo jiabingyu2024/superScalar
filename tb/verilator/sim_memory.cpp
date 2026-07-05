@@ -122,7 +122,12 @@ void MemoryModel::tick_counter(uint64_t cycles_per_ms) {
     }
 }
 
-void MemoryModel::tick_posedge(const Request& req, uint64_t cycles_per_ms) {
+void MemoryModel::tick_counter_clock(uint64_t cycles_per_ms) {
+    tick_counter(cycles_per_ms);
+}
+
+void MemoryModel::tick_request(const Request& req, bool advance_counter,
+                               uint64_t cycles_per_ms) {
     if (req.irom_ena_a) irom_addr_a_q_ = req.irom_addr_a;
     if (req.irom_ena_b) irom_addr_b_q_ = req.irom_addr_b;
 
@@ -158,7 +163,13 @@ void MemoryModel::tick_posedge(const Request& req, uint64_t cycles_per_ms) {
         }
     }
 
-    tick_counter(cycles_per_ms);
+    if (advance_counter) {
+        tick_counter(cycles_per_ms);
+    }
+}
+
+void MemoryModel::tick_posedge(const Request& req, uint64_t cycles_per_ms) {
+    tick_request(req, true, cycles_per_ms);
 }
 
 }  // namespace sim

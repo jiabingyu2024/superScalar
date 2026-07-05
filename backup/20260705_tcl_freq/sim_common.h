@@ -24,8 +24,6 @@ constexpr uint64_t DEFAULT_MAX_CYCLES = 2000000ull;
 constexpr uint64_t DEFAULT_SRC_MAX_CYCLES = 20000000ull;
 constexpr uint64_t DEFAULT_SRC_SEG_GRACE = 512ull;
 constexpr uint64_t DEFAULT_COUNTER_CYCLES_PER_MS = 50000ull;
-constexpr double DEFAULT_CPU_FREQ_MHZ = 50.0;
-constexpr double DEFAULT_SOC_FREQ_MHZ = 50.0;
 
 struct Options {
     std::string mode = "rv32";
@@ -38,7 +36,6 @@ struct Options {
     uint64_t max_cycles = DEFAULT_MAX_CYCLES;
     uint64_t src_seg_grace = DEFAULT_SRC_SEG_GRACE;
     uint64_t counter_cycles_per_ms = DEFAULT_COUNTER_CYCLES_PER_MS;
-    double cpu_freq_mhz = DEFAULT_CPU_FREQ_MHZ;
     bool trace = false;
 
     std::string src_checker = "ledseg";

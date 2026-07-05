@@ -3,6 +3,4 @@
 
 rtl/ip/IROM_0.sv
 rtl/ip/DRAM_0.sv
-rtl/ip/MUL_0.sv
-rtl/ip/DIV_0.sv
 rtl/ip/pll.sv

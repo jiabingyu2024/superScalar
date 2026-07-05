@@ -190,7 +190,7 @@ module DispatchStage(
         cycles = 1;
         unique case (tube)
             TUBE_TYPE_MUL: cycles = (subtype.mulSubType inside {MUL_SUBTYPE_DIV, MUL_SUBTYPE_DIVU,
-                                                                 MUL_SUBTYPE_REM, MUL_SUBTYPE_REMU}) ? 34 : 3;
+                                                                 MUL_SUBTYPE_REM, MUL_SUBTYPE_REMU}) ? 36 : 3;
             TUBE_TYPE_MEM: cycles = 3;
             default:       cycles = 1;
         endcase

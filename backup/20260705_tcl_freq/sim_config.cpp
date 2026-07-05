@@ -60,18 +60,6 @@ Options parse_args(int argc, char** argv) {
             }
             continue;
         }
-        if (take_value("--cpu-freq-mhz", value)) {
-            try {
-                size_t consumed = 0;
-                opt.cpu_freq_mhz = std::stod(value, &consumed);
-                if (consumed != value.size() || opt.cpu_freq_mhz <= 0.0) {
-                    throw std::runtime_error("");
-                }
-            } catch (const std::exception&) {
-                throw std::runtime_error("bad --cpu-freq-mhz value: " + value);
-            }
-            continue;
-        }
         if (take_value("--src-led-pass", value)) {
             if (!parse_u32(value, opt.src_led_pass)) {
                 throw std::runtime_error("bad --src-led-pass value: " + value);

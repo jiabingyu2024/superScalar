@@ -16,6 +16,12 @@
 | --- | --- |
 | `sim/verilator_plan.md` | 后续 Verilator 命令形态、测试选择方式、filelist 组织。 |
 
+## FPGA 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| `fpga/vivado_project.md` | Vivado Tcl 生成工程、IP 生成参数和上板源文件边界。 |
+
 ## 归档文档
 
 | 文档 | 内容 |
@@ -43,6 +49,9 @@
 | `archive/2026-07-04/021_srcSmoke_seg_and_ipc_review.md` | 审查 `srcSmoke` 最终 SEG/counter 显示是否满足 `0x37xxxxxx`，并分析当前 IPC 偏低是否为 TB 统计问题。 |
 | `archive/2026-07-04/022_srcSmoke_seg_fix_and_ipc_breakdown.md` | 修复 SoC MMIO/counter 读返回相位，使 `srcSmoke` 最终 SEG 正常，并用分支分类计数定位 IPC 低的主要来源。 |
 | `archive/2026-07-05/023_srcSmoke_ipc_low_deep_rtl_analysis.md` | 深入分析 `srcSmoke` IPC 偏低的 RTL 原因，估算分支命中率提升到 90% 后的理论 IPC 上限。 |
+| `archive/2026-07-05/024_single_mul_ip_replacement.md` | 将乘法路径替换为单实例 `MUL_0` IP 边界，并更新 Verilator/Vivado filelist 与验证记录。 |
+| `archive/2026-07-05/025_single_div_ip_replacement.md` | 将除法/取余路径替换为单实例 `DIV_0` IP 边界，固定 34 拍，并更新回归记录。 |
+| `archive/2026-07-05/026_tcl_review_and_cpu_freq_sim.md` | 审查并修正 Vivado Tcl 输入路径/IP 参数诊断，新增 src 仿真 CPU 频率 make 参数和双时钟推进。 |
 
 ## 后续维护规则
 

@@ -37,6 +37,7 @@ make sim-src-all
 | `BUILD_JOBS` | `make verilator-build BUILD_JOBS=1` | 设置 Verilator build 并行度。 |
 | `BUILD_CXX` | `make verilator-build BUILD_CXX=clang++` | 设置 Verilator 生成 C++ 的编译器。 |
 | `SRC_SEG_GRACE` | `make sim-src TEST=src0 SRC_SEG_GRACE=1024` | 设置 ledseg checker 的 SEG 宽限周期。 |
+| `CPU_FREQ_MHZ` | `make sim-src TEST=srcSmoke CPU_FREQ_MHZ=150` | 设置 src/student_top 仿真中的 CPU core 频率，用于双时钟推进和性能 ms 换算；SoC counter 时钟仍固定 50MHz。 |
 
 src 默认最大周期：
 
@@ -45,6 +46,21 @@ SRC_MAX_CYCLES ?= 100000000
 ```
 
 因此 `make sim-src TEST=srcSmoke` 默认会用 `100000000` 周期上限，避免 src 类长程序被脚本默认短上限过早截断。需要更短 debug 时显式设置 `MAX_CYCLES`。
+
+src/student_top 的频率口径：
+
+```sh
+CPU_FREQ_MHZ ?= 50
+```
+
+`CPU_FREQ_MHZ` 只改变 Verilator harness 中 `w_cpu_clk` 的节奏，以及结果 JSON 的 `perf.elapsed_ms_by_cpu_freq = cycles / (CPU_FREQ_MHZ * 1000)`。`w_clk_50Mhz` 仍固定按 50MHz 推进，`rtl/soc/counter.sv` 的 50000 cycle/ms 行为不改。因此 JSON 中：
+
+| 字段 | 含义 |
+| --- | --- |
+| `perf.cpu_freq_mhz` | 本次按 make 参数设置的 CPU 频率。 |
+| `perf.elapsed_ms_by_cpu_freq` | 按 CPU 周期和 CPU 频率换算的性能耗时。 |
+| `perf.soc_counter_freq_mhz` | SoC/counter 固定频率，当前为 50MHz。 |
+| `correctness.counter.ms` / `perf.counter.ms` | `student_top` 内 counter 按 50MHz 时钟得到的显示/测评 counter ms。 |
 
 ### 重编译判定
 
@@ -93,8 +109,8 @@ src 测试需要支持：
 | --- | --- |
 | `core.f` | core package、interface、module、`core` 和 `myCPU`。 |
 | `soc.f` | SoC wrapper RTL。 |
-| `ip_verilator.f` | 仅 Verilator/仿真使用的 IP 行为模型。 |
-| `verilator_mycpu.f` | rv32 DUT `myCPU` 的仿真 filelist。 |
+| `ip_verilator.f` | 仅 Verilator/仿真使用的 IP 行为模型，当前包含 `IROM_0/DRAM_0/MUL_0/DIV_0/pll`。 |
+| `verilator_mycpu.f` | rv32 DUT `myCPU` 的仿真 filelist，包含 `core.f` 和 `ip_verilator.f`，用于解析 core 内实例化的 `MUL_0/DIV_0`。 |
 | `verilator_student_top.f` | src DUT `student_top` 的仿真 filelist。 |
 
 注意：`core.f` 中 package 顺序必须满足 Verilator 声明依赖。当前 `StoreBufferTypes.sv`、`ROBTypes.sv`、`RecoveryTypes.sv` 放在 `PipelineTypes.sv` 前，避免 `StoreBufferIndexPath` 声明前引用。
@@ -352,6 +368,8 @@ scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --build-only
 | `scripts/run_verilator.py rv32 --suite rv32ui --max-cycles 30000 --no-build` | PASS | 当前 `rv32ui` 回归通过。 |
 | `scripts/run_verilator.py rv32 --suite rv32mi --max-cycles 30000 --no-build` | PASS | 当前支持的 `rv32mi` SYS/CSR 路径回归通过。 |
 | `scripts/run_verilator.py rv32 --suite rv32um --max-cycles 30000 --no-build` | PASS | 当前 RV32M mul/div/rem 回归通过。 |
+| `make verilator-build` | PASS | 单实例 `MUL_0/DIV_0` 接入后，rv32/myCPU Verilator 构建通过。 |
+| `make verilator-build-src` | PASS | 单实例 `MUL_0/DIV_0` 接入后，src/student_top Verilator 构建通过。 |
 | `make sim-src TEST=srcSmoke NO_BUILD=1` | PASS，`checker_kind=src_ledonly` | Makefile 默认 `SRC_MAX_CYCLES=100000000`；在 `72814875` 周期观察到 LED PASS，`counter_ms=1456`，最终 SEG 为 `0x37001456`，三个 SEG/counter match 字段均为 true。 |
 | `make sim-src TEST=srcSmoke MAX_CYCLES=10000 NO_BUILD=1` | TIMEOUT，但早期 MMIO 正常 | `2496` 周期写 `SEG=0x37000000`，`2569` 周期开始写 counter start，用于快速确认 student_top DRAM 时序未退化。 |
 | `make sim-src TEST=srcSmoke MAX_CYCLES=5000 TRACE=1 NO_BUILD=1` | TIMEOUT，生成 FST | 用于确认 student_top 下 PC/commit/perip/DRAM 关键信号可抓取。 |

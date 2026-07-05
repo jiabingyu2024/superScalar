@@ -5,7 +5,6 @@
 #   vivado fpga/build/digital_twin_src0/digital_twin.xpr
 #
 # Optional environment overrides:
-#   FPGA_INPUT_CLK_MHZ=200.000
 #   FPGA_PART=xc7k325tffg900-2
 #   FPGA_SYS_CLK_MHZ=50.000
 #   FPGA_CPU_CLK_MHZ=50.000
@@ -37,62 +36,10 @@ if {[info exists ::env(FPGA_CPU_CLK_MHZ)]} {
     set cpu_clk_mhz $::env(FPGA_CPU_CLK_MHZ)
 }
 
-proc first_existing_dir {candidates description} {
-    foreach candidate $candidates {
-        set normalized [file normalize $candidate]
-        if {[file isdirectory $normalized]} {
-            return $normalized
-        }
-    }
-    error "Required $description directory not found. Tried: $candidates"
-}
-
-proc first_existing_file {candidates description} {
-    foreach candidate $candidates {
-        set normalized [file normalize $candidate]
-        if {[file exists $normalized]} {
-            return $normalized
-        }
-    }
-    error "Required $description file not found. Tried: $candidates"
-}
-
-proc set_ip_config_required {ip_name keys value} {
-    set ip_obj [get_ips $ip_name]
-    set props [list_property $ip_obj]
-    foreach key $keys {
-        set prop "CONFIG.$key"
-        if {[lsearch -exact $props $prop] >= 0} {
-            set_property $prop $value $ip_obj
-            return
-        }
-    }
-    error "IP $ip_name does not expose any of required properties: $keys"
-}
-
-proc set_ip_config_optional {ip_name keys value} {
-    set ip_obj [get_ips $ip_name]
-    set props [list_property $ip_obj]
-    foreach key $keys {
-        set prop "CONFIG.$key"
-        if {[lsearch -exact $props $prop] >= 0} {
-            set_property $prop $value $ip_obj
-            return
-        }
-    }
-    puts "WARNING: IP $ip_name does not expose optional properties: $keys"
-}
-
-set coe_dir [first_existing_dir [list \
-    [file join $script_dir coe $mem_profile] \
-    [file join $repo_dir data $mem_profile] \
-] "COE profile"]
+set coe_dir  [file normalize [file join $script_dir coe $mem_profile]]
 set irom_coe [file join $coe_dir irom.coe]
 set dram_coe [file join $coe_dir dram.coe]
-set xdc_file [first_existing_file [list \
-    [file join $script_dir constraints digital_twin.xdc] \
-    [file join $script_dir digital_twin.xdc] \
-] "XDC constraint"]
+set xdc_file [file normalize [file join $script_dir constraints digital_twin.xdc]]
 
 foreach required_file [list $irom_coe $dram_coe $xdc_file] {
     if {![file exists $required_file]} {
@@ -200,27 +147,31 @@ set_property -dict [list \
 ] [get_ips DRAM_0]
 
 create_ip -name mult_gen -vendor xilinx.com -library ip -version 12.0 -module_name MUL_0
-set_ip_config_required MUL_0 {PortAType port_a_type} {Signed}
-set_ip_config_required MUL_0 {PortAWidth port_a_width} {33}
-set_ip_config_required MUL_0 {PortBType port_b_type} {Signed}
-set_ip_config_required MUL_0 {PortBWidth port_b_width} {33}
-set_ip_config_required MUL_0 {MultType multiplier_type} {Parallel_Multiplier}
-set_ip_config_optional MUL_0 {OptGoal optimization_goal} {Speed}
-set_ip_config_required MUL_0 {PipeStages pipeline_stages} {3}
-set_ip_config_required MUL_0 {Use_Custom_Output_Width use_custom_output_width} {true}
-set_ip_config_required MUL_0 {OutputWidthHigh output_width_high} {65}
-set_ip_config_required MUL_0 {OutputWidthLow output_width_low} {0}
+set_property -dict [list \
+    CONFIG.PortAType {Signed} \
+    CONFIG.PortAWidth {33} \
+    CONFIG.PortBType {Signed} \
+    CONFIG.PortBWidth {33} \
+    CONFIG.MultType {Parallel_Multiplier} \
+    CONFIG.OptGoal {Speed} \
+    CONFIG.PipeStages {3} \
+    CONFIG.Use_Custom_Output_Width {true} \
+    CONFIG.OutputWidthHigh {65} \
+    CONFIG.OutputWidthLow {0} \
+] [get_ips MUL_0]
 
 create_ip -name div_gen -vendor xilinx.com -library ip -version 5.1 -module_name DIV_0
-set_ip_config_required DIV_0 {algorithm_type Algorithm_Type} {Radix2}
-set_ip_config_required DIV_0 {dividend_and_quotient_width Dividend_and_Quotient_Width} {32}
-set_ip_config_required DIV_0 {divisor_width Divisor_Width} {32}
-set_ip_config_required DIV_0 {remainder_type Remainder_Type} {Remainder}
-set_ip_config_required DIV_0 {operand_sign Operand_Sign} {Unsigned}
-set_ip_config_required DIV_0 {clocks_per_division Clocks_Per_Division} {1}
-set_ip_config_required DIV_0 {latency_configuration Latency_Configuration} {Manual}
-set_ip_config_required DIV_0 {latency Latency} {34}
-set_ip_config_required DIV_0 {FlowControl flow_control} {Blocking}
+set_property -dict [list \
+    CONFIG.algorithm_type {Radix2} \
+    CONFIG.dividend_and_quotient_width {32} \
+    CONFIG.divisor_width {32} \
+    CONFIG.remainder_type {Remainder} \
+    CONFIG.operand_sign {Unsigned} \
+    CONFIG.clocks_per_division {1} \
+    CONFIG.latency_configuration {Manual} \
+    CONFIG.latency {34} \
+    CONFIG.FlowControl {Blocking} \
+] [get_ips DIV_0]
 
 generate_target all [get_ips]
 export_ip_user_files -of_objects [get_ips] -no_script -sync -force -quiet

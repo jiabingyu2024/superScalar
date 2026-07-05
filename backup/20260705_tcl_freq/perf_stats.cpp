@@ -6,10 +6,6 @@
 
 namespace sim {
 
-void PerfStats::set_cpu_freq_mhz(double mhz) {
-    cpu_freq_mhz = mhz;
-}
-
 void PerfStats::observe_request(uint64_t cycle, const Request& req) {
     cycles = cycle;
     if (req.perip_addr == 0) return;
@@ -91,17 +87,12 @@ void PerfStats::write_json_fields(std::ostream& out) const {
                                   static_cast<double>(branch_count);
     double ipc = cycles == 0 ? 0.0 : static_cast<double>(commit_count) /
                                   static_cast<double>(cycles);
-    double elapsed_ms = cpu_freq_mhz <= 0.0 ? 0.0 :
-        static_cast<double>(cycles) / (cpu_freq_mhz * 1000.0);
     auto miss_rate = [](uint64_t miss, uint64_t total) {
         return total == 0 ? 0.0 : static_cast<double>(miss) /
                                 static_cast<double>(total);
     };
 
     out << "  \"perf\": {\n";
-    out << "    \"cpu_freq_mhz\": " << cpu_freq_mhz << ",\n";
-    out << "    \"elapsed_ms_by_cpu_freq\": " << elapsed_ms << ",\n";
-    out << "    \"soc_counter_freq_mhz\": " << DEFAULT_SOC_FREQ_MHZ << ",\n";
     out << "    \"core_cycle\": " << core_cycle << ",\n";
     out << "    \"commit_count\": " << commit_count << ",\n";
     out << "    \"ipc\": " << ipc << ",\n";

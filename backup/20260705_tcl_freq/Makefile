@@ -1,6 +1,5 @@
 PYTHON ?= python3
 SRC_MAX_CYCLES ?= 100000000
-CPU_FREQ_MHZ ?= 50
 
 COMMON_SIM_ARGS = \
 	$(if $(MAX_CYCLES),--max-cycles $(MAX_CYCLES),) \
@@ -17,7 +16,6 @@ SRC_SIM_ARGS = \
 	$(if $(NO_BUILD),--no-build,) \
 	$(if $(BUILD_JOBS),--build-jobs $(BUILD_JOBS),) \
 	$(if $(BUILD_CXX),--build-cxx $(BUILD_CXX),) \
-	--cpu-freq-mhz $(CPU_FREQ_MHZ) \
 	$(if $(SRC_SEG_GRACE),--src-seg-grace $(SRC_SEG_GRACE),)
 
 .PHONY: sim-rv32 sim-rv32-all sim-src sim-src-all verilator-build verilator-build-src
