@@ -84,6 +84,32 @@ struct CorePerfSample {
     uint64_t jal_miss_count = 0;
     uint64_t jalr_count = 0;
     uint64_t jalr_miss_count = 0;
+    uint64_t frontend_stall_cycles = 0;
+    uint64_t id_stall_cycles = 0;
+    uint64_t rn_stall_cycles = 0;
+    uint64_t ds_stall_cycles = 0;
+    uint64_t is_stall_cycles = 0;
+    uint64_t rr_stall_cycles = 0;
+    uint64_t ex_stall_cycles = 0;
+    uint64_t wb_stall_cycles = 0;
+    uint64_t rob_full_cycles = 0;
+    uint64_t issue_queue_full_cycles = 0;
+    uint64_t free_list_empty_cycles = 0;
+    uint64_t store_buffer_full_cycles = 0;
+    uint64_t serial_block_cycles = 0;
+    uint64_t mem_load_return_block_cycles = 0;
+    uint64_t mem_load_access_block_cycles = 0;
+    uint64_t store_commit_blocked_by_load_cycles = 0;
+    uint64_t recovery_cycles = 0;
+    uint64_t dispatch_width0_cycles = 0;
+    uint64_t dispatch_width1_cycles = 0;
+    uint64_t dispatch_width2_cycles = 0;
+    uint64_t issue_width0_cycles = 0;
+    uint64_t issue_width1_cycles = 0;
+    uint64_t issue_width2_cycles = 0;
+    uint64_t commit_width0_cycles = 0;
+    uint64_t commit_width1_cycles = 0;
+    uint64_t commit_width2_cycles = 0;
 };
 
 struct SimResult {

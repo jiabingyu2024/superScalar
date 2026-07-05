@@ -32,6 +32,8 @@
       logic rrStallReq;
       logic exStallReq;
       logic wbStallReq;
+      logic memLoadReturnBlockReq;
+      logic memLoadAccessBlockReq;
 
       // 资源/顺序化阻塞
       logic robFull;
@@ -64,6 +66,8 @@
           input  rrStallReq,
           input  exStallReq,
           input  wbStallReq,
+          input  memLoadReturnBlockReq,
+          input  memLoadAccessBlockReq,
 
           input  robFull,
           input  issueQueueFull,
@@ -144,6 +148,8 @@
       modport ExecuteStage(
           input  exPipe,
           output exStallReq,
+          output memLoadReturnBlockReq,
+          output memLoadAccessBlockReq,
           output aluStageEmpty,
           output memStageEmpty,
           output mulStageEmpty,

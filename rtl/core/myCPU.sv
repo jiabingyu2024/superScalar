@@ -32,7 +32,33 @@ module myCPU (
     output logic [63:0] dbg_perf_jal,
     output logic [63:0] dbg_perf_jal_miss,
     output logic [63:0] dbg_perf_jalr,
-    output logic [63:0] dbg_perf_jalr_miss
+    output logic [63:0] dbg_perf_jalr_miss,
+    output logic [63:0] dbg_perf_frontend_stall_cycles,
+    output logic [63:0] dbg_perf_id_stall_cycles,
+    output logic [63:0] dbg_perf_rn_stall_cycles,
+    output logic [63:0] dbg_perf_ds_stall_cycles,
+    output logic [63:0] dbg_perf_is_stall_cycles,
+    output logic [63:0] dbg_perf_rr_stall_cycles,
+    output logic [63:0] dbg_perf_ex_stall_cycles,
+    output logic [63:0] dbg_perf_wb_stall_cycles,
+    output logic [63:0] dbg_perf_rob_full_cycles,
+    output logic [63:0] dbg_perf_issue_queue_full_cycles,
+    output logic [63:0] dbg_perf_free_list_empty_cycles,
+    output logic [63:0] dbg_perf_store_buffer_full_cycles,
+    output logic [63:0] dbg_perf_serial_block_cycles,
+    output logic [63:0] dbg_perf_mem_load_return_block_cycles,
+    output logic [63:0] dbg_perf_mem_load_access_block_cycles,
+    output logic [63:0] dbg_perf_store_commit_blocked_by_load_cycles,
+    output logic [63:0] dbg_perf_recovery_cycles,
+    output logic [63:0] dbg_perf_dispatch_width0_cycles,
+    output logic [63:0] dbg_perf_dispatch_width1_cycles,
+    output logic [63:0] dbg_perf_dispatch_width2_cycles,
+    output logic [63:0] dbg_perf_issue_width0_cycles,
+    output logic [63:0] dbg_perf_issue_width1_cycles,
+    output logic [63:0] dbg_perf_issue_width2_cycles,
+    output logic [63:0] dbg_perf_commit_width0_cycles,
+    output logic [63:0] dbg_perf_commit_width1_cycles,
+    output logic [63:0] dbg_perf_commit_width2_cycles
 `endif
 );
 
@@ -74,6 +100,32 @@ module myCPU (
     assign dbg_perf_jal_miss = perfIF.jalMissCnt;
     assign dbg_perf_jalr = perfIF.jalrCnt;
     assign dbg_perf_jalr_miss = perfIF.jalrMissCnt;
+    assign dbg_perf_frontend_stall_cycles = perfIF.frontendStallCycles;
+    assign dbg_perf_id_stall_cycles = perfIF.idStallCycles;
+    assign dbg_perf_rn_stall_cycles = perfIF.rnStallCycles;
+    assign dbg_perf_ds_stall_cycles = perfIF.dsStallCycles;
+    assign dbg_perf_is_stall_cycles = perfIF.isStallCycles;
+    assign dbg_perf_rr_stall_cycles = perfIF.rrStallCycles;
+    assign dbg_perf_ex_stall_cycles = perfIF.exStallCycles;
+    assign dbg_perf_wb_stall_cycles = perfIF.wbStallCycles;
+    assign dbg_perf_rob_full_cycles = perfIF.robFullCycles;
+    assign dbg_perf_issue_queue_full_cycles = perfIF.issueQueueFullCycles;
+    assign dbg_perf_free_list_empty_cycles = perfIF.freeListEmptyCycles;
+    assign dbg_perf_store_buffer_full_cycles = perfIF.storeBufferFullCycles;
+    assign dbg_perf_serial_block_cycles = perfIF.serialBlockCycles;
+    assign dbg_perf_mem_load_return_block_cycles = perfIF.memLoadReturnBlockCycles;
+    assign dbg_perf_mem_load_access_block_cycles = perfIF.memLoadAccessBlockCycles;
+    assign dbg_perf_store_commit_blocked_by_load_cycles = perfIF.storeCommitBlockedByLoadCycles;
+    assign dbg_perf_recovery_cycles = perfIF.recoveryCycles;
+    assign dbg_perf_dispatch_width0_cycles = perfIF.dispatchWidth0Cycles;
+    assign dbg_perf_dispatch_width1_cycles = perfIF.dispatchWidth1Cycles;
+    assign dbg_perf_dispatch_width2_cycles = perfIF.dispatchWidth2Cycles;
+    assign dbg_perf_issue_width0_cycles = perfIF.issueWidth0Cycles;
+    assign dbg_perf_issue_width1_cycles = perfIF.issueWidth1Cycles;
+    assign dbg_perf_issue_width2_cycles = perfIF.issueWidth2Cycles;
+    assign dbg_perf_commit_width0_cycles = perfIF.commitWidth0Cycles;
+    assign dbg_perf_commit_width1_cycles = perfIF.commitWidth1Cycles;
+    assign dbg_perf_commit_width2_cycles = perfIF.commitWidth2Cycles;
 `endif
 
     core u_core (

@@ -139,12 +139,20 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
             for (int i = 0; i < ISSUE_QUEUE_DEPTH; i++) begin
                 if (valid[i]) begin
                     if (entries[i].srcAMatched && !entries[i].srcARdy) begin
-                        if (entries[i].srcAShift != '0) begin
+                        if (entries[i].srcAShift == ShiftType'(1)) begin
+                            entries[i].srcARdy <= 1'b1;
+                            entries[i].srcAMatched <= 1'b0;
+                            entries[i].srcAShift <= '0;
+                        end else if (entries[i].srcAShift != '0) begin
                             entries[i].srcAShift <= {1'b0, entries[i].srcAShift[SHIFT_WIDTH-1:1]};
                         end
                     end
                     if (entries[i].srcBMatched && !entries[i].srcBRdy) begin
-                        if (entries[i].srcBShift != '0) begin
+                        if (entries[i].srcBShift == ShiftType'(1)) begin
+                            entries[i].srcBRdy <= 1'b1;
+                            entries[i].srcBMatched <= 1'b0;
+                            entries[i].srcBShift <= '0;
+                        end else if (entries[i].srcBShift != '0) begin
                             entries[i].srcBShift <= {1'b0, entries[i].srcBShift[SHIFT_WIDTH-1:1]};
                         end
                     end
@@ -195,12 +203,16 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
                         end
                         if (valid[j] && self.IssuePopRes[i].entry.writeDst) begin
                             if (entries[j].srcA == self.IssuePopRes[i].entry.dst && !entries[j].srcARdy) begin
-                                entries[j].srcAMatched <= 1'b1;
-                                entries[j].srcAShift <= self.IssuePopRes[i].entry.delay;
+                                if (self.IssuePopRes[i].entry.delay == ShiftType'(1)) begin
+                                    entries[j].srcAMatched <= 1'b1;
+                                    entries[j].srcAShift <= self.IssuePopRes[i].entry.delay;
+                                end
                             end
                             if (entries[j].srcB == self.IssuePopRes[i].entry.dst && !entries[j].srcBRdy) begin
-                                entries[j].srcBMatched <= 1'b1;
-                                entries[j].srcBShift <= self.IssuePopRes[i].entry.delay;
+                                if (self.IssuePopRes[i].entry.delay == ShiftType'(1)) begin
+                                    entries[j].srcBMatched <= 1'b1;
+                                    entries[j].srcBShift <= self.IssuePopRes[i].entry.delay;
+                                end
                             end
                         end
                     end

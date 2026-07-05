@@ -51,7 +51,33 @@ module student_top#(
     output logic [63:0]                         dbg_perf_jal,
     output logic [63:0]                         dbg_perf_jal_miss,
     output logic [63:0]                         dbg_perf_jalr,
-    output logic [63:0]                         dbg_perf_jalr_miss
+    output logic [63:0]                         dbg_perf_jalr_miss,
+    output logic [63:0]                         dbg_perf_frontend_stall_cycles,
+    output logic [63:0]                         dbg_perf_id_stall_cycles,
+    output logic [63:0]                         dbg_perf_rn_stall_cycles,
+    output logic [63:0]                         dbg_perf_ds_stall_cycles,
+    output logic [63:0]                         dbg_perf_is_stall_cycles,
+    output logic [63:0]                         dbg_perf_rr_stall_cycles,
+    output logic [63:0]                         dbg_perf_ex_stall_cycles,
+    output logic [63:0]                         dbg_perf_wb_stall_cycles,
+    output logic [63:0]                         dbg_perf_rob_full_cycles,
+    output logic [63:0]                         dbg_perf_issue_queue_full_cycles,
+    output logic [63:0]                         dbg_perf_free_list_empty_cycles,
+    output logic [63:0]                         dbg_perf_store_buffer_full_cycles,
+    output logic [63:0]                         dbg_perf_serial_block_cycles,
+    output logic [63:0]                         dbg_perf_mem_load_return_block_cycles,
+    output logic [63:0]                         dbg_perf_mem_load_access_block_cycles,
+    output logic [63:0]                         dbg_perf_store_commit_blocked_by_load_cycles,
+    output logic [63:0]                         dbg_perf_recovery_cycles,
+    output logic [63:0]                         dbg_perf_dispatch_width0_cycles,
+    output logic [63:0]                         dbg_perf_dispatch_width1_cycles,
+    output logic [63:0]                         dbg_perf_dispatch_width2_cycles,
+    output logic [63:0]                         dbg_perf_issue_width0_cycles,
+    output logic [63:0]                         dbg_perf_issue_width1_cycles,
+    output logic [63:0]                         dbg_perf_issue_width2_cycles,
+    output logic [63:0]                         dbg_perf_commit_width0_cycles,
+    output logic [63:0]                         dbg_perf_commit_width1_cycles,
+    output logic [63:0]                         dbg_perf_commit_width2_cycles
 `endif
 );
 
@@ -80,6 +106,32 @@ module student_top#(
     logic [63:0] perf_jal_miss;
     logic [63:0] perf_jalr;
     logic [63:0] perf_jalr_miss;
+    logic [63:0] perf_frontend_stall_cycles;
+    logic [63:0] perf_id_stall_cycles;
+    logic [63:0] perf_rn_stall_cycles;
+    logic [63:0] perf_ds_stall_cycles;
+    logic [63:0] perf_is_stall_cycles;
+    logic [63:0] perf_rr_stall_cycles;
+    logic [63:0] perf_ex_stall_cycles;
+    logic [63:0] perf_wb_stall_cycles;
+    logic [63:0] perf_rob_full_cycles;
+    logic [63:0] perf_issue_queue_full_cycles;
+    logic [63:0] perf_free_list_empty_cycles;
+    logic [63:0] perf_store_buffer_full_cycles;
+    logic [63:0] perf_serial_block_cycles;
+    logic [63:0] perf_mem_load_return_block_cycles;
+    logic [63:0] perf_mem_load_access_block_cycles;
+    logic [63:0] perf_store_commit_blocked_by_load_cycles;
+    logic [63:0] perf_recovery_cycles;
+    logic [63:0] perf_dispatch_width0_cycles;
+    logic [63:0] perf_dispatch_width1_cycles;
+    logic [63:0] perf_dispatch_width2_cycles;
+    logic [63:0] perf_issue_width0_cycles;
+    logic [63:0] perf_issue_width1_cycles;
+    logic [63:0] perf_issue_width2_cycles;
+    logic [63:0] perf_commit_width0_cycles;
+    logic [63:0] perf_commit_width1_cycles;
+    logic [63:0] perf_commit_width2_cycles;
 `endif
 
     // 16KB = 2^12 * 32bit
@@ -139,7 +191,33 @@ module student_top#(
         .dbg_perf_jal(perf_jal),
         .dbg_perf_jal_miss(perf_jal_miss),
         .dbg_perf_jalr(perf_jalr),
-        .dbg_perf_jalr_miss(perf_jalr_miss)
+        .dbg_perf_jalr_miss(perf_jalr_miss),
+        .dbg_perf_frontend_stall_cycles(perf_frontend_stall_cycles),
+        .dbg_perf_id_stall_cycles(perf_id_stall_cycles),
+        .dbg_perf_rn_stall_cycles(perf_rn_stall_cycles),
+        .dbg_perf_ds_stall_cycles(perf_ds_stall_cycles),
+        .dbg_perf_is_stall_cycles(perf_is_stall_cycles),
+        .dbg_perf_rr_stall_cycles(perf_rr_stall_cycles),
+        .dbg_perf_ex_stall_cycles(perf_ex_stall_cycles),
+        .dbg_perf_wb_stall_cycles(perf_wb_stall_cycles),
+        .dbg_perf_rob_full_cycles(perf_rob_full_cycles),
+        .dbg_perf_issue_queue_full_cycles(perf_issue_queue_full_cycles),
+        .dbg_perf_free_list_empty_cycles(perf_free_list_empty_cycles),
+        .dbg_perf_store_buffer_full_cycles(perf_store_buffer_full_cycles),
+        .dbg_perf_serial_block_cycles(perf_serial_block_cycles),
+        .dbg_perf_mem_load_return_block_cycles(perf_mem_load_return_block_cycles),
+        .dbg_perf_mem_load_access_block_cycles(perf_mem_load_access_block_cycles),
+        .dbg_perf_store_commit_blocked_by_load_cycles(perf_store_commit_blocked_by_load_cycles),
+        .dbg_perf_recovery_cycles(perf_recovery_cycles),
+        .dbg_perf_dispatch_width0_cycles(perf_dispatch_width0_cycles),
+        .dbg_perf_dispatch_width1_cycles(perf_dispatch_width1_cycles),
+        .dbg_perf_dispatch_width2_cycles(perf_dispatch_width2_cycles),
+        .dbg_perf_issue_width0_cycles(perf_issue_width0_cycles),
+        .dbg_perf_issue_width1_cycles(perf_issue_width1_cycles),
+        .dbg_perf_issue_width2_cycles(perf_issue_width2_cycles),
+        .dbg_perf_commit_width0_cycles(perf_commit_width0_cycles),
+        .dbg_perf_commit_width1_cycles(perf_commit_width1_cycles),
+        .dbg_perf_commit_width2_cycles(perf_commit_width2_cycles)
 `endif
     );
 
@@ -187,6 +265,32 @@ module student_top#(
     assign dbg_perf_jal_miss = perf_jal_miss;
     assign dbg_perf_jalr = perf_jalr;
     assign dbg_perf_jalr_miss = perf_jalr_miss;
+    assign dbg_perf_frontend_stall_cycles = perf_frontend_stall_cycles;
+    assign dbg_perf_id_stall_cycles = perf_id_stall_cycles;
+    assign dbg_perf_rn_stall_cycles = perf_rn_stall_cycles;
+    assign dbg_perf_ds_stall_cycles = perf_ds_stall_cycles;
+    assign dbg_perf_is_stall_cycles = perf_is_stall_cycles;
+    assign dbg_perf_rr_stall_cycles = perf_rr_stall_cycles;
+    assign dbg_perf_ex_stall_cycles = perf_ex_stall_cycles;
+    assign dbg_perf_wb_stall_cycles = perf_wb_stall_cycles;
+    assign dbg_perf_rob_full_cycles = perf_rob_full_cycles;
+    assign dbg_perf_issue_queue_full_cycles = perf_issue_queue_full_cycles;
+    assign dbg_perf_free_list_empty_cycles = perf_free_list_empty_cycles;
+    assign dbg_perf_store_buffer_full_cycles = perf_store_buffer_full_cycles;
+    assign dbg_perf_serial_block_cycles = perf_serial_block_cycles;
+    assign dbg_perf_mem_load_return_block_cycles = perf_mem_load_return_block_cycles;
+    assign dbg_perf_mem_load_access_block_cycles = perf_mem_load_access_block_cycles;
+    assign dbg_perf_store_commit_blocked_by_load_cycles = perf_store_commit_blocked_by_load_cycles;
+    assign dbg_perf_recovery_cycles = perf_recovery_cycles;
+    assign dbg_perf_dispatch_width0_cycles = perf_dispatch_width0_cycles;
+    assign dbg_perf_dispatch_width1_cycles = perf_dispatch_width1_cycles;
+    assign dbg_perf_dispatch_width2_cycles = perf_dispatch_width2_cycles;
+    assign dbg_perf_issue_width0_cycles = perf_issue_width0_cycles;
+    assign dbg_perf_issue_width1_cycles = perf_issue_width1_cycles;
+    assign dbg_perf_issue_width2_cycles = perf_issue_width2_cycles;
+    assign dbg_perf_commit_width0_cycles = perf_commit_width0_cycles;
+    assign dbg_perf_commit_width1_cycles = perf_commit_width1_cycles;
+    assign dbg_perf_commit_width2_cycles = perf_commit_width2_cycles;
 `endif
 
 endmodule

@@ -298,6 +298,18 @@ src 的 `correctness` 关键字段：
 | `perf.branch_breakdown.jalr` | `JALR` 提交数、miss 数和 miss rate。 |
 | `perf.memory.dram_read_count/dram_write_count` | DUT 对 DRAM 区域的读/写请求数。 |
 | `perf.memory.mmio_read_count/mmio_write_count` | DUT 对 MMIO 区域的读/写请求数。 |
+| `perf.stalls.frontend_cycles` | PF stall 周期数，可近似看作前端被全局阻塞的周期。 |
+| `perf.stalls.id/rn/ds/is/rr/ex/wb_cycles` | 各级 `PipeCtrlPath.stall` 周期数；这些桶不是互斥分类。 |
+| `perf.stalls.recovery_cycles` | 发生 recovery 事件的周期数。 |
+| `perf.resources.rob_full_cycles` | ROB 满导致或参与阻塞的周期数。 |
+| `perf.resources.issue_queue_full_cycles` | IssueQueue 满导致或参与阻塞的周期数。 |
+| `perf.resources.free_list_empty_cycles` | FreeList 空导致或参与阻塞的周期数。 |
+| `perf.resources.store_buffer_full_cycles` | StoreBuffer 分配不可用导致或参与 Dispatch 阻塞的周期数。 |
+| `perf.resources.serial_block_cycles` | serial/system 指令顺序化阻塞周期数。 |
+| `perf.mem_stalls.load_return_block_cycles` | `ExecuteMemStage` 因 load 返回和当前 MEM pipe 冲突拉 `exStallReq` 的周期数。 |
+| `perf.mem_stalls.load_access_block_cycles` | load 发起阶段被 StoreBuffer/DRAM access ready 阻塞的周期数。 |
+| `perf.mem_stalls.store_commit_blocked_by_load_cycles` | StoreBuffer head store 请求提交但同周期 DRAM 被 load 读优先占用的周期数。 |
+| `perf.width.dispatch/issue/commit.w0/w1/w2_cycles` | 每周期对应阶段实际宽度为 0/1/2 的分布，用于判断二路是否真正被利用。 |
 | `perf.counter` | counter 起停周期和最终 ms。 |
 | `perf.led/perf.seg` | LED/SEG 首次、末次、非零写入值和周期。 |
 
@@ -317,9 +329,9 @@ perf.ipc = perf.commit_count / cycles
 
 `commit_count` 和 `branch_*` 来自 core 的 `PerfIF` debug 口，不按 TB wall-clock 或 MMIO 访问数估算。`PerfIF` 在每个 core 周期累加 `cycle`，按两路 `commitValid` 累加提交指令数，按 commit 阶段分支更新/branch miss 累加分支统计，并按 `conditional/JAL/JALR` 细分。因此 IPC 低首先表示 core 在该 workload 下实际提交密度低；后续需要结合 `branch_breakdown`、store/mem 阻塞、分支提交停止后续 commit、恢复 flush 代价等 RTL 行为分析。
 
-rv32/myCPU 和 src/student_top 都通过 `VERILATOR_TB` 条件编译读取 core `PerfIF`，不改变 FPGA 正式接口。
+rv32/myCPU 和 src/student_top 都通过 `VERILATOR_TB` 条件编译读取 core `PerfIF`，不改变 FPGA 正式接口。新增 stall/resource/width 字段来自 RTL 内部计数器，TIMEOUT 结果同样会输出，因此适合用小 `MAX_CYCLES` 做性能瓶颈抽样。
 
-当测试 PASS/FAIL、跑到 `MAX_CYCLES` 上限，或收到键盘中断 `SIGINT`/`SIGTERM` 时，TB 都会输出当前已经累计的 JSON。中断时 `status` 为 `INTERRUPTED`，`perf.branch_hit_rate` 等字段表示已运行部分的统计结果。
+当测试 PASS/FAIL 或跑到 `MAX_CYCLES` 上限时，TB 会输出当前已经累计的 JSON。C++ harness 内部也支持 `SIGINT/SIGTERM` 收尾输出 `INTERRUPTED`，但从 `make -> python -> simulator` 链路按 Ctrl-C 时，信号可能先终止包装层，实际是否留下 JSON 取决于信号传递时机；需要稳定中断结果时，优先用较小 `MAX_CYCLES` 主动结束。
 
 ## 生成输出
 

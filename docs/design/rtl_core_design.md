@@ -330,7 +330,17 @@ IssueQueue 保存轻量调度信息。选择策略：
 WriteBackStage -> IssueWakeup[WAY_NUM * 5]
 ```
 
-另外，IssueQueue 会在发射时根据生产者 delay 设置 `srcAShift/srcBShift`，但当前 ready 实际主要由 WB wakeup 拉高。
+另外，IssueQueue 会在发射生产者时检查等待同一物理目的寄存器的消费者。当前只对 `delay == 1` 的生产者启用保守预计唤醒：
+
+```text
+producer issue，delay=1
+  -> consumer.srcMatched=1，srcShift=1
+下一拍 IssueQueue 将 srcRdy 置 1
+  -> consumer 可被选择发射
+  -> 到达 EX 时依赖值应已能通过 WB bypass 或 negedge 写回后的 RegFile 读取得到
+```
+
+MUL/MEM/DIV 等 `delay > 1` 的生产者暂不使用该预计唤醒，仍等待 `WriteBackStage` 的真实 `IssueWakeup`。这是因为当前长延迟 IP、MEM load metadata 和 WB bypass 的相位不同，直接用 `srcShift` 全类型提前 ready 已在 `rv32um-p-mul/div` 中暴露过早发射风险。
 
 ### 10.4 Payload
 
@@ -431,7 +441,7 @@ T2: loadMetaPipe1.valid 时，使用 dram.exReadData 生成 WB 结果
 
 若 load 对 StoreBuffer 有部分字节命中，T0 同时把命中字节保存到 `loadIssueMeta.forwardData/forwardMask`。T2 用 `forwardMask` 覆盖 `dram.exReadData` 中对应字节，再执行 load subtype 的符号/零扩展。该路径用于处理同 word 的 `SB/SH` 后跟 `LW/LH/LB`，同时保持 core 对外仍输出 raw store data/mask。
 
-load 返回结果固定写入 `nextMemToStage[0]`。若同周期当前 MEM pipe 里只有一条新 uop，则该 uop 的即时结果写入 `nextMemToStage[1]`，允许“上一条 load 返回 + 当前一条 store/forward-hit load/新 load 发起”同周期通过。只有当 `loadMetaPipe1.valid` 且当前 MEM pipe 已占满两个有效 uop 时，才拉 `loadReturnBlocked` 阻塞 EX，避免两个 WB lane 不够用。
+当前采用保守返回策略：只要 `loadMetaPipe1.valid` 且当前 MEM pipe 中存在任意有效 uop，就拉 `loadReturnBlocked`，并通过 `ctrl.exStallReq` 阻塞 EX/上游。这样保证返回 load 固定占用 `nextMemToStage[0]`，不会和当前 MEM pipe 的 store/forward-hit load/新 load 发起争用 WB lane。`031` 曾尝试允许“load 返回 + 当前单个 MEM uop”同周期合并，但短 src 观测收益不稳定，已回退。
 
 ### 13.3 M 扩展执行单元与 MUL_0/DIV_0 IP
 
@@ -607,8 +617,19 @@ commitRecoveryReq > writeBackRecoveryReq
 | `perf.condBranchCnt/condBranchMissCnt` | 条件分支提交数和 miss 数。 |
 | `perf.jalCnt/jalMissCnt` | `JAL` 提交数和 miss 数。 |
 | `perf.jalrCnt/jalrMissCnt` | `JALR` 提交数和 miss 数。 |
+| `perf.*StallCycles` | 各流水级 `PipeCtrlPath.stall` 的周期计数，`frontendStallCycles` 使用 PF stall。 |
+| `perf.robFullCycles` | `ctrlIF.robFull` 为 1 的周期数。 |
+| `perf.issueQueueFullCycles` | `ctrlIF.issueQueueFull` 为 1 的周期数。 |
+| `perf.freeListEmptyCycles` | `ctrlIF.freeListEmpty` 为 1 的周期数。 |
+| `perf.storeBufferFullCycles` | Dispatch 因 store 需要分配但 `StoreBuffer.allocRdy=0` 相关的阻塞周期数。 |
+| `perf.serialBlockCycles` | Commit/Rename 因 serial/system 指令顺序化产生的阻塞周期数。 |
+| `perf.memLoadReturnBlockCycles` | `ExecuteMemStage` 因 load 返回和当前 MEM pipe 冲突拉起的阻塞周期数。 |
+| `perf.memLoadAccessBlockCycles` | load 发起被 StoreBuffer/DRAM access ready 阻塞的周期数。 |
+| `perf.storeCommitBlockedByLoadCycles` | StoreBuffer head store 已请求提交但同周期 DRAM 被 load 读优先占用的周期数。 |
+| `perf.recoveryCycles` | `RecoveryManager` 发出恢复事件的周期数。 |
+| `perf.dispatch/issue/commitWidth*Cycles` | 每周期 dispatch/issue/commit 宽度为 0/1/2 的分布。 |
 
-这些计数通过 `VERILATOR_TB` 条件编译从 `myCPU/student_top` debug 口引出，不改变 FPGA 正式端口。
+这些计数通过 `VERILATOR_TB` 条件编译从 `myCPU/student_top` debug 口引出，不改变 FPGA 正式端口。stall/resource 计数不是互斥分类，同一周期可能同时命中多个桶；它们用于定位低 IPC 的主要现象，而不是直接相加还原总周期。
 
 `srcSmoke` 当前实测 IPC 约 `0.422`，不是 TB wall-clock 口径，而是 `commitCnt / cycles`。分类计数显示：
 

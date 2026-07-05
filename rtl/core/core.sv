@@ -118,16 +118,90 @@ module core(
             perf.jalMissCnt <= '0;
             perf.jalrCnt <= '0;
             perf.jalrMissCnt <= '0;
+            perf.frontendStallCycles <= '0;
+            perf.idStallCycles <= '0;
+            perf.rnStallCycles <= '0;
+            perf.dsStallCycles <= '0;
+            perf.isStallCycles <= '0;
+            perf.rrStallCycles <= '0;
+            perf.exStallCycles <= '0;
+            perf.wbStallCycles <= '0;
+            perf.robFullCycles <= '0;
+            perf.issueQueueFullCycles <= '0;
+            perf.freeListEmptyCycles <= '0;
+            perf.storeBufferFullCycles <= '0;
+            perf.serialBlockCycles <= '0;
+            perf.memLoadReturnBlockCycles <= '0;
+            perf.memLoadAccessBlockCycles <= '0;
+            perf.storeCommitBlockedByLoadCycles <= '0;
+            perf.recoveryCycles <= '0;
+            perf.dispatchWidth0Cycles <= '0;
+            perf.dispatchWidth1Cycles <= '0;
+            perf.dispatchWidth2Cycles <= '0;
+            perf.issueWidth0Cycles <= '0;
+            perf.issueWidth1Cycles <= '0;
+            perf.issueWidth2Cycles <= '0;
+            perf.commitWidth0Cycles <= '0;
+            perf.commitWidth1Cycles <= '0;
+            perf.commitWidth2Cycles <= '0;
         end else begin
             int commitThisCycle;
+            int dispatchThisCycle;
+            int issueThisCycle;
             commitThisCycle = 0;
+            dispatchThisCycle = 0;
+            issueThisCycle = 0;
             perf.cycle <= perf.cycle + 1'b1;
             for (int i = 0; i < WAY_NUM; i++) begin
                 if (cmStageIF.commitValid[i]) begin
                     commitThisCycle++;
                 end
+                if (dsStageIF.nextStage[i].valid) begin
+                    dispatchThisCycle++;
+                end
+                if (isStageIF.nextStage[i].valid) begin
+                    issueThisCycle++;
+                end
             end
             perf.commitCnt <= perf.commitCnt + commitThisCycle;
+            perf.frontendStallCycles <= perf.frontendStallCycles + ctrlIF.pfPipe.stall;
+            perf.idStallCycles <= perf.idStallCycles + ctrlIF.idPipe.stall;
+            perf.rnStallCycles <= perf.rnStallCycles + ctrlIF.rnPipe.stall;
+            perf.dsStallCycles <= perf.dsStallCycles + ctrlIF.dsPipe.stall;
+            perf.isStallCycles <= perf.isStallCycles + ctrlIF.isPipe.stall;
+            perf.rrStallCycles <= perf.rrStallCycles + ctrlIF.rrPipe.stall;
+            perf.exStallCycles <= perf.exStallCycles + ctrlIF.exPipe.stall;
+            perf.wbStallCycles <= perf.wbStallCycles + ctrlIF.wbPipe.stall;
+            perf.robFullCycles <= perf.robFullCycles + ctrlIF.robFull;
+            perf.issueQueueFullCycles <= perf.issueQueueFullCycles + ctrlIF.issueQueueFull;
+            perf.freeListEmptyCycles <= perf.freeListEmptyCycles + ctrlIF.freeListEmpty;
+            perf.storeBufferFullCycles <= perf.storeBufferFullCycles +
+                                          (ctrlIF.dsStallReq && !storeBufferIF.allocRdy);
+            perf.serialBlockCycles <= perf.serialBlockCycles + ctrlIF.serialBlock;
+            perf.memLoadReturnBlockCycles <= perf.memLoadReturnBlockCycles +
+                                             ctrlIF.memLoadReturnBlockReq;
+            perf.memLoadAccessBlockCycles <= perf.memLoadAccessBlockCycles +
+                                             ctrlIF.memLoadAccessBlockReq;
+            perf.storeCommitBlockedByLoadCycles <= perf.storeCommitBlockedByLoadCycles +
+                (storeBufferIF.StoreBufferCommitReq.valid &&
+                 storeBufferIF.StoreBufferCommit.valid &&
+                 dromAccess.exReadEn);
+            perf.recoveryCycles <= perf.recoveryCycles + recoveryManagerIF.recoveryInfo.valid;
+            unique case (dispatchThisCycle)
+                0: perf.dispatchWidth0Cycles <= perf.dispatchWidth0Cycles + 1'b1;
+                1: perf.dispatchWidth1Cycles <= perf.dispatchWidth1Cycles + 1'b1;
+                default: perf.dispatchWidth2Cycles <= perf.dispatchWidth2Cycles + 1'b1;
+            endcase
+            unique case (issueThisCycle)
+                0: perf.issueWidth0Cycles <= perf.issueWidth0Cycles + 1'b1;
+                1: perf.issueWidth1Cycles <= perf.issueWidth1Cycles + 1'b1;
+                default: perf.issueWidth2Cycles <= perf.issueWidth2Cycles + 1'b1;
+            endcase
+            unique case (commitThisCycle)
+                0: perf.commitWidth0Cycles <= perf.commitWidth0Cycles + 1'b1;
+                1: perf.commitWidth1Cycles <= perf.commitWidth1Cycles + 1'b1;
+                default: perf.commitWidth2Cycles <= perf.commitWidth2Cycles + 1'b1;
+            endcase
             if (recoveryManagerIF.commitBranchUpdateValid) begin
                 perf.branchCnt <= perf.branchCnt + 1'b1;
                 unique case (cmStageIF.commitBranchSubType)

@@ -1,5 +1,7 @@
 # ExecuteMem load 返回合并优化记录
 
+> 2026-07-05 更新：该优化已在 `033_issuequeue_wakeup_and_perf_buckets.md` 中回退。短 src 观测显示该改动没有带来稳定收益，且可能加重持续 load 对 StoreBuffer store commit 的挤压。当前 RTL 恢复为旧的保守策略：`loadMetaPipe1.valid && currentMemValid` 时阻塞当前 MEM pipe。
+
 ## 背景
 
 旧版 `ExecuteMemStage` 在 load 返回时使用如下条件拉全局 EX stall：

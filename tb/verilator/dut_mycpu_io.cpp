@@ -35,6 +35,33 @@ CorePerfSample capture_mycpu_perf(const VmyCPU& top) {
     sample.jal_miss_count = top.dbg_perf_jal_miss;
     sample.jalr_count = top.dbg_perf_jalr;
     sample.jalr_miss_count = top.dbg_perf_jalr_miss;
+    sample.frontend_stall_cycles = top.dbg_perf_frontend_stall_cycles;
+    sample.id_stall_cycles = top.dbg_perf_id_stall_cycles;
+    sample.rn_stall_cycles = top.dbg_perf_rn_stall_cycles;
+    sample.ds_stall_cycles = top.dbg_perf_ds_stall_cycles;
+    sample.is_stall_cycles = top.dbg_perf_is_stall_cycles;
+    sample.rr_stall_cycles = top.dbg_perf_rr_stall_cycles;
+    sample.ex_stall_cycles = top.dbg_perf_ex_stall_cycles;
+    sample.wb_stall_cycles = top.dbg_perf_wb_stall_cycles;
+    sample.rob_full_cycles = top.dbg_perf_rob_full_cycles;
+    sample.issue_queue_full_cycles = top.dbg_perf_issue_queue_full_cycles;
+    sample.free_list_empty_cycles = top.dbg_perf_free_list_empty_cycles;
+    sample.store_buffer_full_cycles = top.dbg_perf_store_buffer_full_cycles;
+    sample.serial_block_cycles = top.dbg_perf_serial_block_cycles;
+    sample.mem_load_return_block_cycles = top.dbg_perf_mem_load_return_block_cycles;
+    sample.mem_load_access_block_cycles = top.dbg_perf_mem_load_access_block_cycles;
+    sample.store_commit_blocked_by_load_cycles =
+        top.dbg_perf_store_commit_blocked_by_load_cycles;
+    sample.recovery_cycles = top.dbg_perf_recovery_cycles;
+    sample.dispatch_width0_cycles = top.dbg_perf_dispatch_width0_cycles;
+    sample.dispatch_width1_cycles = top.dbg_perf_dispatch_width1_cycles;
+    sample.dispatch_width2_cycles = top.dbg_perf_dispatch_width2_cycles;
+    sample.issue_width0_cycles = top.dbg_perf_issue_width0_cycles;
+    sample.issue_width1_cycles = top.dbg_perf_issue_width1_cycles;
+    sample.issue_width2_cycles = top.dbg_perf_issue_width2_cycles;
+    sample.commit_width0_cycles = top.dbg_perf_commit_width0_cycles;
+    sample.commit_width1_cycles = top.dbg_perf_commit_width1_cycles;
+    sample.commit_width2_cycles = top.dbg_perf_commit_width2_cycles;
     return sample;
 }
 

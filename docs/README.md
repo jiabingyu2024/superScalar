@@ -57,6 +57,9 @@
 | `archive/2026-07-05/029_vivado_package_constant_visibility_fix.md` | 整理 `types/package` 的包内可见性与编译顺序，修复 Vivado 综合对 `WAY_NUM` 等共享常量的可见性问题。 |
 | `archive/2026-07-05/030_div_ip_blocking_output_port_fix.md` | 修正 `DIV_0` blocking flow-control 输出端口契约，删除不存在的 `m_axis_dout_tready` 连接。 |
 | `archive/2026-07-05/031_execute_mem_load_return_merge.md` | 优化 ExecuteMem load 返回与当前单个 MEM uop 的同周期合并，减少 load-heavy 路径全局 stall。 |
+| `archive/2026-07-05/032_srcWithMext_low_ipc_microarch_analysis.md` | 分析 `srcWithMext` 低 IPC 和 031 无明显收益的微架构原因，给出兼顾 IPC/频率的优化顺序。 |
+| `archive/2026-07-05/033_issuequeue_wakeup_and_perf_buckets.md` | 回退 031，修复 IssueQueue `delay==1` 保守预计唤醒，并新增 stall/resource/width 性能分桶 JSON。 |
+| `archive/2026-07-05/034_ipc_bottleneck_optimization_plan.md` | 基于新增性能分桶重新分析 `srcWithMext` IPC 瓶颈，并制定 MEM/ROB/唤醒优化计划。 |
 
 ## 后续维护规则
 
