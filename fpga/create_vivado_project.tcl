@@ -11,6 +11,7 @@
 #   FPGA_PART=xc7k325tffg900-2
 #   FPGA_SYS_CLK_MHZ=50.000
 #   FPGA_CPU_CLK_MHZ=50.000
+#   FPGA_FLATTEN_HIERARCHY=none
 
 set script_dir [file normalize [file dirname [info script]]]
 set repo_dir   [file normalize [file join $script_dir ..]]
@@ -32,6 +33,7 @@ if {[info exists ::env(FPGA_PART)]} {
 set input_clk_mhz 200.000
 set sys_clk_mhz   50.000
 set cpu_clk_mhz   50.000
+set flatten_hierarchy none
 if {[info exists ::env(FPGA_INPUT_CLK_MHZ)]} {
     set input_clk_mhz $::env(FPGA_INPUT_CLK_MHZ)
 }
@@ -40,6 +42,9 @@ if {[info exists ::env(FPGA_SYS_CLK_MHZ)]} {
 }
 if {[info exists ::env(FPGA_CPU_CLK_MHZ)]} {
     set cpu_clk_mhz $::env(FPGA_CPU_CLK_MHZ)
+}
+if {[info exists ::env(FPGA_FLATTEN_HIERARCHY)]} {
+    set flatten_hierarchy $::env(FPGA_FLATTEN_HIERARCHY)
 }
 
 proc first_existing_dir {candidates description} {
@@ -88,6 +93,45 @@ proc set_ip_config_optional {ip_name keys value} {
     puts "WARNING: IP $ip_name does not expose optional properties: $keys"
 }
 
+proc write_sanity_report_script {script_path stage_name} {
+    set fh [open $script_path w]
+    puts $fh "set report_dir \[file normalize \[file join \[get_property DIRECTORY \[current_project\]\] reports\]\]"
+    puts $fh {file mkdir $report_dir}
+    puts $fh "set stage_name {$stage_name}"
+    puts $fh {set util_file [file join $report_dir "${stage_name}_util_hier.rpt"]}
+    puts $fh {set bb_file   [file join $report_dir "${stage_name}_blackbox.rpt"]}
+    puts $fh {set chk_file  [file join $report_dir "${stage_name}_sanity.txt"]}
+    puts $fh {catch {report_utilization -hierarchical -hierarchical_depth 12 -file $util_file}}
+    puts $fh {catch {report_blackbox -file $bb_file}}
+    puts $fh {set fh [open $chk_file w]}
+    puts $fh {set core_cells [get_cells -hier -quiet *Core_cpu*]}
+    puts $fh {set student_cells [get_cells -hier -quiet *student_top_inst*]}
+    puts $fh {set issue_cells [get_cells -hier -quiet *IssueQueue*]}
+    puts $fh {set rob_cells [get_cells -hier -quiet *ROB*]}
+    puts $fh {set mul_stage_cells [get_cells -hier -quiet *ExecuteMulStage*]}
+    puts $fh {set lut_cells [get_cells -hier -quiet -filter {REF_NAME =~ LUT*}]}
+    puts $fh {set ff_cells [get_cells -hier -quiet -filter {REF_NAME =~ FD*}]}
+    puts $fh {puts $fh "stage=$stage_name"}
+    puts $fh {puts $fh "student_top_cells=[llength $student_cells]"}
+    puts $fh {puts $fh "core_cpu_cells=[llength $core_cells]"}
+    puts $fh {puts $fh "issuequeue_name_cells=[llength $issue_cells]"}
+    puts $fh {puts $fh "rob_name_cells=[llength $rob_cells]"}
+    puts $fh {puts $fh "execute_mul_stage_name_cells=[llength $mul_stage_cells]"}
+    puts $fh {puts $fh "lut_cells=[llength $lut_cells]"}
+    puts $fh {puts $fh "ff_cells=[llength $ff_cells]"}
+    puts $fh {close $fh}
+    puts $fh {puts "FPGA sanity report: $chk_file"}
+    puts $fh {puts "FPGA hierarchical utilization: $util_file"}
+    puts $fh {puts "FPGA blackbox report: $bb_file"}
+    puts $fh {if {[llength $core_cells] == 0} {
+    puts "CRITICAL WARNING: Core_cpu cell was not found after $stage_name. The CPU may have been optimized away or renamed unexpectedly."
+}}
+    puts $fh {if {[llength $lut_cells] < 1000 || [llength $ff_cells] < 500} {
+    puts "CRITICAL WARNING: FPGA sanity check sees very low resource count after $stage_name. Inspect $util_file and $bb_file before trusting implementation results."
+}}
+    close $fh
+}
+
 set coe_dir [first_existing_dir [list \
     [file join $script_dir coe $mem_profile] \
     [file join $repo_dir data $mem_profile] \
@@ -111,6 +155,17 @@ create_project -force $project_name $project_dir -part $part
 set_property target_language Verilog [current_project]
 set_property simulator_language Mixed [current_project]
 set_property default_lib xil_defaultlib [current_project]
+set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY $flatten_hierarchy [get_runs synth_1]
+set_property STEPS.SYNTH_DESIGN.ARGS.KEEP_EQUIVALENT_REGISTERS true [get_runs synth_1]
+
+set report_script_dir [file normalize [file join $project_dir sanity]]
+file mkdir $report_script_dir
+set synth_sanity_script [file join $report_script_dir post_synth_sanity.tcl]
+set impl_sanity_script  [file join $report_script_dir post_impl_sanity.tcl]
+write_sanity_report_script $synth_sanity_script synth
+write_sanity_report_script $impl_sanity_script impl
+set_property STEPS.SYNTH_DESIGN.TCL.POST $synth_sanity_script [get_runs synth_1]
+set_property STEPS.OPT_DESIGN.TCL.POST $impl_sanity_script [get_runs impl_1]
 
 proc collect_sv_files {dir} {
     set result {}
@@ -234,4 +289,6 @@ update_compile_order -fileset sim_1
 
 puts "Created Vivado project: [file join $project_dir ${project_name}.xpr]"
 puts "Memory profile: $mem_profile ($coe_dir)"
+puts "Synthesis flatten hierarchy: $flatten_hierarchy"
+puts "Sanity reports will be written under: [file join $project_dir reports]"
 puts "Open the .xpr in Vivado, then run synthesis and implementation from the GUI."

@@ -159,8 +159,10 @@ module student_top#(
 
 
 `ifdef CORE_NEW
+    (* keep_hierarchy = "yes", dont_touch = "true" *)
     myCPU_core_new Core_cpu (
 `else
+    (* keep_hierarchy = "yes", dont_touch = "true" *)
     myCPU Core_cpu (
 `endif
         .cpu_rst            (w_clk_rst),

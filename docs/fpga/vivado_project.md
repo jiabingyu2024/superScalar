@@ -214,6 +214,93 @@ set cpu_clk_mhz   150.000
 
 不建议把 `sys_clk_mhz` 从 50MHz 改掉，除非同步审查并修改 UART、counter 和相关文档。
 
+## 资源异常偏低排查
+
+如果 implementation 后资源只剩很少 LUT/FF，优先不要直接相信 utilization。先区分三类问题：
+
+| 现象 | 判断 | 处理 |
+| --- | --- | --- |
+| `report_compile_order` 中缺 RTL/IP，或 `report_blackbox` 非空 | Tcl/IP 加入问题 | 先修 Tcl/IP 生成。 |
+| `student_top_inst/Core_cpu` 不存在 | 顶层选择、实例连接或综合裁剪问题 | 检查 top、reset/clock、输出可观测路径。 |
+| `Core_cpu` 存在但内部模块名查不到 | 常见于层级拍平 | 用 hierarchical utilization 或关闭 flatten 后重跑。 |
+
+当前 Tcl 默认设置：
+
+```tcl
+set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY none [get_runs synth_1]
+set_property STEPS.SYNTH_DESIGN.ARGS.KEEP_EQUIVALENT_REGISTERS true [get_runs synth_1]
+```
+
+同时 RTL 在两级关键实例上加了保留属性：
+
+```text
+top.student_top_inst
+student_top.Core_cpu
+```
+
+目的不是长期追求最好频率，而是避免 Vivado 在 bring-up 阶段跨层级把 CPU 逻辑裁掉，导致资源报告只剩外设/常量逻辑。后续确认资源与功能稳定后，可以再评估是否把 `dont_touch` 放宽，仅保留 `keep_hierarchy` 或恢复 `rebuilt` 层级以改善 QoR。
+
+### 自动 sanity 报告
+
+脚本会为 synth 和 implementation opt 阶段挂 post Tcl，报告输出到：
+
+```text
+fpga/build/digital_twin_<profile>/reports/
+```
+
+关键文件：
+
+| 文件 | 用途 |
+| --- | --- |
+| `synth_sanity.txt` | 记录 `Core_cpu`、`IssueQueue`、`ROB`、`ExecuteMulStage` 是否还能按层级名找到，以及 LUT/FF cell 粗略数量。 |
+| `synth_util_hier.rpt` | 综合后层级资源报告。 |
+| `synth_blackbox.rpt` | 综合后黑盒报告。 |
+| `impl_sanity.txt` | implementation `opt_design` 后同类检查。 |
+| `impl_util_hier.rpt` | implementation 早期层级资源报告。 |
+| `impl_blackbox.rpt` | implementation 早期黑盒报告。 |
+
+如果 Tcl Console 出现：
+
+```text
+CRITICAL WARNING: FPGA sanity check sees very low resource count
+```
+
+说明当前实现结果仍然不可信，应先打开上述报告确认 `Core_cpu` 是否被保留、IP 是否黑盒、LUT/FF 数是否符合预期。
+
+### 手工检查命令
+
+打开综合结果后：
+
+```tcl
+open_run synth_1
+get_property top [current_fileset]
+report_blackbox
+report_utilization -hierarchical -hierarchical_depth 12
+get_cells -hier *student_top_inst*
+get_cells -hier *Core_cpu*
+get_cells -hier *IssueQueue*
+get_cells -hier *ROB*
+get_cells -hier *ExecuteMulStage*
+```
+
+注意：若 `FLATTEN_HIERARCHY` 不是 `none`，内部模块名查不到不一定代表 RTL 没加入；可能只是被 Vivado 拍平或重建层级。当前默认关闭 flatten，是为了让资源异常更容易定位。
+
+### 重新生成并重跑
+
+修改 Tcl/RTL 后建议重新生成工程，不要在旧工程上增量猜测：
+
+```sh
+vivado -mode batch -source fpga/create_vivado_project.tcl -tclargs srcWithMext
+vivado fpga/build/digital_twin_srcWithMext/digital_twin.xpr
+```
+
+在 GUI 中打开后重新运行 synthesis/implementation。若想临时恢复 Vivado 默认层级策略，可在 source 前设置：
+
+```tcl
+set ::env(FPGA_FLATTEN_HIERARCHY) rebuilt
+source fpga/create_vivado_project.tcl
+```
+
 ## RTL 源文件边界
 
 Tcl 只收集：
