@@ -159,8 +159,6 @@ module core(
                 if (dsStageIF.nextStage[i].valid) begin
                     dispatchThisCycle++;
                 end
-            end
-            for (int i = 0; i < ISSUE_WIDTH; i++) begin
                 if (isStageIF.nextStage[i].valid) begin
                     issueThisCycle++;
                 end

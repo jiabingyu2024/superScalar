@@ -13,11 +13,11 @@ import ReadRegTypes::*;
 
 interface ReadRegStageIF( input logic clk, rst );
 
-    RrToExAluPath nextToAluStage [INT_ISSUE_WIDTH];
-    RrToExMemPath nextToMemStage [MEM_ISSUE_WIDTH];
-    RrToExMulPath nextToMulStage [MUL_ISSUE_WIDTH];
-    RrToExBrcPath nextToBrcStage [INT_ISSUE_WIDTH];
-    RrToExSysPath nextToSysStage [INT_ISSUE_WIDTH];
+    RrToExAluPath nextToAluStage [WAY_NUM];
+    RrToExMemPath nextToMemStage [WAY_NUM];
+    RrToExMulPath nextToMulStage [WAY_NUM];
+    RrToExBrcPath nextToBrcStage [WAY_NUM];
+    RrToExSysPath nextToSysStage [WAY_NUM];
 
 
     modport ReadRegStage(

@@ -51,7 +51,7 @@ module ROB(ROBIF.ROB self);
             pushCnt = 0;
             popCnt = 0;
 
-            for (i = 0; i < WB_PORT_NUM; i++) begin
+            for (i = 0; i < WAY_NUM * 5; i++) begin
                 if (self.RobDoneReq[i].valid &&
                     entries[self.RobDoneReq[i].robIndex].valid) begin
                     entries[self.RobDoneReq[i].robIndex].done <= 1'b1;

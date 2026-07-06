@@ -23,12 +23,6 @@ module DispatchStage(
                          {MEM_SUBTYPE_SB, MEM_SUBTYPE_SH, MEM_SUBTYPE_SW});
     endfunction
 
-    function automatic logic is_int_queue_uop(input RnToDsPath uop);
-        is_int_queue_uop = uop.instInfo.tubeType inside {TUBE_TYPE_ALU,
-                                                         TUBE_TYPE_BRC,
-                                                         TUBE_TYPE_SYS};
-    endfunction
-
     function automatic logic wakeup_match(
         input logic valid,
         input PhyRegNumPath phyRegNum
@@ -72,9 +66,6 @@ module DispatchStage(
     always_comb begin
         int validCount;
         int storeCount;
-        int intCount;
-        int memCount;
-        int mulCount;
         logic packetValid;
         logic resourceReady;
         logic dispatchEn;
@@ -90,9 +81,6 @@ module DispatchStage(
 
         validCount = 0;
         storeCount = 0;
-        intCount = 0;
-        memCount = 0;
-        mulCount = 0;
         packetValid = 1'b0;
         resourceReady = 1'b1;
         dispatchEn = 1'b0;
@@ -111,22 +99,12 @@ module DispatchStage(
                 if (is_store_uop(pipeReg[i])) begin
                     storeCount++;
                 end
-                if (is_int_queue_uop(pipeReg[i])) begin
-                    intCount++;
-                end else if (pipeReg[i].instInfo.tubeType == TUBE_TYPE_MEM) begin
-                    memCount++;
-                end else if (pipeReg[i].instInfo.tubeType == TUBE_TYPE_MUL) begin
-                    mulCount++;
-                end
             end
             ctrl.dsStageEmpty &= !pipeReg[i].valid;
         end
 
         ctrl.robFull = packetValid && (int'(rob.RobFreeCount) < validCount);
-        ctrl.issueQueueFull = packetValid &&
-                              ((int'(issueQueue.IntIssueFreeCount) < intCount) ||
-                               (int'(issueQueue.MemIssueFreeCount) < memCount) ||
-                               (int'(issueQueue.MulIssueFreeCount) < mulCount));
+        ctrl.issueQueueFull = packetValid && (int'(issueQueue.IssueFreeCount) < validCount);
 
         resourceReady = !ctrl.robFull &&
                         !ctrl.issueQueueFull &&
@@ -136,7 +114,8 @@ module DispatchStage(
             logic isStore;
             isStore = is_store_uop(pipeReg[i]);
 
-            resourceReady &= !pipeReg[i].valid || rob.RobPushRes[i].valid;
+            resourceReady &= !pipeReg[i].valid ||
+                             (rob.RobPushRes[i].valid && issueQueue.IssuePushRes[i].done);
 
             rob.RobPushReq[i].entry.done = 1'b0;
             rob.RobPushReq[i].entry.pc = pipeReg[i].pc;

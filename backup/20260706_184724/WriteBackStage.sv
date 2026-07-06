@@ -15,36 +15,28 @@ module WriteBackStage(
     ReadyTableIF.WriteBackStage readyTable,
     IssueQueueIF.WriteBackStage issueQueue
 );
-    ExAluToWbPath aluPipeReg [INT_ISSUE_WIDTH];
-    ExMemToWbPath memPipeReg [MEM_WB_WIDTH];
-    ExMulToWbPath mulPipeReg [MUL_WB_WIDTH];
-    ExBrcToWbPath brcPipeReg [INT_ISSUE_WIDTH];
-    ExSysToWbPath sysPipeReg [INT_ISSUE_WIDTH];
+    ExAluToWbPath aluPipeReg [WAY_NUM];
+    ExMemToWbPath memPipeReg [WAY_NUM];
+    ExMulToWbPath mulPipeReg [WAY_NUM];
+    ExBrcToWbPath brcPipeReg [WAY_NUM];
+    ExSysToWbPath sysPipeReg [WAY_NUM];
 
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 aluPipeReg[i] <= '0;
+                memPipeReg[i] <= '0;
+                mulPipeReg[i] <= '0;
                 brcPipeReg[i] <= '0;
                 sysPipeReg[i] <= '0;
-            end
-            for (int i = 0; i < MEM_WB_WIDTH; i++) begin
-                memPipeReg[i] <= '0;
-            end
-            for (int i = 0; i < MUL_WB_WIDTH; i++) begin
-                mulPipeReg[i] <= '0;
             end
         end else if (ctrl.wbPipe.flush) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 aluPipeReg[i] <= '0;
+                memPipeReg[i] <= '0;
+                mulPipeReg[i] <= '0;
                 brcPipeReg[i] <= '0;
                 sysPipeReg[i] <= '0;
-            end
-            for (int i = 0; i < MEM_WB_WIDTH; i++) begin
-                memPipeReg[i] <= '0;
-            end
-            for (int i = 0; i < MUL_WB_WIDTH; i++) begin
-                mulPipeReg[i] <= '0;
             end
         end else if (!ctrl.wbPipe.stall) begin
             aluPipeReg <= prev.nextAluToStage;
@@ -59,50 +51,34 @@ module WriteBackStage(
         ctrl.wbStallReq = 1'b0;
         ctrl.wbStageEmpty = 1'b1;
         recovery.writeBackRecoveryReq = '0;
-        for (int i = 0; i < WB_PORT_NUM; i++) begin
+        for (int i = 0; i < WAY_NUM * 5; i++) begin
             rob.RobDoneReq[i] = '0;
             bypass.wbForward[i] = '0;
             regFile.regFileWriteReq[i] = '0;
             readyTable.markReady[i] = '0;
             issueQueue.IssueWakeup[i] = '0;
         end
-        begin
-            int port;
-
-            port = 0;
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
-                fill_port(port, aluPipeReg[i].valid, aluPipeReg[i].Rd,
+        for (int i = 0; i < WAY_NUM; i++) begin
+            int base;
+            base = i * 5;
+            fill_port(base + 0, aluPipeReg[i].valid, aluPipeReg[i].Rd,
                       aluPipeReg[i].writeRd, aluPipeReg[i].data,
                       aluPipeReg[i].robIndex, 1'b0, 1'b0, '0, 1'b0);
-                port++;
-            end
-            for (int i = 0; i < MEM_WB_WIDTH; i++) begin
-                fill_port(port, memPipeReg[i].valid, memPipeReg[i].Rd,
+            fill_port(base + 1, memPipeReg[i].valid, memPipeReg[i].Rd,
                       memPipeReg[i].writeRd, memPipeReg[i].data,
                       memPipeReg[i].robIndex, 1'b0, 1'b0, '0, 1'b0);
-                port++;
-            end
-            for (int i = 0; i < MUL_WB_WIDTH; i++) begin
-                fill_port(port, mulPipeReg[i].valid, mulPipeReg[i].Rd,
+            fill_port(base + 2, mulPipeReg[i].valid, mulPipeReg[i].Rd,
                       mulPipeReg[i].writeRd, mulPipeReg[i].data,
                       mulPipeReg[i].robIndex, 1'b0, 1'b0, '0, 1'b0);
-                port++;
-            end
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
-                fill_port(port, brcPipeReg[i].valid, brcPipeReg[i].Rd,
+            fill_port(base + 3, brcPipeReg[i].valid, brcPipeReg[i].Rd,
                       brcPipeReg[i].writeRd, brcPipeReg[i].data,
                       brcPipeReg[i].robIndex, 1'b0, 1'b0,
                       brcPipeReg[i].trueTargetPc, brcPipeReg[i].taken);
-                port++;
-            end
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
-                fill_port(port, sysPipeReg[i].valid, sysPipeReg[i].Rd,
+            fill_port(base + 4, sysPipeReg[i].valid, sysPipeReg[i].Rd,
                       sysPipeReg[i].writeRd, sysPipeReg[i].data,
                       sysPipeReg[i].robIndex, sysPipeReg[i].isSerial,
                       sysPipeReg[i].exception, sysPipeReg[i].trueTargetPc,
                       1'b0);
-                port++;
-            end
         end
     end
 

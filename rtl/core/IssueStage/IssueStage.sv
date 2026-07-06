@@ -9,38 +9,73 @@ module IssueStage(
     IssueQueueIF.IssueStage issueQueue,
     PayloadIF.IssueStage payload
 );
+    task automatic fill_next_stage(
+        input int slot,
+        input IssuePopResPath popRes
+    );
+        logic issueFire;
+
+        issueFire = popRes.done;
+        payload.PayloadPopReq[slot].valid = issueFire;
+        payload.PayloadPopReq[slot].payloadIndex = popRes.entry.payloadIndex;
+
+        self.nextStage[slot] = '0;
+        self.nextStage[slot].valid = issueFire &&
+                                     payload.PayloadPopRes[slot].valid &&
+                                     !ctrl.isPipe.flush;
+        self.nextStage[slot].pc = payload.PayloadPopRes[slot].entry.pc;
+        self.nextStage[slot].predInfo = payload.PayloadPopRes[slot].entry.predInfo;
+        self.nextStage[slot].csrAddr = payload.PayloadPopRes[slot].entry.csrAddr;
+        self.nextStage[slot].SubType = payload.PayloadPopRes[slot].entry.SubType;
+        self.nextStage[slot].opTypeA = payload.PayloadPopRes[slot].entry.opTypeA;
+        self.nextStage[slot].opTypeB = payload.PayloadPopRes[slot].entry.opTypeB;
+        self.nextStage[slot].imm = payload.PayloadPopRes[slot].entry.imm;
+        self.nextStage[slot].tubeType = popRes.entry.tubeType;
+        self.nextStage[slot].srcA = popRes.entry.srcA;
+        self.nextStage[slot].srcB = popRes.entry.srcB;
+        self.nextStage[slot].dst = popRes.entry.dst;
+        self.nextStage[slot].writeDst = popRes.entry.writeDst;
+        self.nextStage[slot].robIndex = popRes.entry.robIndex;
+        self.nextStage[slot].storeBufferIndexValid =
+            payload.PayloadPopRes[slot].entry.storeBufferIndexValid;
+        self.nextStage[slot].storeBufferIndex =
+            payload.PayloadPopRes[slot].entry.storeBufferIndex;
+    endtask
+
     always_comb begin
+        logic popEnable;
+
+        popEnable = !ctrl.isPipe.stall && !ctrl.isPipe.flush;
         ctrl.isStageEmpty = 1'b1;
         ctrl.isStallReq = 1'b0;
 
-        for (int i = 0; i < WAY_NUM; i++) begin
-            logic issueFire;
+        for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            issueQueue.IntIssuePopReq[i].valid = popEnable;
+        end
+        for (int i = 0; i < MEM_ISSUE_WIDTH; i++) begin
+            issueQueue.MemIssuePopReq[i].valid = popEnable;
+        end
+        for (int i = 0; i < MUL_ISSUE_WIDTH; i++) begin
+            issueQueue.MulIssuePopReq[i].valid = popEnable;
+        end
 
-            issueQueue.IssuePopReq[i].valid = !ctrl.isPipe.stall && !ctrl.isPipe.flush;
-            issueFire = issueQueue.IssuePopReq[i].valid && issueQueue.IssuePopRes[i].done;
-            payload.PayloadPopReq[i].valid = issueFire;
-            payload.PayloadPopReq[i].payloadIndex = issueQueue.IssuePopRes[i].entry.payloadIndex;
-
+        for (int i = 0; i < ISSUE_WIDTH; i++) begin
+            payload.PayloadPopReq[i] = '0;
             self.nextStage[i] = '0;
-            self.nextStage[i].valid = issueFire &&
-                                      payload.PayloadPopRes[i].valid &&
-                                      !ctrl.isPipe.flush;
-            self.nextStage[i].pc = payload.PayloadPopRes[i].entry.pc;
-            self.nextStage[i].predInfo = payload.PayloadPopRes[i].entry.predInfo;
-            self.nextStage[i].csrAddr = payload.PayloadPopRes[i].entry.csrAddr;
-            self.nextStage[i].SubType = payload.PayloadPopRes[i].entry.SubType;
-            self.nextStage[i].opTypeA = payload.PayloadPopRes[i].entry.opTypeA;
-            self.nextStage[i].opTypeB = payload.PayloadPopRes[i].entry.opTypeB;
-            self.nextStage[i].imm = payload.PayloadPopRes[i].entry.imm;
-            self.nextStage[i].tubeType = issueQueue.IssuePopRes[i].entry.tubeType;
-            self.nextStage[i].srcA = issueQueue.IssuePopRes[i].entry.srcA;
-            self.nextStage[i].srcB = issueQueue.IssuePopRes[i].entry.srcB;
-            self.nextStage[i].dst = issueQueue.IssuePopRes[i].entry.dst;
-            self.nextStage[i].writeDst = issueQueue.IssuePopRes[i].entry.writeDst;
-            self.nextStage[i].robIndex = issueQueue.IssuePopRes[i].entry.robIndex;
-            self.nextStage[i].storeBufferIndexValid = payload.PayloadPopRes[i].entry.storeBufferIndexValid;
-            self.nextStage[i].storeBufferIndex = payload.PayloadPopRes[i].entry.storeBufferIndex;
+        end
 
+        for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            fill_next_stage(i, issueQueue.IntIssuePopRes[i]);
+        end
+        for (int i = 0; i < MEM_ISSUE_WIDTH; i++) begin
+            fill_next_stage(INT_ISSUE_WIDTH + i, issueQueue.MemIssuePopRes[i]);
+        end
+        for (int i = 0; i < MUL_ISSUE_WIDTH; i++) begin
+            fill_next_stage(INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + i,
+                            issueQueue.MulIssuePopRes[i]);
+        end
+
+        for (int i = 0; i < ISSUE_WIDTH; i++) begin
             ctrl.isStageEmpty &= !self.nextStage[i].valid;
         end
     end

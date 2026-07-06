@@ -278,9 +278,9 @@ Dispatch 只有在以下资源都满足时才 fire：
 
 ```text
 ROB 空间 >= packet valid 数
-IntIssueQueue/MemIssueQueue/MulIssueQueue 对应空间 >= packet 中对应类型 valid 数
+IssueQueue 空间 >= packet valid 数
 如果有 store，则 StoreBuffer allocRdy
-每个 valid lane 的 ROB push 响应有效
+每个 lane 的 ROB/IQ push 响应有效
 ```
 
 成功 dispatch 后：
@@ -291,11 +291,9 @@ IssueQueue entry: 保存调度选择/源 ready/目的寄存器/延迟预测信�
 Payload entry: 保存 PC、预测信息、立即数、CSR、操作类型、StoreBuffer index
 ```
 
-维护注意：IQ push 的容量准入只看各队列 `FreeCount`。`IssuePushRes.done/payloadIndex` 是 dispatch 已经 fire 后给 Payload 和队列写入使用的分配结果，不能反过来参与 `dispatchEn/resourceReady` 的前置判断；否则 `dispatchEn` 等 `IssuePushRes.done`、`IssuePushReq.valid` 又等 `dispatchEn`，会形成 0 dispatch 的死锁。
-
 ### 10.2 ROB
 
-ROB 是 32-entry 环形队列：
+ROB 是 16-entry 环形队列：
 
 ```text
 Dispatch 按程序序 push
@@ -313,31 +311,26 @@ isBranch &&
 )
 ```
 
-### 10.3 分布式 IssueQueue
+### 10.3 IssueQueue
 
-后端 issue 宽度与前端 `WAY_NUM=2` 解耦。Dispatch 仍每周期最多写入 2 条 uop，但 IssueStage 可从已经缓存的队列中最多发射 5 条：
+IssueQueue 保存轻量调度信息。选择策略：
 
-| 队列 | 接收类型 | 深度 | 发射宽度 | 顺序策略 |
-| --- | --- | ---: | ---: | --- |
-| `IntIssueQueue` | ALU / BRC / SYS | 16 | 3 | ready entry 中按全局 `age` 选更老项，允许乱序。 |
-| `MemIssueQueue` | MEM load/store | 4 | 1 | FIFO head ready 才能发射，严格 in-order。 |
-| `MulIssueQueue` | MUL / DIV / REM | 4 | 1 | FIFO head ready 才能发射，严格 in-order。 |
+1. entry valid 且未 issued。
+2. 源 A ready，源 B ready 或源 B 是立即数/none。
+3. 同周期已选 uop 不能和候选形成 RAW。
+4. MEM uop 必须按 IssueQueue 本地 `entryAge` 程序序发射：候选 MEM 前面只要还有更老 MEM entry，即使更老 entry 尚未 ready，也不能越过。
+5. 每周期最多选择一个 MEM uop。
+6. 在可选项中选 `entryAge` 更老的 entry。
 
-`IssueQueue` 顶层 wrapper 负责三件事：
-
-1. Dispatch push 按 `tubeType` 路由到对应队列，并返回该队列分配出的 `payloadIndex`。
-2. 从三个队列收集候选：Int 最多 3 个，Mem/Mul 各 1 个。
-3. 对最多 5 个候选按全局 `age` 从老到新授权，并禁止同周期 RAW；被 RAW 阻塞的候选不会 pop，下一周期可重新参与选择。
-
-全局 `age` 由 `IssueQueue` wrapper 在 dispatch 接收时分配，跨三个队列可比较。不能用 ROB 的 1-bit `position + robIndex` 直接比较年龄，因为 ROB 环形指针多次 wrap 后会出现 `rob15,pos1` 比 `rob0,pos0` 更老但被误判为更年轻的情况。这个年龄只用于 issue 仲裁，ROB 仍按原 `robIndex` 回填 done。
+`entryAge` 是 IssueQueue 内部单调计数，不走对外接口。不能用 ROB 的 1-bit `position + robIndex` 直接比较年龄，因为 ROB 环形指针多次 wrap 后会出现 `rob15,pos1` 比 `rob0,pos0` 更老但被误判为更年轻的情况。这个年龄只用于 IssueQueue 内部选择和 MEM 保序，ROB 仍按原 `robIndex` 回填 done。
 
 唤醒来源：
 
 ```text
-WriteBackStage -> IssueWakeup[WB_PORT_NUM]
+WriteBackStage -> IssueWakeup[WAY_NUM * 5]
 ```
 
-三个队列都会在发射生产者时检查等待同一物理目的寄存器的消费者。当前只对 `delay == 1` 的生产者，以及已校准为 4 个调度间隔的非 DIV/REM MUL 生产者启用保守预计唤醒：
+另外，IssueQueue 会在发射生产者时检查等待同一物理目的寄存器的消费者。当前只对 `delay == 1` 的生产者启用保守预计唤醒：
 
 ```text
 producer issue，delay=1
@@ -347,29 +340,21 @@ producer issue，delay=1
   -> 到达 EX 时依赖值应已能通过 WB bypass 或 negedge 写回后的 RegFile 读取得到
 ```
 
-MEM load 和 DIV/REM 仍等待 `WriteBackStage` 的真实 `IssueWakeup`。这是因为 MEM load 可能经过 result buffer 多等 1 拍，DIV/REM 的长延迟 IP 相位也需要单独校准，直接全类型提前 ready 容易过早发射。
+MUL/MEM/DIV 等 `delay > 1` 的生产者暂不使用该预计唤醒，仍等待 `WriteBackStage` 的真实 `IssueWakeup`。这是因为当前长延迟 IP、MEM load metadata 和 WB bypass 的相位不同，直接用 `srcShift` 全类型提前 ready 已在 `rv32um-p-mul/div` 中暴露过早发射风险。
 
 ### 10.4 Payload
 
-Payload 使用和分布式 IssueQueue 相同的全局 `payloadIndex`。索引空间按队列静态切分：
-
-| 范围 | 所属队列 |
-| --- | --- |
-| `0..15` | IntIssueQueue |
-| `16..19` | MemIssueQueue |
-| `20..23` | MulIssueQueue |
-
-IssueQueue 只保存调度所需字段，Payload 保存较大的执行静态字段，Issue 发射时两者重新合并为 `IsToRrPath`。Payload 写口仍是 Dispatch 的 2 路，读口扩展为 Issue 的 5 路。
+Payload 使用和 IssueQueue 相同的 `payloadIndex`。IssueQueue 只保存调度所需字段，Payload 保存较大的执行静态字段，Issue 发射时两者重新合并为 `IsToRrPath`。
 
 IssueStage 的真实发射条件是：
 
 ```text
-issueFire = !isPipe.stall && !isPipe.flush && {Int/Mem/Mul}IssuePopRes.done
+issueFire = !isPipe.stall && !isPipe.flush && IssuePopRes.done
 ```
 
 只有 `issueFire` 为 1 时才允许：
 
-1. 对应队列的 `IssuePopReq.valid=1`，让该队列删除该 entry。
+1. `IssuePopReq.valid=1`，让 IssueQueue 删除该 entry。
 2. `PayloadPopReq.valid=1`，让 Payload 删除同 `payloadIndex` entry。
 3. `nextStage.valid=1`，把合并后的 uop 送入 ReadReg。
 
@@ -426,11 +411,11 @@ Bypass 只匹配 WriteBackStage 当前周期的 wbForward
 
 | 单元 | 功能 | 关键行为 |
 | --- | --- | --- |
-| ALU | ADD/SUB/SHIFT/LOGIC/SLT | IntIssueQueue 最多发射 3 条，ReadRegStage pack 到 3 条 ALU lane，一拍输出 WB payload。 |
-| BRC | branch/JAL/JALR | IntIssueQueue 最多发射 3 条，计算 taken、真实 target，JAL/JALR 写回 `pc+4`。 |
-| MEM | load/store | MemIssueQueue 是 4 项严格 FIFO，每周期最多发射 1 条；MEM->WB 保留 2 个完成口，用于 load return 与当前 store/forward-hit load 同周期完成。 |
-| MUL | RV32M mul/div/rem | MulIssueQueue 是 4 项严格 FIFO，每周期最多发射 1 条；MUL 使用单实例 `MUL_0`，33x33 signed，3 拍；DIV/REM 使用单实例 `DIV_0`，unsigned 32/32，34 拍，外围处理 signed、除零和有符号溢出。 |
-| SYS | CSR/ECALL/EBREAK/MRET/FENCE 类 serial | IntIssueQueue 可承载 SYS，但 Rename/Commit 的 serial 排干规则仍保证 CSR/ECALL/MRET/FENCE 类路径不乱序。 |
+| ALU | ADD/SUB/SHIFT/LOGIC/SLT | 组合计算，一拍输出 WB payload。 |
+| BRC | branch/JAL/JALR | 计算 taken、真实 target，JAL/JALR 写回 `pc+4`。 |
+| MEM | load/store | store 写 StoreBuffer；load 优先查 StoreBuffer，再发 DRAM read；一次只选一个 load。 |
+| MUL | RV32M mul/div/rem | `IssueQueue` 只允许 issue slot 0 发射 `TUBE_TYPE_MUL`，因此每周期最多一条 M 类 uop；MUL 使用单实例 `MUL_0`，33x33 signed，3 拍；DIV/REM 使用单实例 `DIV_0`，unsigned 32/32，34 拍，外围处理 signed、除零和有符号溢出。 |
+| SYS | CSR/ECALL/EBREAK/MRET/FENCE 类 serial | 维护项目 CSR 子集 `mstatus/mtvec/mscratch/mepc/mcause`；ECALL/EBREAK 进入 `mtvec`，MRET 返回 `mepc`；FENCE/FENCE.I 在无 cache 设计中按 serial NOP。 |
 
 ### 13.1 IROM 取指时序
 
@@ -456,25 +441,25 @@ T2: loadMetaPipe1.valid 时，使用 dram.exReadData 生成 WB 结果
 
 若 load 对 StoreBuffer 有部分字节命中，T0 同时把命中字节保存到 `loadIssueMeta.forwardData/forwardMask`。T2 用 `forwardMask` 覆盖 `dram.exReadData` 中对应字节，再执行 load subtype 的符号/零扩展。该路径用于处理同 word 的 `SB/SH` 后跟 `LW/LH/LB`，同时保持 core 对外仍输出 raw store data/mask。
 
-当前采用 1-entry load return result buffer。MEM->WB 有 2 个完成口：旧 buffer 优先输出，当前 store/forward-hit load 可占另一个空口，DRAM 返回 load 若没有空口则进入 buffer；只有 buffer 满且新 load return 仍无法输出时才拉 `loadReturnBlocked`。这样避免旧实现中“load 返回 + 任意当前 MEM uop = 全 EX stall”的 0.5 IPC 节奏，同时保持 MemIssueQueue 本身每周期只发射 1 条。
+当前采用保守返回策略：只要 `loadMetaPipe1.valid` 且当前 MEM pipe 中存在任意有效 uop，就拉 `loadReturnBlocked`，并通过 `ctrl.exStallReq` 阻塞 EX/上游。这样保证返回 load 固定占用 `nextMemToStage[0]`，不会和当前 MEM pipe 的 store/forward-hit load/新 load 发起争用 WB lane。`031` 曾尝试允许“load 返回 + 当前单个 MEM uop”同周期合并，但短 src 观测收益不稳定，已回退。
 
 ### 13.3 M 扩展执行单元与 MUL_0/DIV_0 IP
 
 当前 M 扩展路径的边界：
 
 ```text
-MulIssueQueue
-  -> 4 项 FIFO，head ready 时每周期最多发射 1 条 TUBE_TYPE_MUL
+IssueQueue
+  -> 只允许 issue slot 0 选择 TUBE_TYPE_MUL
 ReadRegStage
-  -> 将该 uop pack 到唯一 nextToMulStage[0]
+  -> 将该 uop 放入对应的 nextToMulStage[lane]
 ExecuteMulStage
-  -> 对唯一 MUL lane 做 bypass 读请求
+  -> 对所有 lane 做 bypass 读请求
   -> 选择唯一有效的非 div/rem MUL uop 送入单颗 MUL_0
   -> 选择唯一有效的 DIV/REM uop 送入单颗 DIV_0
-  -> 用 mulMetaPipe 记录 Rd/writeRd/robIndex
-  -> 用 divMetaPipe 记录 Rd/writeRd/robIndex/符号恢复信息
-  -> MUL_0 第 3 拍输出 product 后写回 self.nextMulToStage[0]
-  -> DIV_0 第 34 拍输出 quotient/remainder 后写回 self.nextMulToStage[0]
+  -> 用 mulMetaPipe 记录 Rd/writeRd/robIndex/lane
+  -> 用 divMetaPipe 记录 Rd/writeRd/robIndex/lane/符号恢复信息
+  -> MUL_0 第 3 拍输出 product 后，按记录 lane 写回 self.nextMulToStage[lane]
+  -> DIV_0 第 34 拍输出 quotient/remainder 后，按记录 lane 写回 self.nextMulToStage[lane]
 ```
 
 `MUL_0` 是 FPGA 侧 Vivado `mult_gen` IP 的仿真/综合同名边界。
@@ -515,7 +500,7 @@ RISC-V signed 语义不交给 `DIV_0`：
 3. `divisor == 0` 和 `0x80000000 / -1` 溢出仍走 metadata 特例，送给 IP 的是假安全输入，只用于保持 34 拍节奏对齐。
 4. 第 34 拍根据 metadata 对 quotient/remainder 做符号恢复，再选择 `DIV/DIVU` 的商或 `REM/REMU` 的余数。
 
-当前只放一颗 M 类 IP 入口，所以 `MulIssueQueue` 本身是单发 FIFO，保证同周期最多一条 `TUBE_TYPE_MUL` 进入 `ExecuteMulStage`。若误把 MulIssueQueue 扩成多发而不增加 IP 和写回仲裁，第二条 M 类 uop 会被单 IP 选择逻辑丢弃，最终 ROB 等不到对应 done。
+当前只放一颗 M 类 IP 入口，所以 `IssueQueue` 的 `mulSelected` 会禁止同周期第二条 `TUBE_TYPE_MUL` 被选中，并额外禁止 issue slot 1 选择 M 类 uop。若删掉这些约束，两个 lane 可能同周期进入 `ExecuteMulStage`，第二条 M 类 uop 会被单 IP 选择逻辑丢弃，最终 ROB 等不到对应 done。
 
 后续若要提高 M 扩展吞吐，应先明确是增加第二套 `MUL_0/DIV_0`，还是拆分 MUL/DIV issue 类型和写回端口仲裁。
 
@@ -537,11 +522,10 @@ mcause  0x342
 
 ## 14. WriteBack
 
-WriteBack 按实际完成端口汇总执行单元，因此总端口数为：
+WriteBack 每个 lane 汇总 5 类执行单元，因此总端口数为：
 
 ```text
-BYPASS_WB_PORT_NUM = WB_PORT_NUM = 12
-  = 3 ALU + 2 MEM + 1 MUL + 3 BRC + 3 SYS
+BYPASS_WB_PORT_NUM = WAY_NUM * 5 = 10
 ```
 
 每个有效结果会同时：
@@ -702,7 +686,7 @@ branch miss   = 3,317,770
 | Commit 保守停止 | miss branch、exception、未完成 head 仍停止；lane0 正确 branch/store 已允许跟随 lane1 安全普通提交 | 高 branch/store 密度下仍受限，但正确路径退休宽度比旧实现更高。 |
 | Decode 拆包 | 同包多 branch、多 store、serial+其他都会拆成 replay | branch 密集代码前端实际注入宽度低于 2。 |
 | Rename checkpoint 限制 | branch/serial 需要 checkpoint，`chkptCount > 1` stall | 分支密集 packet 难持续双发。 |
-| Issue MEM 保序单发 | MemIssueQueue 是 4 项 FIFO，head ready 才能发射，且每周期最多 1 条 | 访存片段不能利用多 MEM 发射，但选择逻辑更短、更容易保序。 |
+| Issue MEM 保序单发 | IssueQueue 对 MEM uop 保序，且每周期最多选一个 MEM | 访存片段不能利用二路 MEM 并行。 |
 | ExecuteMem load 返回合并 | load 返回占 MEM WB lane0；同周期单个当前 MEM uop 可占 lane1 | 避免 load-heavy 程序形成“返回一拍、发射一拍”的 0.5 IPC 节奏；两个当前 MEM uop 与返回 load 同时争用时仍保守 stall。 |
 | 无 RAS | `JALR` return 走普通 BTB/BHB | return miss 约 50%，造成额外恢复。 |
 | 软件除法 helper | `srcSmoke` 中 `0x80001330` 有大量数据相关条件分支 | 条件分支 miss 是最大来源。 |
@@ -765,13 +749,12 @@ current miss = 3,317,770  // hit rate ~= 74.19%
 4. `RenameStage` 同包 WAW 时 `oldDst` 指向前序 lane 新物理寄存器，这对提交释放链条很敏感，需要用同周期双写同一逻辑寄存器测试验证。
 5. `ReadyTable.recoverReadyAll` 在 backend flush 时把所有物理寄存器置 ready，这简单但可能掩盖恢复后未完成生产者问题，需要结合 ROB/FreeList 恢复语义验证。
 6. `IssueQueue` 的 delay/shift 机制和 WB wakeup 同时存在，实际 ready 是否过早或过晚，需要用 load-use、mul-use、div-use 测试验证。
-7. `DispatchStage` 的 IQ 容量判断必须保持为 per-queue `FreeCount` 前置检查，不能把 `IssuePushRes.done` 接回 `resourceReady`，否则空队列也可能因 push valid 尚未拉高而永久不 dispatch。
-8. `RegFile` 负沿写是重要时序假设，Verilator 和 FPGA 综合行为都要确认符合预期。
-9. `ExecuteMemStage` 一次只允许一个 load，且 load 返回会阻塞当前 MEM uop；性能优化前先保证正确性。
-10. `StoreBuffer` 对 load forwarding 的多 entry 字节合并要验证 store-load、partial byte、同 word 多 store 场景；特别是 `SH` 后紧跟 `LW` 时，不能因为部分命中把 MEM 永久 stall。
-11. `CommitStage` 对 branch 和 exception 的 checkpoint/free 恢复路径不同，是后续精确异常和分支恢复 debug 的重点。
-12. `RecoveryManager` 将恢复事件打一拍，Ctrl flush 也因此打一拍；调试 branch miss 时要按这个时序看波形。
-13. `WriteBackStage` 当前不发起实际 recovery，`writeBackRecoveryReq` 保留但清零；如果未来要做早恢复，需要重新定义优先级和精确状态边界。
+7. `RegFile` 负沿写是重要时序假设，Verilator 和 FPGA 综合行为都要确认符合预期。
+8. `ExecuteMemStage` 一次只允许一个 load，且 load 返回会阻塞当前 MEM uop；性能优化前先保证正确性。
+9. `StoreBuffer` 对 load forwarding 的多 entry 字节合并要验证 store-load、partial byte、同 word 多 store 场景；特别是 `SH` 后紧跟 `LW` 时，不能因为部分命中把 MEM 永久 stall。
+10. `CommitStage` 对 branch 和 exception 的 checkpoint/free 恢复路径不同，是后续精确异常和分支恢复 debug 的重点。
+11. `RecoveryManager` 将恢复事件打一拍，Ctrl flush 也因此打一拍；调试 branch miss 时要按这个时序看波形。
+12. `WriteBackStage` 当前不发起实际 recovery，`writeBackRecoveryReq` 保留但清零；如果未来要做早恢复，需要重新定义优先级和精确状态边界。
 
 ## 19. 推荐 debug 顺序
 
@@ -783,4 +766,4 @@ current miss = 3,317,770  // hit rate ~= 74.19%
 4. Load/store：`lw/sw/lb/lh/sb/sh`，重点看 StoreBuffer 和 load metadata。
 5. M 扩展：`mul/div/rem`，重点看 long latency wakeup。
 6. CSR/system：`csr/ecall/ebreak/mret/fence`，重点看 serialBlock、trap redirect 和异常恢复。
-7. src profile：优先跑带明确 pass/fail marker 的小量 profile；若只看到内部 test counter 完成但 marker 未闭合，应把 checker/软件结束条件和 RTL 功能结果分开记录。
+7. src smoke：接入用户提供的 src pass/fail 逻辑后再看性能。

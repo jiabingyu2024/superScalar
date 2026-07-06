@@ -10,10 +10,10 @@ package ReadRegTypes;
     import BasicTypes::*;
 
     localparam  REG_DEPTH = BasicTypes::PHYREG_NUM;
-    localparam int REGFILE_READ_PORT_NUM = BasicTypes::ISSUE_WIDTH * 2;
-    localparam int REGFILE_WRITE_PORT_NUM = BasicTypes::WB_PORT_NUM;
-    localparam int BYPASS_READ_PORT_NUM = BasicTypes::INT_ISSUE_WIDTH * 2;
-    localparam int BYPASS_WB_PORT_NUM   = BasicTypes::WB_PORT_NUM;
+    localparam int REGFILE_READ_PORT_NUM = BasicTypes::WAY_NUM * 2;
+    localparam int REGFILE_WRITE_PORT_NUM = BasicTypes::WAY_NUM * 5;
+    localparam int BYPASS_READ_PORT_NUM = BasicTypes::WAY_NUM * 2;
+    localparam int BYPASS_WB_PORT_NUM   = BasicTypes::WAY_NUM * 5;
     
     typedef struct packed {
         PhyRegNumPath  regIndex;

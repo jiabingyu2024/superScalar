@@ -12,8 +12,8 @@ import  IssueTypes::*;
 
 interface PayloadIF( input logic clk, rst );
 
-    PayloadPopReqPath        PayloadPopReq[ISSUE_WIDTH];
-    PayloadPopResPath        PayloadPopRes[ISSUE_WIDTH];
+    PayloadPopReqPath        PayloadPopReq[WAY_NUM];
+    PayloadPopResPath        PayloadPopRes[WAY_NUM];
 
     PayloadPushReqPath       PayloadPushReq[WAY_NUM];
     PayloadPushResPath       PayloadPushRes[WAY_NUM];

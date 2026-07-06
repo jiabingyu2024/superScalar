@@ -8,7 +8,7 @@ module ExecuteAluStage(
     CtrlIF.ExecuteStage ctrl,
     BypassIF.ExecuteAluStage bypass
 );
-    RrToExAluPath pipeReg [INT_ISSUE_WIDTH];
+    RrToExAluPath pipeReg [WAY_NUM];
 
     function automatic DataPath alu(input SubTypePath st, input DataPath a, input DataPath b);
         unique case (st.aluSubType)
@@ -28,11 +28,11 @@ module ExecuteAluStage(
 
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (ctrl.exPipe.flush) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (!ctrl.exPipe.stall) begin
@@ -45,7 +45,7 @@ module ExecuteAluStage(
         for (int i = 0; i < BYPASS_READ_PORT_NUM; i++) begin
             bypass.aluReadReq[i] = '0;
         end
-        for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+        for (int i = 0; i < WAY_NUM; i++) begin
             DataPath a;
             DataPath b;
             bypass.aluReadReq[i*2+0].valid = pipeReg[i].valid && pipeReg[i].srcAIsRs1;

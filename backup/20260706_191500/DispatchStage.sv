@@ -136,7 +136,8 @@ module DispatchStage(
             logic isStore;
             isStore = is_store_uop(pipeReg[i]);
 
-            resourceReady &= !pipeReg[i].valid || rob.RobPushRes[i].valid;
+            resourceReady &= !pipeReg[i].valid ||
+                             (rob.RobPushRes[i].valid && issueQueue.IssuePushRes[i].done);
 
             rob.RobPushReq[i].entry.done = 1'b0;
             rob.RobPushReq[i].entry.pc = pipeReg[i].pc;

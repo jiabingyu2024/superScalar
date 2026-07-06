@@ -8,15 +8,15 @@ module ExecuteBrcStage(
     CtrlIF.ExecuteStage ctrl,
     BypassIF.ExecuteBrcStage bypass
 );
-    RrToExBrcPath pipeReg [INT_ISSUE_WIDTH];
+    RrToExBrcPath pipeReg [WAY_NUM];
 
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (ctrl.exPipe.flush) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (!ctrl.exPipe.stall) begin
@@ -27,7 +27,7 @@ module ExecuteBrcStage(
     always_comb begin
         ctrl.brcStageEmpty = 1'b1;
         for (int i = 0; i < BYPASS_READ_PORT_NUM; i++) bypass.brcReadReq[i] = '0;
-        for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+        for (int i = 0; i < WAY_NUM; i++) begin
             DataPath a;
             DataPath b;
             bypass.brcReadReq[i*2+0].valid = pipeReg[i].valid && pipeReg[i].srcAIsRs1;

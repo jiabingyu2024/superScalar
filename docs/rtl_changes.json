@@ -1,76 +1,139 @@
 {
-  "timestamp": "2026-07-05T22:50:36+08:00",
-  "trigger": "docs/archive/2026-07-05/035_ipc_lt05_root_cause_and_optimization.md stage 1 and stage 2 execution",
-  "backup_dir": "backup/20260705_225036",
+  "timestamp": "2026-07-06T18:47:24+08:00",
+  "trigger": "User requested distributed IssueQueue architecture plus rv32 timeout debug",
+  "backup_dir": "backup/20260706_184724",
+  "debug_backup_dir": "backup/20260706_191500",
   "files_modified": [
     {
-      "path": "rtl/core/ExecuteStage/ExecuteMemStage.sv",
-      "lines_changed": "25-294",
-      "change_type": "logic_fix",
-      "notes": "Added 1-entry MEM load return result buffer and removed global EX stall on load return plus current MEM uop."
-    },
-    {
-      "path": "rtl/core/DramAccessIF.sv",
-      "lines_changed": "11-63",
-      "change_type": "logic_fix",
-      "notes": "Added store aging arbitration with actual read/write grant ready signals."
-    },
-    {
-      "path": "rtl/core/core.sv",
-      "lines_changed": "185-188",
-      "change_type": "perf_counter_fix",
-      "notes": "Changed store blocked by load counter to use arbitrated readEn."
-    },
-    {
       "path": "rtl/core/BasicTypes.sv",
-      "lines_changed": "47",
-      "change_type": "parameter_change",
-      "notes": "Increased ROB_DEPTH from 16 to 32."
+      "change_type": "interface_change",
+      "notes": "Added independent backend issue widths and WB_PORT_NUM."
     },
     {
-      "path": "rtl/core/DispatchStage/DispatchStage.sv",
-      "lines_changed": "192-193",
-      "change_type": "logic_fix",
-      "notes": "Calibrated non-DIV/REM MUL predicted wakeup delay to 4 scheduling intervals."
+      "path": "rtl/core/DispatchStage/IssueTypes.sv",
+      "change_type": "interface_change",
+      "notes": "Added distributed queue depths, payload index ranges, free count types, and global age field."
+    },
+    {
+      "path": "rtl/core/DispatchStage/IssueQueueIF.sv",
+      "change_type": "interface_change",
+      "notes": "Split issue pop/free count interfaces into Int/Mem/Mul groups."
     },
     {
       "path": "rtl/core/DispatchStage/IssueQueue.sv",
-      "lines_changed": "25-217",
-      "change_type": "logic_fix",
-      "notes": "Enabled predicted wakeup for ALU and calibrated non-DIV/REM MUL producers only."
+      "change_type": "logic_rewrite",
+      "notes": "Replaced unified queue with wrapper plus IntIssueQueue and two strict in-order FIFO queues."
     },
     {
-      "path": "docs/archive/2026-07-05/035_ipc_lt05_root_cause_and_optimization.md",
-      "lines_changed": "15-150",
+      "path": "rtl/core/DispatchStage/DispatchStage.sv",
+      "change_type": "logic_fix",
+      "notes": "Dispatch resource check now uses per-queue free counts and no longer waits for IssuePushRes.done before dispatchEn, avoiding a 0-dispatch circular handshake."
+    },
+    {
+      "path": "rtl/core/DispatchStage/PayloadIF.sv",
+      "change_type": "interface_change",
+      "notes": "Payload pop ports widened to ISSUE_WIDTH."
+    },
+    {
+      "path": "rtl/core/DispatchStage/Payload.sv",
+      "change_type": "logic_fix",
+      "notes": "Payload depth widened to distributed queue payload space and pop loop widened to ISSUE_WIDTH."
+    },
+    {
+      "path": "rtl/core/IssueStage/IssueStageIF.sv",
+      "change_type": "interface_change",
+      "notes": "IS->RR payload widened to ISSUE_WIDTH."
+    },
+    {
+      "path": "rtl/core/IssueStage/IssueStage.sv",
+      "change_type": "logic_rewrite",
+      "notes": "IssueStage now merges Int/Mem/Mul pop results into five issue slots."
+    },
+    {
+      "path": "rtl/core/ReadRegStage/ReadRegTypes.sv",
+      "change_type": "interface_change",
+      "notes": "PRF read and WB/bypass port counts now derive from ISSUE_WIDTH/WB_PORT_NUM."
+    },
+    {
+      "path": "rtl/core/ReadRegStage/ReadRegStageIF.sv",
+      "change_type": "interface_change",
+      "notes": "RR->EX pipe arrays split into Int/Mem/Mul widths."
+    },
+    {
+      "path": "rtl/core/ReadRegStage/ReadRegStage.sv",
+      "change_type": "logic_rewrite",
+      "notes": "ReadRegStage reads five issue slots and packs them into execution pipe arrays."
+    },
+    {
+      "path": "rtl/core/ExecuteStage/ExecuteStageIF.sv",
+      "change_type": "interface_change",
+      "notes": "EX->WB pipe arrays widened according to execution completion widths."
+    },
+    {
+      "path": "rtl/core/ExecuteStage/ExecuteAluStage.sv",
+      "change_type": "interface_change",
+      "notes": "ALU execution lanes widened to INT_ISSUE_WIDTH."
+    },
+    {
+      "path": "rtl/core/ExecuteStage/ExecuteBrcStage.sv",
+      "change_type": "interface_change",
+      "notes": "BRC execution lanes widened to INT_ISSUE_WIDTH."
+    },
+    {
+      "path": "rtl/core/ExecuteStage/ExecuteSysStage.sv",
+      "change_type": "interface_change",
+      "notes": "SYS execution lanes widened to INT_ISSUE_WIDTH."
+    },
+    {
+      "path": "rtl/core/ExecuteStage/ExecuteMemStage.sv",
+      "change_type": "interface_change",
+      "notes": "MEM issue input narrowed to MEM_ISSUE_WIDTH while preserving MEM_WB_WIDTH completion ports."
+    },
+    {
+      "path": "rtl/core/ExecuteStage/ExecuteMulStage.sv",
+      "change_type": "interface_change",
+      "notes": "MUL/DIV issue and completion path narrowed to one lane."
+    },
+    {
+      "path": "rtl/core/WriteBackStage/WriteBackStage.sv",
+      "change_type": "interface_change",
+      "notes": "WB aggregation now emits WB_PORT_NUM done/wakeup/bypass/write ports."
+    },
+    {
+      "path": "rtl/core/DispatchStage/ROBIF.sv",
+      "change_type": "interface_change",
+      "notes": "ROB done ports now use WB_PORT_NUM."
+    },
+    {
+      "path": "rtl/core/DispatchStage/ROB.sv",
+      "change_type": "interface_change",
+      "notes": "ROB done scan loop now uses WB_PORT_NUM."
+    },
+    {
+      "path": "rtl/core/core.sv",
+      "change_type": "perf_counter_fix",
+      "notes": "Issue width sampling now scans ISSUE_WIDTH slots; w2 remains saturated for width >= 2."
+    },
+    {
+      "path": "docs/design/rtl_core_design.md",
       "change_type": "documentation",
-      "notes": "Recorded stage 1/2 implementation, validation results, and updated performance bottleneck."
+      "notes": "Documented distributed IssueQueue architecture and execution width changes."
+    },
+    {
+      "path": "docs/archive/2026-07-06/037_distributed_issue_queue.md",
+      "change_type": "documentation",
+      "notes": "Added implementation record, boundaries, and verification recommendations."
     }
   ],
   "cascade_scope": "full_reverify",
   "verification": [
-    "make verilator-build BUILD_JOBS=4 BUILD_CXX=g++ OBJCACHE=",
-    "make verilator-build-src BUILD_JOBS=4 BUILD_CXX=g++ OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-lw NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-sw NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-lb NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-lh NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-lbu NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-lhu NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-sb NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-sh NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-simple NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-add NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-sub NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-and NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-or NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32ui-p-jal NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32um-p-mul NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32um-p-mulh NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32um-p-mulhu NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32um-p-mulhsu NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32um-p-div NO_BUILD=1 OBJCACHE=",
-    "make sim-rv32 TEST=rv32um-p-rem NO_BUILD=1 OBJCACHE=",
-    "make sim-src TEST=srcWithMext MAX_CYCLES=200000 NO_BUILD=1 OBJCACHE= (expected TIMEOUT; performance JSON collected)"
+    "make sim-rv32 TEST=rv32ui-p-simple BUILD=1 BUILD_JOBS=4 BUILD_CXX=g++ OBJCACHE= -> PASS",
+    "make sim-rv32 TEST=rv32ui-p-add NO_BUILD=1 OBJCACHE= -> PASS",
+    "make sim-rv32 TEST=rv32ui-p-jal NO_BUILD=1 OBJCACHE= -> PASS",
+    "make sim-rv32 TEST=rv32ui-p-lw NO_BUILD=1 OBJCACHE= -> PASS",
+    "make sim-rv32 TEST=rv32um-p-mul NO_BUILD=1 OBJCACHE= -> PASS",
+    "make sim-rv32-all NO_BUILD=1 OBJCACHE= -> RV32MI/RV32I/RV32M PASS; rv32uzb* bitmanip tests FAIL",
+    "make sim-src TEST=srcWithMext MAX_CYCLES=2000000 NO_BUILD=1 OBJCACHE= -> TIMEOUT; result reported max_cycles=20000000, rv32i_count=37, mext_count=8, commit_count=10563639, no pass marker"
   ],
-  "notes": "srcWithMext 200k IPC improved from 0.4977 to 0.7658; load_return_block_cycles and ex_stall_cycles dropped to 0. New dominant bottleneck is issue_queue_full_cycles."
+  "notes": "Initial rv32 timeout was caused by DispatchStage waiting for IssuePushRes.done while IssuePushReq.valid was gated by dispatchEn. The fix removes IssuePushRes.done from the pre-dispatch resourceReady path and relies on per-queue free counts for IQ capacity. RV32MI/RV32I/RV32M now pass; remaining rv32uzb* failures are bitmanip-extension tests outside the distributed IssueQueue acceptance target."
 }

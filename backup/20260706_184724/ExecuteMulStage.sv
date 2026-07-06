@@ -11,7 +11,7 @@ module ExecuteMulStage(
     localparam int MUL_LATENCY = 3;
     localparam int DIV_LATENCY = 34;
 
-    RrToExMulPath pipeReg [MUL_ISSUE_WIDTH];
+    RrToExMulPath pipeReg [WAY_NUM];
 
     typedef struct packed {
         logic         valid;
@@ -150,11 +150,11 @@ module ExecuteMulStage(
 
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
-            for (int i = 0; i < MUL_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (ctrl.exPipe.flush) begin
-            for (int i = 0; i < MUL_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (!ctrl.exPipe.stall) begin
@@ -174,7 +174,7 @@ module ExecuteMulStage(
 
         for (int i = 0; i < BYPASS_READ_PORT_NUM; i++) bypass.mulReadReq[i] = '0;
 
-        for (int i = 0; i < MUL_ISSUE_WIDTH; i++) begin
+        for (int i = 0; i < WAY_NUM; i++) begin
             DataPath a;
             DataPath b;
             logic signedOp;
@@ -234,7 +234,7 @@ module ExecuteMulStage(
     end
 
     always_comb begin
-        for (int i = 0; i < MUL_WB_WIDTH; i++) begin
+        for (int i = 0; i < WAY_NUM; i++) begin
             self.nextMulToStage[i] = '0;
         end
 

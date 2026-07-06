@@ -12,7 +12,7 @@ import  PipelineTypes::*;
 
 interface IssueStageIF( input logic clk, rst );
 
-    IsToRrPath nextStage [ISSUE_WIDTH];
+    IsToRrPath nextStage [WAY_NUM];
 
     modport IssueStage(
     input

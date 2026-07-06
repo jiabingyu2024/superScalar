@@ -12,11 +12,11 @@ import  PipelineTypes::*;
 
 interface ExecuteStageIF( input logic clk, rst );
 
-    ExAluToWbPath nextAluToStage [INT_ISSUE_WIDTH];
-    ExMemToWbPath nextMemToStage [MEM_WB_WIDTH];
-    ExMulToWbPath nextMulToStage [MUL_WB_WIDTH];
-    ExBrcToWbPath nextBrcToStage [INT_ISSUE_WIDTH];
-    ExSysToWbPath nextSysToStage [INT_ISSUE_WIDTH];
+    ExAluToWbPath nextAluToStage [WAY_NUM];
+    ExMemToWbPath nextMemToStage [WAY_NUM];
+    ExMulToWbPath nextMulToStage [WAY_NUM];
+    ExBrcToWbPath nextBrcToStage [WAY_NUM];
+    ExSysToWbPath nextSysToStage [WAY_NUM];
 
 
     modport ExecuteAluStage(

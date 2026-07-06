@@ -16,16 +16,10 @@ interface IssueQueueIF( input logic clk, rst );
     IssuePushReqPath        IssuePushReq[WAY_NUM];
     IssuePushResPath        IssuePushRes[WAY_NUM];
 
-    IssuePopReqPath         IntIssuePopReq[INT_ISSUE_WIDTH];
-    IssuePopResPath         IntIssuePopRes[INT_ISSUE_WIDTH];
-    IssuePopReqPath         MemIssuePopReq[MEM_ISSUE_WIDTH];
-    IssuePopResPath         MemIssuePopRes[MEM_ISSUE_WIDTH];
-    IssuePopReqPath         MulIssuePopReq[MUL_ISSUE_WIDTH];
-    IssuePopResPath         MulIssuePopRes[MUL_ISSUE_WIDTH];
+    IssuePopReqPath         IssuePopReq[WAY_NUM];
+    IssuePopResPath         IssuePopRes[WAY_NUM];
 
-    IssueIntFreeCountPath   IntIssueFreeCount;
-    IssueMemFreeCountPath   MemIssueFreeCount;
-    IssueMulFreeCountPath   MulIssueFreeCount;
+    IssueFreeCountPath      IssueFreeCount;
 
     IssueCtrlPath           IssueCtrl;
     IssueWakeupPath         IssueWakeup[ISSUE_WAKEUP_PORT_NUM];
@@ -38,28 +32,20 @@ interface IssueQueueIF( input logic clk, rst );
         clk,
         rst,
         IssuePushReq,
-        IntIssuePopReq,
-        MemIssuePopReq,
-        MulIssuePopReq,
+        IssuePopReq,
         IssueWakeup,
         IssueCtrl,
     output
         IssuePushRes,
-        IntIssuePopRes,
-        MemIssuePopRes,
-        MulIssuePopRes,
-        IntIssueFreeCount,
-        MemIssueFreeCount,
-        MulIssueFreeCount
+        IssuePopRes,
+        IssueFreeCount 
     );
 
 
     modport DispatchStage(
     input
         IssuePushRes,
-        IntIssueFreeCount,
-        MemIssueFreeCount,
-        MulIssueFreeCount,
+        IssueFreeCount,
         IssueWakeup,
     output
         IssuePushReq,
@@ -69,13 +55,9 @@ interface IssueQueueIF( input logic clk, rst );
     modport IssueStage(
 
     input
-        IntIssuePopRes,
-        MemIssuePopRes,
-        MulIssuePopRes,
+        IssuePopRes,
     output
-        IntIssuePopReq,
-        MemIssuePopReq,
-        MulIssuePopReq
+        IssuePopReq
     );
 
     modport WriteBackStage(

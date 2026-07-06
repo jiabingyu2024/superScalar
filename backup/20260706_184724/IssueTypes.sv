@@ -13,27 +13,11 @@ package IssueTypes;
     localparam SHIFT_WIDTH = 36;
     typedef logic [SHIFT_WIDTH-1:0] ShiftType;
 
-    localparam int INT_ISSUE_QUEUE_DEPTH = 16;
-    localparam int MEM_ISSUE_QUEUE_DEPTH = 4;
-    localparam int MUL_ISSUE_QUEUE_DEPTH = 4;
-    localparam int ISSUE_PAYLOAD_DEPTH = INT_ISSUE_QUEUE_DEPTH +
-                                         MEM_ISSUE_QUEUE_DEPTH +
-                                         MUL_ISSUE_QUEUE_DEPTH;
-    localparam int ISSUE_PAYLOAD_WIDTH = $clog2(ISSUE_PAYLOAD_DEPTH);
-    localparam int INT_ISSUE_QUEUE_WIDTH = $clog2(INT_ISSUE_QUEUE_DEPTH);
-    localparam int MEM_ISSUE_QUEUE_WIDTH = $clog2(MEM_ISSUE_QUEUE_DEPTH);
-    localparam int MUL_ISSUE_QUEUE_WIDTH = $clog2(MUL_ISSUE_QUEUE_DEPTH);
-    localparam int ISSUE_WAKEUP_PORT_NUM = BasicTypes::WB_PORT_NUM;
-
-    localparam int INT_PAYLOAD_BASE = 0;
-    localparam int MEM_PAYLOAD_BASE = INT_ISSUE_QUEUE_DEPTH;
-    localparam int MUL_PAYLOAD_BASE = INT_ISSUE_QUEUE_DEPTH + MEM_ISSUE_QUEUE_DEPTH;
-
-    typedef logic [ISSUE_PAYLOAD_WIDTH:0] IssueFreeCountPath;
-    typedef logic [ISSUE_PAYLOAD_WIDTH-1:0] IssueIndexPath;
-    typedef logic [INT_ISSUE_QUEUE_WIDTH:0] IssueIntFreeCountPath;
-    typedef logic [MEM_ISSUE_QUEUE_WIDTH:0] IssueMemFreeCountPath;
-    typedef logic [MUL_ISSUE_QUEUE_WIDTH:0] IssueMulFreeCountPath;
+    localparam ISSUE_QUEUE_DEPTH = 16;
+    localparam ISSUE_QUEUE_WIDTH = $clog2(ISSUE_QUEUE_DEPTH);
+    localparam ISSUE_WAKEUP_PORT_NUM = BasicTypes::WAY_NUM * 5;
+    typedef logic [ISSUE_QUEUE_WIDTH:0] IssueFreeCountPath;
+    typedef logic [ISSUE_QUEUE_WIDTH-1:0] IssueIndexPath;
 
     typedef struct packed {
         logic flush;
@@ -62,7 +46,6 @@ package IssueTypes;
 
         logic           srcBIsImm;
         ShiftType       delay;
-        logic [31:0]    age;
 
         logic           robIndexPosition;
         RobIndexPath    robIndex;

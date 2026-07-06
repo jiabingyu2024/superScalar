@@ -42,17 +42,6 @@ package BasicTypes;
     typedef logic [$clog2(WAY_NUM)-1:0] WayNumPath;
     localparam PC_STEP = WAY_NUM * 4; // 每次取指的PC递增量
 
-    // Backend issue widths are intentionally decoupled from frontend WAY_NUM.
-    // Dispatch/commit stay 2-wide, while distributed issue can feed more
-    // execution pipes from already buffered uops.
-    localparam int INT_ISSUE_WIDTH = 3;  // ALU/BRC/SYS shared issue slots
-    localparam int MEM_ISSUE_WIDTH = 1;  // strict in-order MEM FIFO
-    localparam int MUL_ISSUE_WIDTH = 1;  // strict in-order MUL/DIV FIFO
-    localparam int MEM_WB_WIDTH = 2;     // load return + current MEM completion
-    localparam int MUL_WB_WIDTH = MUL_ISSUE_WIDTH;
-    localparam int ISSUE_WIDTH = INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + MUL_ISSUE_WIDTH;
-    localparam int WB_PORT_NUM = INT_ISSUE_WIDTH * 3 + MEM_WB_WIDTH + MUL_WB_WIDTH;
-
     // Backend global indexes. Keep these here so pipeline/recovery/rename
     // types do not depend on one concrete module package.
     localparam ROB_DEPTH = 32;

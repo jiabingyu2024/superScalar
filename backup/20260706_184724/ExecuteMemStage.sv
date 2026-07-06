@@ -11,7 +11,7 @@ module ExecuteMemStage(
     StoreBufferIF.ExecuteMemStage storeBuffer,
     BypassIF.ExecuteMemStage bypass
 );
-    RrToExMemPath pipeReg [MEM_ISSUE_WIDTH];
+    RrToExMemPath pipeReg [WAY_NUM];
 
     typedef struct packed {
         logic         valid;
@@ -91,11 +91,11 @@ module ExecuteMemStage(
 
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
-            for (int i = 0; i < MEM_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (ctrl.exPipe.flush) begin
-            for (int i = 0; i < MEM_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (!ctrl.exPipe.stall) begin
@@ -142,7 +142,7 @@ module ExecuteMemStage(
         logic loadReturnBlocked;
         logic loadAccessBlocked;
         logic currentOutputBlocked;
-        logic [MEM_WB_WIDTH-1:0] memWbSlotUsed;
+        logic [WAY_NUM-1:0] memWbSlotUsed;
         ExMemToWbPath loadReturnWb;
 
         dram.exReadEn = 1'b0;
@@ -163,7 +163,7 @@ module ExecuteMemStage(
         ctrl.memLoadAccessBlockReq = 1'b0;
 
         for (int i = 0; i < BYPASS_READ_PORT_NUM; i++) bypass.memReadReq[i] = '0;
-        for (int i = 0; i < MEM_WB_WIDTH; i++) begin
+        for (int i = 0; i < WAY_NUM; i++) begin
             self.nextMemToStage[i] = '0;
         end
 
@@ -180,7 +180,7 @@ module ExecuteMemStage(
             loadReturnWb = build_load_wb(loadMetaPipe1, dram.exReadData);
         end
 
-        for (int i = 0; i < MEM_ISSUE_WIDTH; i++) begin
+        for (int i = 0; i < WAY_NUM; i++) begin
             DataPath base;
             DataPath dataB;
             AddrPath effAddr;

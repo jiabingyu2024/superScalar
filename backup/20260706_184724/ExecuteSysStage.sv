@@ -16,7 +16,7 @@ module ExecuteSysStage(
     localparam DataPath     MCAUSE_ECALL_M = 32'd11;
     localparam DataPath     MCAUSE_BREAKPOINT = 32'd3;
 
-    RrToExSysPath pipeReg [INT_ISSUE_WIDTH];
+    RrToExSysPath pipeReg [WAY_NUM];
     DataPath mstatus;
     DataPath mtvec;
     DataPath mscratch;
@@ -86,11 +86,11 @@ module ExecuteSysStage(
 
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (ctrl.exPipe.flush) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 pipeReg[i] <= '0;
             end
         end else if (!ctrl.exPipe.stall) begin
@@ -106,7 +106,7 @@ module ExecuteSysStage(
             mepc <= '0;
             mcause <= '0;
         end else if (!ctrl.exPipe.flush && !ctrl.exPipe.stall) begin
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+            for (int i = 0; i < WAY_NUM; i++) begin
                 DataPath operand;
                 DataPath oldValue;
                 DataPath newValue;
@@ -144,7 +144,7 @@ module ExecuteSysStage(
     always_comb begin
         ctrl.sysStageEmpty = 1'b1;
         for (int i = 0; i < BYPASS_READ_PORT_NUM; i++) bypass.sysReadReq[i] = '0;
-        for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+        for (int i = 0; i < WAY_NUM; i++) begin
             DataPath operand;
             DataPath csrOld;
 
