@@ -60,6 +60,8 @@
 | `archive/2026-07-05/032_srcWithMext_low_ipc_microarch_analysis.md` | 分析 `srcWithMext` 低 IPC 和 031 无明显收益的微架构原因，给出兼顾 IPC/频率的优化顺序。 |
 | `archive/2026-07-05/033_issuequeue_wakeup_and_perf_buckets.md` | 回退 031，修复 IssueQueue `delay==1` 保守预计唤醒，并新增 stall/resource/width 性能分桶 JSON。 |
 | `archive/2026-07-05/034_ipc_bottleneck_optimization_plan.md` | 基于新增性能分桶重新分析 `srcWithMext` IPC 瓶颈，并制定 MEM/ROB/唤醒优化计划。 |
+| `archive/2026-07-05/035_ipc_lt05_root_cause_and_optimization.md` | 汇总 IPC < 0.5 根因，执行阶段 1/2 优化并记录 MEM result buffer、store fairness、ROB32 与 MUL 预计唤醒结果。 |
+| `archive/2026-07-05/036_srcWithMext_post_phase12_ipc_root_cause.md` | 基于阶段 1/2 后 100M 长窗口重新定位 IPC 仍低原因，确认新主瓶颈为 IssueQueue 满且缺少 ready 项。 |
 
 ## 后续维护规则
 
