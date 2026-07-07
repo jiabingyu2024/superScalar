@@ -12,6 +12,8 @@
 #   FPGA_SYS_CLK_MHZ=50.000
 #   FPGA_CPU_CLK_MHZ=100.000
 #   FPGA_FLATTEN_HIERARCHY=none
+#   FPGA_KEEP_EQUIVALENT_REGISTERS=true
+#   FPGA_ENABLE_POWER_OPT=false
 
 set script_dir [file normalize [file dirname [info script]]]
 set repo_dir   [file normalize [file join $script_dir ..]]
@@ -34,6 +36,8 @@ set input_clk_mhz 200.000
 set sys_clk_mhz   50.000
 set cpu_clk_mhz   100.000
 set flatten_hierarchy none
+set keep_equivalent_registers true
+set enable_power_opt false
 if {[info exists ::env(FPGA_INPUT_CLK_MHZ)]} {
     set input_clk_mhz $::env(FPGA_INPUT_CLK_MHZ)
 }
@@ -45,6 +49,12 @@ if {[info exists ::env(FPGA_CPU_CLK_MHZ)]} {
 }
 if {[info exists ::env(FPGA_FLATTEN_HIERARCHY)]} {
     set flatten_hierarchy $::env(FPGA_FLATTEN_HIERARCHY)
+}
+if {[info exists ::env(FPGA_KEEP_EQUIVALENT_REGISTERS)]} {
+    set keep_equivalent_registers $::env(FPGA_KEEP_EQUIVALENT_REGISTERS)
+}
+if {[info exists ::env(FPGA_ENABLE_POWER_OPT)]} {
+    set enable_power_opt $::env(FPGA_ENABLE_POWER_OPT)
 }
 
 proc first_existing_dir {candidates description} {
@@ -156,7 +166,9 @@ set_property target_language Verilog [current_project]
 set_property simulator_language Mixed [current_project]
 set_property default_lib xil_defaultlib [current_project]
 set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY $flatten_hierarchy [get_runs synth_1]
-set_property STEPS.SYNTH_DESIGN.ARGS.KEEP_EQUIVALENT_REGISTERS true [get_runs synth_1]
+set_property STEPS.SYNTH_DESIGN.ARGS.KEEP_EQUIVALENT_REGISTERS $keep_equivalent_registers [get_runs synth_1]
+set_property STEPS.POWER_OPT_DESIGN.IS_ENABLED $enable_power_opt [get_runs impl_1]
+set_property STEPS.POST_PLACE_POWER_OPT_DESIGN.IS_ENABLED $enable_power_opt [get_runs impl_1]
 
 set report_script_dir [file normalize [file join $project_dir sanity]]
 file mkdir $report_script_dir

@@ -52,7 +52,6 @@ module FreeList(FreeListIF.FreeList self);
             end
             freeMask[0] <= 1'b0;
             for (i = 0; i < CHECKPOINT_NUM; i++) begin
-                chkptMask[i] <= '0;
                 chkptValid[i] <= 1'b0;
             end
         end else if (self.freeListChkptRecover.ChkptRecoverEn) begin

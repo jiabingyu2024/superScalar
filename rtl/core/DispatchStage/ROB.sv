@@ -29,22 +29,24 @@ module ROB(ROBIF.ROB self);
             self.RobPushRes[i].position = tailPos ^ (idx < tail);
 
             idx = head + RobIndexPath'(i);
-            self.RobPopRes[i].valid = (count > i) && entries[idx].valid;
-            self.RobPopRes[i].entry = entries[idx];
-            for (int d = 0; d < WB_PORT_NUM; d++) begin
-                if (self.RobDoneReq[d].valid &&
-                    self.RobDoneReq[d].robIndex == idx &&
-                    entries[idx].valid) begin
-                    self.RobPopRes[i].entry.done = 1'b1;
-                    self.RobPopRes[i].entry.exception = self.RobDoneReq[d].exception;
-                    self.RobPopRes[i].entry.isSerial = self.RobDoneReq[d].isSerial;
-                    self.RobPopRes[i].entry.truePc = self.RobDoneReq[d].trueTargetPc;
-                    self.RobPopRes[i].entry.takenActual = self.RobDoneReq[d].taken;
-                    self.RobPopRes[i].entry.isMiss =
-                        entries[idx].isBranch &&
-                        ((entries[idx].takenPred != self.RobDoneReq[d].taken) ||
-                         (self.RobDoneReq[d].taken &&
-                          entries[idx].predPc != self.RobDoneReq[d].trueTargetPc));
+            self.RobPopRes[i] = '0;
+            if ((count > i) && entries[idx].valid) begin
+                self.RobPopRes[i].valid = 1'b1;
+                self.RobPopRes[i].entry = entries[idx];
+                for (int d = 0; d < WB_PORT_NUM; d++) begin
+                    if (self.RobDoneReq[d].valid &&
+                        self.RobDoneReq[d].robIndex == idx) begin
+                        self.RobPopRes[i].entry.done = 1'b1;
+                        self.RobPopRes[i].entry.exception = self.RobDoneReq[d].exception;
+                        self.RobPopRes[i].entry.isSerial = self.RobDoneReq[d].isSerial;
+                        self.RobPopRes[i].entry.truePc = self.RobDoneReq[d].trueTargetPc;
+                        self.RobPopRes[i].entry.takenActual = self.RobDoneReq[d].taken;
+                        self.RobPopRes[i].entry.isMiss =
+                            entries[idx].isBranch &&
+                            ((entries[idx].takenPred != self.RobDoneReq[d].taken) ||
+                             (self.RobDoneReq[d].taken &&
+                              entries[idx].predPc != self.RobDoneReq[d].trueTargetPc));
+                    end
                 end
             end
         end
@@ -59,7 +61,7 @@ module ROB(ROBIF.ROB self);
             tailPos <= 1'b0;
             count <= '0;
             for (i = 0; i < ROB_DEPTH; i++) begin
-                entries[i] <= '0;
+                entries[i].valid <= 1'b0;
             end
         end else if (self.RobFlush) begin
             head <= '0;
@@ -68,7 +70,7 @@ module ROB(ROBIF.ROB self);
             tailPos <= 1'b0;
             count <= '0;
             for (i = 0; i < ROB_DEPTH; i++) begin
-                entries[i] <= '0;
+                entries[i].valid <= 1'b0;
             end
         end else begin
             int pushCnt;

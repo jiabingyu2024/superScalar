@@ -91,7 +91,6 @@ module StoreBuffer(
             tail <= '0;
             count <= '0;
             for (i = 0; i < STORE_BUFFER_DEPTH; i++) begin
-                entries[i] <= '0;
                 valid[i] <= 1'b0;
             end
         end else if (self.flush) begin
@@ -99,7 +98,6 @@ module StoreBuffer(
             tail <= '0;
             count <= '0;
             for (i = 0; i < STORE_BUFFER_DEPTH; i++) begin
-                entries[i] <= '0;
                 valid[i] <= 1'b0;
             end
         end else begin

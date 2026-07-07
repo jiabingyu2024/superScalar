@@ -14,19 +14,18 @@ module Payload(PayloadIF.Payload self);
         for (i = 0; i < ISSUE_WIDTH; i++) begin
             self.PayloadPopRes[i].valid = self.PayloadPopReq[i].valid &&
                                           valid[self.PayloadPopReq[i].payloadIndex];
-            self.PayloadPopRes[i].entry = entries[self.PayloadPopReq[i].payloadIndex];
+            self.PayloadPopRes[i].entry = self.PayloadPopRes[i].valid ?
+                                          entries[self.PayloadPopReq[i].payloadIndex] : '0;
         end
     end
 
     always_ff @(posedge self.clk or posedge self.rst) begin
         if (self.rst) begin
             for (i = 0; i < ISSUE_PAYLOAD_DEPTH; i++) begin
-                entries[i] <= '0;
                 valid[i] <= 1'b0;
             end
         end else if (self.flush) begin
             for (i = 0; i < ISSUE_PAYLOAD_DEPTH; i++) begin
-                entries[i] <= '0;
                 valid[i] <= 1'b0;
             end
         end else begin

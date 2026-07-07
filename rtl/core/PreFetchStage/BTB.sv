@@ -47,8 +47,6 @@ module BTB #(
         if (rst) begin
             for (int i = 0; i < ENTRY_NUM; i++) begin
                 validTable[i] <= 1'b0;
-                tagTable[i] <= '0;
-                targetTable[i] <= '0;
             end
         end else if (updateValid) begin
             logic [INDEX_WIDTH-1:0] updateIndex;

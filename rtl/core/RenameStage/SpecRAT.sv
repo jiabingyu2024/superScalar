@@ -29,9 +29,6 @@ module SpecRAT(SpecRATIF.SpecRAT self);
             end
             for (i = 0; i < CHECKPOINT_NUM; i++) begin
                 chkptValid[i] <= 1'b0;
-                for (j = 0; j < SPECRAT_ENTRY_NUM; j++) begin
-                    chkptRat[i][j] <= PhyRegNumPath'(j);
-                end
             end
         end else if (self.specRATChkptRecover.ChkptRecoverEn) begin
             for (i = 0; i < SPECRAT_ENTRY_NUM; i++) begin

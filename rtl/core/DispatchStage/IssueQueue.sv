@@ -305,12 +305,10 @@ module IntIssueQueue(
         if (rst) begin
             for (int i = 0; i < INT_ISSUE_QUEUE_DEPTH; i++) begin
                 valid[i] <= 1'b0;
-                entries[i] <= '0;
             end
         end else if (flush) begin
             for (int i = 0; i < INT_ISSUE_QUEUE_DEPTH; i++) begin
                 valid[i] <= 1'b0;
-                entries[i] <= '0;
             end
         end else begin
             for (int i = 0; i < INT_ISSUE_QUEUE_DEPTH; i++) begin
@@ -494,7 +492,6 @@ module InOrderIssueQueue #(
             count <= '0;
             for (int i = 0; i < DEPTH; i++) begin
                 valid[i] <= 1'b0;
-                entries[i] <= '0;
             end
         end else if (flush) begin
             head <= '0;
@@ -502,7 +499,6 @@ module InOrderIssueQueue #(
             count <= '0;
             for (int i = 0; i < DEPTH; i++) begin
                 valid[i] <= 1'b0;
-                entries[i] <= '0;
             end
         end else begin
             int pushCnt;

@@ -305,10 +305,5 @@ Vivado 工具状态：
 FPGA 约束侧同步修改：
 
 1. `fpga/create_vivado_project.tcl` 默认 `cpu_clk_mhz` 从 50MHz 改为 100MHz；`sys_clk_mhz` 仍保持 50MHz，避免 UART/counter 语义变化。
-2. `fpga/digital_twin.xdc` 增加输入差分时钟约束：
-
-```tcl
-create_clock -name i_sys_clk -period 5.000 [get_ports { i_sys_clk_p }]
-```
-
-这样后续 Vivado 生成工程默认就会按 100MHz CPU 时钟目标和 200MHz 输入时钟约束检查，而不是在 50MHz 或无输入时钟约束下给出过松 timing 结论。
+2. 不在 `fpga/digital_twin.xdc` 中手动重复 `create_clock`。PLL IP 的 in-context XDC 已经为 `i_sys_clk_p` 生成 5.000ns 输入 clock；重复写会触发 `[Constraints 18-1056] Clock ... completely overrides ...` critical warning。
+3. 后续 Vivado 生成工程默认按 100MHz CPU PLL 输出目标检查；输入时钟约束沿用 PLL IP 自动生成的 200MHz 约束，避免重复 clock critical warning。
