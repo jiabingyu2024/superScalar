@@ -18,28 +18,16 @@ module PreFetchStage(
     
     always_comb begin
         logic predTakenSeen;
-        logic redirectBubble;
-        logic useBpuResult;
-        PcPath fetchBasePc;
 
         self.pcIn = self.pcOut + PC_STEP;
         self.predictPc = self.pcOut + PC_STEP;
         self.pcWe = !ctrl.pfPipe.stall;
         predTakenSeen = 1'b0;
-        redirectBubble = recovery.pcUpdateEn || self.fetchRedirectValid;
-        useBpuResult = !recovery.pcUpdateEn && !self.fetchRedirectValid;
-        fetchBasePc = self.pcOut;
 
         if (recovery.pcUpdateEn) begin
             self.pcIn = recovery.pcUpdate;
             self.predictPc = recovery.pcUpdate;
             self.pcWe = 1'b1;
-            fetchBasePc = recovery.pcUpdate;
-        end else if (self.fetchRedirectValid) begin
-            self.pcIn = self.fetchRedirectPc;
-            self.predictPc = self.fetchRedirectPc;
-            self.pcWe = 1'b1;
-            fetchBasePc = self.fetchRedirectPc;
         end else begin
             for (int i = 0; i < WAY_NUM; i++) begin
                 if (!predTakenSeen && self.bpuResult[i].btbhit && self.bpuResult[i].taken) begin
@@ -55,20 +43,18 @@ module PreFetchStage(
         // otherwise a following frontend stall can leave the IROM holding the
         // old wrong-path address and Fetch will later pair the recovered PC with
         // stale instructions.
-        iromAccess.ena = !ctrl.pfPipe.stall || recovery.pcUpdateEn ||
-                         self.fetchRedirectValid;
-        iromAccess.iromAddr = fetchBasePc;
+        iromAccess.ena = !ctrl.pfPipe.stall || recovery.pcUpdateEn;
+        iromAccess.iromAddr = recovery.pcUpdateEn ? recovery.pcUpdate : self.pcOut;
 
         predTakenSeen = 1'b0;
         for (int i = 0; i < WAY_NUM; i++) begin
-            self.nextStage[i].valid = !ctrl.pfPipe.flush && !ctrl.pfPipe.stall &&
-                                      !redirectBubble && !predTakenSeen;
-            self.nextStage[i].pc = fetchBasePc + PcPath'(i * 4);
-            self.nextStage[i].predInfo.pcPred = (useBpuResult && self.bpuResult[i].taken) ?
+            self.nextStage[i].valid = !ctrl.pfPipe.flush && !ctrl.pfPipe.stall && !predTakenSeen;
+            self.nextStage[i].pc = self.pcOut + PcPath'(i * 4);
+            self.nextStage[i].predInfo.pcPred = self.bpuResult[i].taken ?
                                                 self.bpuResult[i].target :
-                                                (fetchBasePc + PcPath'(i * 4) + 32'd4);
-            self.nextStage[i].predInfo.isPred = useBpuResult && self.bpuResult[i].taken;
-            if (useBpuResult && self.bpuResult[i].taken) begin
+                                                (self.pcOut + PcPath'(i * 4) + 32'd4);
+            self.nextStage[i].predInfo.isPred = self.bpuResult[i].taken;
+            if (self.bpuResult[i].taken) begin
                 predTakenSeen = 1'b1;
             end
         end

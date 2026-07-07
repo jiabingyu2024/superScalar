@@ -16,7 +16,6 @@ package ROBTypes;
         logic               valid;
         logic               done;
         PcPath              pc;
-        TubeTypePath        tubeType;
 
         logic               DstValid;
         LgcRegNumPath       lgcRegNum;

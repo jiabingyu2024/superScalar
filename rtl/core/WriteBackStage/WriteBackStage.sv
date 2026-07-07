@@ -67,41 +67,50 @@ module WriteBackStage(
             issueQueue.IssueWakeup[i] = '0;
         end
         begin
-            int port;
+            int intPort;
+            int memMulPort;
 
-            port = 0;
+            intPort = 0;
             for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
-                fill_port(port, aluPipeReg[i].valid, aluPipeReg[i].Rd,
-                      aluPipeReg[i].writeRd, aluPipeReg[i].data,
-                      aluPipeReg[i].robIndex, 1'b0, 1'b0, '0, 1'b0);
-                port++;
+                if (aluPipeReg[i].valid && intPort < INT_ISSUE_WIDTH) begin
+                    fill_port(intPort, 1'b1, aluPipeReg[i].Rd,
+                          aluPipeReg[i].writeRd, aluPipeReg[i].data,
+                          aluPipeReg[i].robIndex, 1'b0, 1'b0, '0, 1'b0);
+                    intPort++;
+                end
             end
+            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+                if (brcPipeReg[i].valid && intPort < INT_ISSUE_WIDTH) begin
+                    fill_port(intPort, 1'b1, brcPipeReg[i].Rd,
+                          brcPipeReg[i].writeRd, brcPipeReg[i].data,
+                          brcPipeReg[i].robIndex, 1'b0, 1'b0,
+                          brcPipeReg[i].trueTargetPc, brcPipeReg[i].taken);
+                    intPort++;
+                end
+            end
+            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
+                if (sysPipeReg[i].valid && intPort < INT_ISSUE_WIDTH) begin
+                    fill_port(intPort, 1'b1, sysPipeReg[i].Rd,
+                          sysPipeReg[i].writeRd, sysPipeReg[i].data,
+                          sysPipeReg[i].robIndex, sysPipeReg[i].isSerial,
+                          sysPipeReg[i].exception, sysPipeReg[i].trueTargetPc,
+                          1'b0);
+                    intPort++;
+                end
+            end
+
+            memMulPort = INT_ISSUE_WIDTH;
             for (int i = 0; i < MEM_WB_WIDTH; i++) begin
-                fill_port(port, memPipeReg[i].valid, memPipeReg[i].Rd,
+                fill_port(memMulPort, memPipeReg[i].valid, memPipeReg[i].Rd,
                       memPipeReg[i].writeRd, memPipeReg[i].data,
                       memPipeReg[i].robIndex, 1'b0, 1'b0, '0, 1'b0);
-                port++;
+                memMulPort++;
             end
             for (int i = 0; i < MUL_WB_WIDTH; i++) begin
-                fill_port(port, mulPipeReg[i].valid, mulPipeReg[i].Rd,
+                fill_port(memMulPort, mulPipeReg[i].valid, mulPipeReg[i].Rd,
                       mulPipeReg[i].writeRd, mulPipeReg[i].data,
                       mulPipeReg[i].robIndex, 1'b0, 1'b0, '0, 1'b0);
-                port++;
-            end
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
-                fill_port(port, brcPipeReg[i].valid, brcPipeReg[i].Rd,
-                      brcPipeReg[i].writeRd, brcPipeReg[i].data,
-                      brcPipeReg[i].robIndex, 1'b0, 1'b0,
-                      brcPipeReg[i].trueTargetPc, brcPipeReg[i].taken);
-                port++;
-            end
-            for (int i = 0; i < INT_ISSUE_WIDTH; i++) begin
-                fill_port(port, sysPipeReg[i].valid, sysPipeReg[i].Rd,
-                      sysPipeReg[i].writeRd, sysPipeReg[i].data,
-                      sysPipeReg[i].robIndex, sysPipeReg[i].isSerial,
-                      sysPipeReg[i].exception, sysPipeReg[i].trueTargetPc,
-                      1'b0);
-                port++;
+                memMulPort++;
             end
         end
     end

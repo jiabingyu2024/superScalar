@@ -38,15 +38,6 @@ public:
     uint64_t wb_stall_cycles = 0;
     uint64_t rob_full_cycles = 0;
     uint64_t issue_queue_full_cycles = 0;
-    uint64_t int_issue_queue_full_cycles = 0;
-    uint64_t mem_issue_queue_full_cycles = 0;
-    uint64_t mul_issue_queue_full_cycles = 0;
-    uint64_t rob_head_not_done_cycles = 0;
-    uint64_t rob_head_not_done_int_cycles = 0;
-    uint64_t rob_head_not_done_mem_cycles = 0;
-    uint64_t rob_head_not_done_mul_cycles = 0;
-    uint64_t rob_head_not_done_other_cycles = 0;
-    uint64_t rob_head_store_commit_wait_cycles = 0;
     uint64_t free_list_empty_cycles = 0;
     uint64_t store_buffer_full_cycles = 0;
     uint64_t serial_block_cycles = 0;
@@ -63,9 +54,6 @@ public:
     uint64_t commit_width0_cycles = 0;
     uint64_t commit_width1_cycles = 0;
     uint64_t commit_width2_cycles = 0;
-    uint64_t int_issue_count = 0;
-    uint64_t mem_issue_count = 0;
-    uint64_t mul_issue_count = 0;
     uint64_t mmio_read_count = 0;
     uint64_t mmio_write_count = 0;
     uint64_t dram_read_count = 0;

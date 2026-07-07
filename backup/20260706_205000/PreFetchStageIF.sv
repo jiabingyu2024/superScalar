@@ -27,8 +27,6 @@ interface PreFetchStageIF ( input logic clk, rst );
     
     // branchPredictor 
     BpuPrdPath bpuResult[WAY_NUM];  // 来自分支预测器的预测结果
-    logic      fetchRedirectValid;
-    PcPath     fetchRedirectPc;
 
     //FetchStage 
     PfToIfPath nextStage [WAY_NUM];
@@ -49,8 +47,6 @@ interface PreFetchStageIF ( input logic clk, rst );
             rst,
             pcOut,
             bpuResult,
-            fetchRedirectValid,
-            fetchRedirectPc,
             // interrupt,
             // interruptPC,
         output
@@ -62,10 +58,7 @@ interface PreFetchStageIF ( input logic clk, rst );
 
     modport FetchStage(
         input
-            nextStage,
-        output
-            fetchRedirectValid,
-            fetchRedirectPc
+            nextStage
     );
 
     modport BPU(

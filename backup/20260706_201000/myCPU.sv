@@ -43,15 +43,6 @@ module myCPU (
     output logic [63:0] dbg_perf_wb_stall_cycles,
     output logic [63:0] dbg_perf_rob_full_cycles,
     output logic [63:0] dbg_perf_issue_queue_full_cycles,
-    output logic [63:0] dbg_perf_int_issue_queue_full_cycles,
-    output logic [63:0] dbg_perf_mem_issue_queue_full_cycles,
-    output logic [63:0] dbg_perf_mul_issue_queue_full_cycles,
-    output logic [63:0] dbg_perf_rob_head_not_done_cycles,
-    output logic [63:0] dbg_perf_rob_head_not_done_int_cycles,
-    output logic [63:0] dbg_perf_rob_head_not_done_mem_cycles,
-    output logic [63:0] dbg_perf_rob_head_not_done_mul_cycles,
-    output logic [63:0] dbg_perf_rob_head_not_done_other_cycles,
-    output logic [63:0] dbg_perf_rob_head_store_commit_wait_cycles,
     output logic [63:0] dbg_perf_free_list_empty_cycles,
     output logic [63:0] dbg_perf_store_buffer_full_cycles,
     output logic [63:0] dbg_perf_serial_block_cycles,
@@ -67,10 +58,7 @@ module myCPU (
     output logic [63:0] dbg_perf_issue_width2_cycles,
     output logic [63:0] dbg_perf_commit_width0_cycles,
     output logic [63:0] dbg_perf_commit_width1_cycles,
-    output logic [63:0] dbg_perf_commit_width2_cycles,
-    output logic [63:0] dbg_perf_int_issue_count,
-    output logic [63:0] dbg_perf_mem_issue_count,
-    output logic [63:0] dbg_perf_mul_issue_count
+    output logic [63:0] dbg_perf_commit_width2_cycles
 `endif
 );
 
@@ -122,15 +110,6 @@ module myCPU (
     assign dbg_perf_wb_stall_cycles = perfIF.wbStallCycles;
     assign dbg_perf_rob_full_cycles = perfIF.robFullCycles;
     assign dbg_perf_issue_queue_full_cycles = perfIF.issueQueueFullCycles;
-    assign dbg_perf_int_issue_queue_full_cycles = perfIF.intIssueQueueFullCycles;
-    assign dbg_perf_mem_issue_queue_full_cycles = perfIF.memIssueQueueFullCycles;
-    assign dbg_perf_mul_issue_queue_full_cycles = perfIF.mulIssueQueueFullCycles;
-    assign dbg_perf_rob_head_not_done_cycles = perfIF.robHeadNotDoneCycles;
-    assign dbg_perf_rob_head_not_done_int_cycles = perfIF.robHeadNotDoneIntCycles;
-    assign dbg_perf_rob_head_not_done_mem_cycles = perfIF.robHeadNotDoneMemCycles;
-    assign dbg_perf_rob_head_not_done_mul_cycles = perfIF.robHeadNotDoneMulCycles;
-    assign dbg_perf_rob_head_not_done_other_cycles = perfIF.robHeadNotDoneOtherCycles;
-    assign dbg_perf_rob_head_store_commit_wait_cycles = perfIF.robHeadStoreCommitWaitCycles;
     assign dbg_perf_free_list_empty_cycles = perfIF.freeListEmptyCycles;
     assign dbg_perf_store_buffer_full_cycles = perfIF.storeBufferFullCycles;
     assign dbg_perf_serial_block_cycles = perfIF.serialBlockCycles;
@@ -147,9 +126,6 @@ module myCPU (
     assign dbg_perf_commit_width0_cycles = perfIF.commitWidth0Cycles;
     assign dbg_perf_commit_width1_cycles = perfIF.commitWidth1Cycles;
     assign dbg_perf_commit_width2_cycles = perfIF.commitWidth2Cycles;
-    assign dbg_perf_int_issue_count = perfIF.intIssueCount;
-    assign dbg_perf_mem_issue_count = perfIF.memIssueCount;
-    assign dbg_perf_mul_issue_count = perfIF.mulIssueCount;
 `endif
 
     core u_core (

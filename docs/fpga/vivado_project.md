@@ -148,10 +148,10 @@ Tcl 默认：
 ```tcl
 set input_clk_mhz 200.000
 set sys_clk_mhz   50.000
-set cpu_clk_mhz   50.000
+set cpu_clk_mhz   100.000
 ```
 
-不建议修改 `sys_clk_mhz`，因为 `rtl/soc/counter.sv` 和 UART 参数按 50MHz SoC 时钟工作。若要提高 CPU 频率，只改 `FPGA_CPU_CLK_MHZ`。
+不建议修改 `sys_clk_mhz`，因为 `rtl/soc/counter.sv` 和 UART 参数按 50MHz SoC 时钟工作。CPU 默认按 100MHz 约束；若要进一步提高 CPU 频率，只改 `FPGA_CPU_CLK_MHZ`。
 
 ### 命令行临时修改频率
 

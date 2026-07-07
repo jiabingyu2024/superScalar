@@ -38,9 +38,6 @@
       // 资源/顺序化阻塞
       logic robFull;
       logic issueQueueFull;
-      logic intIssueQueueFull;
-      logic memIssueQueueFull;
-      logic mulIssueQueueFull;
       logic freeListEmpty;
       logic serialBlock;
 
@@ -74,9 +71,6 @@
 
           input  robFull,
           input  issueQueueFull,
-          input  intIssueQueueFull,
-          input  memIssueQueueFull,
-          input  mulIssueQueueFull,
           input  freeListEmpty,
           input  serialBlock,
 
@@ -136,10 +130,7 @@
           output dsStallReq,
           output dsStageEmpty,
           output robFull,
-          output issueQueueFull,
-          output intIssueQueueFull,
-          output memIssueQueueFull,
-          output mulIssueQueueFull
+          output issueQueueFull
       );
 
       modport IssueStage(

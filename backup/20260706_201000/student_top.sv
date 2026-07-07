@@ -62,15 +62,6 @@ module student_top#(
     output logic [63:0]                         dbg_perf_wb_stall_cycles,
     output logic [63:0]                         dbg_perf_rob_full_cycles,
     output logic [63:0]                         dbg_perf_issue_queue_full_cycles,
-    output logic [63:0]                         dbg_perf_int_issue_queue_full_cycles,
-    output logic [63:0]                         dbg_perf_mem_issue_queue_full_cycles,
-    output logic [63:0]                         dbg_perf_mul_issue_queue_full_cycles,
-    output logic [63:0]                         dbg_perf_rob_head_not_done_cycles,
-    output logic [63:0]                         dbg_perf_rob_head_not_done_int_cycles,
-    output logic [63:0]                         dbg_perf_rob_head_not_done_mem_cycles,
-    output logic [63:0]                         dbg_perf_rob_head_not_done_mul_cycles,
-    output logic [63:0]                         dbg_perf_rob_head_not_done_other_cycles,
-    output logic [63:0]                         dbg_perf_rob_head_store_commit_wait_cycles,
     output logic [63:0]                         dbg_perf_free_list_empty_cycles,
     output logic [63:0]                         dbg_perf_store_buffer_full_cycles,
     output logic [63:0]                         dbg_perf_serial_block_cycles,
@@ -86,10 +77,7 @@ module student_top#(
     output logic [63:0]                         dbg_perf_issue_width2_cycles,
     output logic [63:0]                         dbg_perf_commit_width0_cycles,
     output logic [63:0]                         dbg_perf_commit_width1_cycles,
-    output logic [63:0]                         dbg_perf_commit_width2_cycles,
-    output logic [63:0]                         dbg_perf_int_issue_count,
-    output logic [63:0]                         dbg_perf_mem_issue_count,
-    output logic [63:0]                         dbg_perf_mul_issue_count
+    output logic [63:0]                         dbg_perf_commit_width2_cycles
 `endif
 );
 
@@ -128,15 +116,6 @@ module student_top#(
     logic [63:0] perf_wb_stall_cycles;
     logic [63:0] perf_rob_full_cycles;
     logic [63:0] perf_issue_queue_full_cycles;
-    logic [63:0] perf_int_issue_queue_full_cycles;
-    logic [63:0] perf_mem_issue_queue_full_cycles;
-    logic [63:0] perf_mul_issue_queue_full_cycles;
-    logic [63:0] perf_rob_head_not_done_cycles;
-    logic [63:0] perf_rob_head_not_done_int_cycles;
-    logic [63:0] perf_rob_head_not_done_mem_cycles;
-    logic [63:0] perf_rob_head_not_done_mul_cycles;
-    logic [63:0] perf_rob_head_not_done_other_cycles;
-    logic [63:0] perf_rob_head_store_commit_wait_cycles;
     logic [63:0] perf_free_list_empty_cycles;
     logic [63:0] perf_store_buffer_full_cycles;
     logic [63:0] perf_serial_block_cycles;
@@ -153,9 +132,6 @@ module student_top#(
     logic [63:0] perf_commit_width0_cycles;
     logic [63:0] perf_commit_width1_cycles;
     logic [63:0] perf_commit_width2_cycles;
-    logic [63:0] perf_int_issue_count;
-    logic [63:0] perf_mem_issue_count;
-    logic [63:0] perf_mul_issue_count;
 `endif
 
     // 16KB = 2^12 * 32bit
@@ -228,15 +204,6 @@ module student_top#(
         .dbg_perf_wb_stall_cycles(perf_wb_stall_cycles),
         .dbg_perf_rob_full_cycles(perf_rob_full_cycles),
         .dbg_perf_issue_queue_full_cycles(perf_issue_queue_full_cycles),
-        .dbg_perf_int_issue_queue_full_cycles(perf_int_issue_queue_full_cycles),
-        .dbg_perf_mem_issue_queue_full_cycles(perf_mem_issue_queue_full_cycles),
-        .dbg_perf_mul_issue_queue_full_cycles(perf_mul_issue_queue_full_cycles),
-        .dbg_perf_rob_head_not_done_cycles(perf_rob_head_not_done_cycles),
-        .dbg_perf_rob_head_not_done_int_cycles(perf_rob_head_not_done_int_cycles),
-        .dbg_perf_rob_head_not_done_mem_cycles(perf_rob_head_not_done_mem_cycles),
-        .dbg_perf_rob_head_not_done_mul_cycles(perf_rob_head_not_done_mul_cycles),
-        .dbg_perf_rob_head_not_done_other_cycles(perf_rob_head_not_done_other_cycles),
-        .dbg_perf_rob_head_store_commit_wait_cycles(perf_rob_head_store_commit_wait_cycles),
         .dbg_perf_free_list_empty_cycles(perf_free_list_empty_cycles),
         .dbg_perf_store_buffer_full_cycles(perf_store_buffer_full_cycles),
         .dbg_perf_serial_block_cycles(perf_serial_block_cycles),
@@ -252,10 +219,7 @@ module student_top#(
         .dbg_perf_issue_width2_cycles(perf_issue_width2_cycles),
         .dbg_perf_commit_width0_cycles(perf_commit_width0_cycles),
         .dbg_perf_commit_width1_cycles(perf_commit_width1_cycles),
-        .dbg_perf_commit_width2_cycles(perf_commit_width2_cycles),
-        .dbg_perf_int_issue_count(perf_int_issue_count),
-        .dbg_perf_mem_issue_count(perf_mem_issue_count),
-        .dbg_perf_mul_issue_count(perf_mul_issue_count)
+        .dbg_perf_commit_width2_cycles(perf_commit_width2_cycles)
 `endif
     );
 
@@ -313,15 +277,6 @@ module student_top#(
     assign dbg_perf_wb_stall_cycles = perf_wb_stall_cycles;
     assign dbg_perf_rob_full_cycles = perf_rob_full_cycles;
     assign dbg_perf_issue_queue_full_cycles = perf_issue_queue_full_cycles;
-    assign dbg_perf_int_issue_queue_full_cycles = perf_int_issue_queue_full_cycles;
-    assign dbg_perf_mem_issue_queue_full_cycles = perf_mem_issue_queue_full_cycles;
-    assign dbg_perf_mul_issue_queue_full_cycles = perf_mul_issue_queue_full_cycles;
-    assign dbg_perf_rob_head_not_done_cycles = perf_rob_head_not_done_cycles;
-    assign dbg_perf_rob_head_not_done_int_cycles = perf_rob_head_not_done_int_cycles;
-    assign dbg_perf_rob_head_not_done_mem_cycles = perf_rob_head_not_done_mem_cycles;
-    assign dbg_perf_rob_head_not_done_mul_cycles = perf_rob_head_not_done_mul_cycles;
-    assign dbg_perf_rob_head_not_done_other_cycles = perf_rob_head_not_done_other_cycles;
-    assign dbg_perf_rob_head_store_commit_wait_cycles = perf_rob_head_store_commit_wait_cycles;
     assign dbg_perf_free_list_empty_cycles = perf_free_list_empty_cycles;
     assign dbg_perf_store_buffer_full_cycles = perf_store_buffer_full_cycles;
     assign dbg_perf_serial_block_cycles = perf_serial_block_cycles;
@@ -338,9 +293,6 @@ module student_top#(
     assign dbg_perf_commit_width0_cycles = perf_commit_width0_cycles;
     assign dbg_perf_commit_width1_cycles = perf_commit_width1_cycles;
     assign dbg_perf_commit_width2_cycles = perf_commit_width2_cycles;
-    assign dbg_perf_int_issue_count = perf_int_issue_count;
-    assign dbg_perf_mem_issue_count = perf_mem_issue_count;
-    assign dbg_perf_mul_issue_count = perf_mul_issue_count;
 `endif
 
 endmodule

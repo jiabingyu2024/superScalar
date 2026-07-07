@@ -1,27 +1,29 @@
-#include "dut_student_top_io.h"
+#include "dut_mycpu_io.h"
 
-#include "Vstudent_top.h"
+#include "VmyCPU.h"
 
 namespace sim {
 
-void init_student_top_inputs(Vstudent_top& top) {
-    top.w_cpu_clk = 0;
-    top.w_clk_50Mhz = 0;
-    top.w_clk_rst = 1;
-    top.virtual_key = 0;
-    top.virtual_sw = 0;
+void drive_mycpu_inputs(VmyCPU& top, const MemoryModel& mem) {
+    top.irom_dataA = mem.irom_data_a();
+    top.irom_dataB = mem.irom_data_b();
+    top.perip_rdata = mem.current_perip_rdata();
 }
 
-Request capture_student_top_request(const Vstudent_top& top) {
+Request capture_mycpu_request(const VmyCPU& top) {
     Request req;
-    req.perip_addr = top.dbg_perip_addr;
-    req.perip_wdata = top.dbg_perip_wdata;
-    req.perip_mask = top.dbg_perip_mask & 0xfu;
-    req.perip_wen = top.dbg_perip_wen;
+    req.irom_addr_a = top.irom_addrA;
+    req.irom_addr_b = top.irom_addrB;
+    req.irom_ena_a = top.irom_enaA;
+    req.irom_ena_b = top.irom_enaB;
+    req.perip_addr = top.perip_addr;
+    req.perip_wdata = top.perip_wdata;
+    req.perip_mask = top.perip_mask & 0xfu;
+    req.perip_wen = top.perip_wen;
     return req;
 }
 
-CorePerfSample capture_student_top_perf(const Vstudent_top& top) {
+CorePerfSample capture_mycpu_perf(const VmyCPU& top) {
     CorePerfSample sample;
     sample.cycle = top.dbg_perf_cycle;
     sample.commit_count = top.dbg_perf_commit;
@@ -43,16 +45,6 @@ CorePerfSample capture_student_top_perf(const Vstudent_top& top) {
     sample.wb_stall_cycles = top.dbg_perf_wb_stall_cycles;
     sample.rob_full_cycles = top.dbg_perf_rob_full_cycles;
     sample.issue_queue_full_cycles = top.dbg_perf_issue_queue_full_cycles;
-    sample.int_issue_queue_full_cycles = top.dbg_perf_int_issue_queue_full_cycles;
-    sample.mem_issue_queue_full_cycles = top.dbg_perf_mem_issue_queue_full_cycles;
-    sample.mul_issue_queue_full_cycles = top.dbg_perf_mul_issue_queue_full_cycles;
-    sample.rob_head_not_done_cycles = top.dbg_perf_rob_head_not_done_cycles;
-    sample.rob_head_not_done_int_cycles = top.dbg_perf_rob_head_not_done_int_cycles;
-    sample.rob_head_not_done_mem_cycles = top.dbg_perf_rob_head_not_done_mem_cycles;
-    sample.rob_head_not_done_mul_cycles = top.dbg_perf_rob_head_not_done_mul_cycles;
-    sample.rob_head_not_done_other_cycles = top.dbg_perf_rob_head_not_done_other_cycles;
-    sample.rob_head_store_commit_wait_cycles =
-        top.dbg_perf_rob_head_store_commit_wait_cycles;
     sample.free_list_empty_cycles = top.dbg_perf_free_list_empty_cycles;
     sample.store_buffer_full_cycles = top.dbg_perf_store_buffer_full_cycles;
     sample.serial_block_cycles = top.dbg_perf_serial_block_cycles;
@@ -70,9 +62,6 @@ CorePerfSample capture_student_top_perf(const Vstudent_top& top) {
     sample.commit_width0_cycles = top.dbg_perf_commit_width0_cycles;
     sample.commit_width1_cycles = top.dbg_perf_commit_width1_cycles;
     sample.commit_width2_cycles = top.dbg_perf_commit_width2_cycles;
-    sample.int_issue_count = top.dbg_perf_int_issue_count;
-    sample.mem_issue_count = top.dbg_perf_mem_issue_count;
-    sample.mul_issue_count = top.dbg_perf_mul_issue_count;
     return sample;
 }
 

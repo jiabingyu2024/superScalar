@@ -10,7 +10,7 @@
 #   FPGA_INPUT_CLK_MHZ=200.000
 #   FPGA_PART=xc7k325tffg900-2
 #   FPGA_SYS_CLK_MHZ=50.000
-#   FPGA_CPU_CLK_MHZ=50.000
+#   FPGA_CPU_CLK_MHZ=100.000
 #   FPGA_FLATTEN_HIERARCHY=none
 
 set script_dir [file normalize [file dirname [info script]]]
@@ -32,7 +32,7 @@ if {[info exists ::env(FPGA_PART)]} {
 
 set input_clk_mhz 200.000
 set sys_clk_mhz   50.000
-set cpu_clk_mhz   50.000
+set cpu_clk_mhz   100.000
 set flatten_hierarchy none
 if {[info exists ::env(FPGA_INPUT_CLK_MHZ)]} {
     set input_clk_mhz $::env(FPGA_INPUT_CLK_MHZ)

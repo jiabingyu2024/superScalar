@@ -28,14 +28,11 @@ module FetchStage(
     end
 
     always_comb begin
-        prev.fetchRedirectValid = 1'b0;
-        prev.fetchRedirectPc = '0;
-
         for (int i = 0; i < WAY_NUM; i++) begin
             nextStage[i].pc = pipeReg[i].pc;
             nextStage[i].inst = iromAccess.inst[i];
             nextStage[i].predInfo = pipeReg[i].predInfo;
-            nextStage[i].valid = pipeReg[i].valid && !ctrl.ifPipe.flush;
+            nextStage[i].valid = pipeReg[i].valid && !ctrl.ifPipe.flush; // 如果当前指令有效且没有被清空，则传递到下一阶段
         end
     end
 

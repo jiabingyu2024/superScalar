@@ -83,9 +83,6 @@ module DispatchStage(
         ctrl.dsStallReq = 1'b0;
         ctrl.robFull = 1'b0;
         ctrl.issueQueueFull = 1'b0;
-        ctrl.intIssueQueueFull = 1'b0;
-        ctrl.memIssueQueueFull = 1'b0;
-        ctrl.mulIssueQueueFull = 1'b0;
 
         storeBuffer.allocReq = 1'b0;
         issueQueue.IssueCtrl.flush = ctrl.dsPipe.flush;
@@ -126,12 +123,10 @@ module DispatchStage(
         end
 
         ctrl.robFull = packetValid && (int'(rob.RobFreeCount) < validCount);
-        ctrl.intIssueQueueFull = packetValid && (int'(issueQueue.IntIssueFreeCount) < intCount);
-        ctrl.memIssueQueueFull = packetValid && (int'(issueQueue.MemIssueFreeCount) < memCount);
-        ctrl.mulIssueQueueFull = packetValid && (int'(issueQueue.MulIssueFreeCount) < mulCount);
-        ctrl.issueQueueFull = ctrl.intIssueQueueFull ||
-                              ctrl.memIssueQueueFull ||
-                              ctrl.mulIssueQueueFull;
+        ctrl.issueQueueFull = packetValid &&
+                              ((int'(issueQueue.IntIssueFreeCount) < intCount) ||
+                               (int'(issueQueue.MemIssueFreeCount) < memCount) ||
+                               (int'(issueQueue.MulIssueFreeCount) < mulCount));
 
         resourceReady = !ctrl.robFull &&
                         !ctrl.issueQueueFull &&
@@ -145,7 +140,6 @@ module DispatchStage(
 
             rob.RobPushReq[i].entry.done = 1'b0;
             rob.RobPushReq[i].entry.pc = pipeReg[i].pc;
-            rob.RobPushReq[i].entry.tubeType = pipeReg[i].instInfo.tubeType;
             rob.RobPushReq[i].entry.DstValid = pipeReg[i].phyRegInfo.PhyRegNumDstValid;
             rob.RobPushReq[i].entry.lgcRegNum = pipeReg[i].lgcRegInfo.lgcRegNumDst;
             rob.RobPushReq[i].entry.phyRegNum = pipeReg[i].phyRegInfo.PhyRegNumDst;
@@ -217,8 +211,8 @@ module DispatchStage(
         cycles = 1;
         unique case (tube)
             TUBE_TYPE_MUL: cycles = (subtype.mulSubType inside {MUL_SUBTYPE_DIV, MUL_SUBTYPE_DIVU,
-                                                                 MUL_SUBTYPE_REM, MUL_SUBTYPE_REMU}) ? 34 : 3;
-            TUBE_TYPE_MEM: cycles = 2;
+                                                                 MUL_SUBTYPE_REM, MUL_SUBTYPE_REMU}) ? 34 : 4;
+            TUBE_TYPE_MEM: cycles = 3;
             default:       cycles = 1;
         endcase
         delay_for = ShiftType'(1) << (cycles - 1);

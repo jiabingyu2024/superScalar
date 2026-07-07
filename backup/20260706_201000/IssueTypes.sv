@@ -13,8 +13,8 @@ package IssueTypes;
     localparam SHIFT_WIDTH = 36;
     typedef logic [SHIFT_WIDTH-1:0] ShiftType;
 
-    localparam int INT_ISSUE_QUEUE_DEPTH = 32;
-    localparam int MEM_ISSUE_QUEUE_DEPTH = 16;
+    localparam int INT_ISSUE_QUEUE_DEPTH = 16;
+    localparam int MEM_ISSUE_QUEUE_DEPTH = 4;
     localparam int MUL_ISSUE_QUEUE_DEPTH = 4;
     localparam int ISSUE_PAYLOAD_DEPTH = INT_ISSUE_QUEUE_DEPTH +
                                          MEM_ISSUE_QUEUE_DEPTH +

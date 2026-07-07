@@ -19,15 +19,6 @@ interface PerfIF(input logic clk, rst);
     logic [63:0] wbStallCycles;
     logic [63:0] robFullCycles;
     logic [63:0] issueQueueFullCycles;
-    logic [63:0] intIssueQueueFullCycles;
-    logic [63:0] memIssueQueueFullCycles;
-    logic [63:0] mulIssueQueueFullCycles;
-    logic [63:0] robHeadNotDoneCycles;
-    logic [63:0] robHeadNotDoneIntCycles;
-    logic [63:0] robHeadNotDoneMemCycles;
-    logic [63:0] robHeadNotDoneMulCycles;
-    logic [63:0] robHeadNotDoneOtherCycles;
-    logic [63:0] robHeadStoreCommitWaitCycles;
     logic [63:0] freeListEmptyCycles;
     logic [63:0] storeBufferFullCycles;
     logic [63:0] serialBlockCycles;
@@ -44,9 +35,6 @@ interface PerfIF(input logic clk, rst);
     logic [63:0] commitWidth0Cycles;
     logic [63:0] commitWidth1Cycles;
     logic [63:0] commitWidth2Cycles;
-    logic [63:0] intIssueCount;
-    logic [63:0] memIssueCount;
-    logic [63:0] mulIssueCount;
 
     modport core(
         output
@@ -70,15 +58,6 @@ interface PerfIF(input logic clk, rst);
             wbStallCycles,
             robFullCycles,
             issueQueueFullCycles,
-            intIssueQueueFullCycles,
-            memIssueQueueFullCycles,
-            mulIssueQueueFullCycles,
-            robHeadNotDoneCycles,
-            robHeadNotDoneIntCycles,
-            robHeadNotDoneMemCycles,
-            robHeadNotDoneMulCycles,
-            robHeadNotDoneOtherCycles,
-            robHeadStoreCommitWaitCycles,
             freeListEmptyCycles,
             storeBufferFullCycles,
             serialBlockCycles,
@@ -94,9 +73,6 @@ interface PerfIF(input logic clk, rst);
             issueWidth2Cycles,
             commitWidth0Cycles,
             commitWidth1Cycles,
-            commitWidth2Cycles,
-            intIssueCount,
-            memIssueCount,
-            mulIssueCount
+            commitWidth2Cycles
     );
 endinterface : PerfIF

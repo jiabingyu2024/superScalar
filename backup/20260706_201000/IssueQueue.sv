@@ -163,20 +163,32 @@ module IssueQueue(IssueQueueIF.IssueQueue self);
             self.MulIssuePopRes[i].done = 1'b0;
         end
 
-        for (int c = 0; c < ISSUE_WIDTH; c++) begin
+        for (int iter = 0; iter < ISSUE_WIDTH; iter++) begin
+            int best;
             logic blocked;
 
-            if (candidates[c].done) begin
+            best = -1;
+            for (int c = 0; c < ISSUE_WIDTH; c++) begin
+                if (candidates[c].done && !grant[c]) begin
+                    if (best < 0 ||
+                        candidates[c].entry.age < candidates[best].entry.age) begin
+                        best = c;
+                    end
+                end
+            end
+
+            if (best >= 0) begin
                 blocked = 1'b0;
                 for (int g = 0; g < ISSUE_WIDTH; g++) begin
                     if (grant[g] &&
-                        has_same_cycle_raw(candidates[c].entry,
+                        has_same_cycle_raw(candidates[best].entry,
                                            candidates[g].entry)) begin
                         blocked = 1'b1;
                     end
                 end
+                candidates[best].done = 1'b0;
                 if (!blocked) begin
-                    grant[c] = 1'b1;
+                    grant[best] = 1'b1;
                 end
             end
         end
@@ -245,10 +257,7 @@ module IntIssueQueue(
     function automatic logic predict_wakeup_allowed(input IssueEntryPath entry);
         predict_wakeup_allowed =
             (entry.delay == ShiftType'(1)) ||
-            (entry.tubeType == TUBE_TYPE_MEM &&
-             (entry.delay == (ShiftType'(1) << 1) ||
-              entry.delay == (ShiftType'(1) << 2))) ||
-            (entry.tubeType == TUBE_TYPE_MUL && entry.delay == (ShiftType'(1) << 2));
+            (entry.tubeType == TUBE_TYPE_MUL && entry.delay == (ShiftType'(1) << 3));
     endfunction
 
     always_comb begin
@@ -350,25 +359,13 @@ module IntIssueQueue(
                             predict_wakeup_allowed(issuedProducers[p].entry)) begin
                             if (!entries[i].srcARdy &&
                                 entries[i].srcA == issuedProducers[p].entry.dst) begin
-                                if (issuedProducers[p].entry.delay == ShiftType'(1)) begin
-                                    entries[i].srcARdy <= 1'b1;
-                                    entries[i].srcAMatched <= 1'b0;
-                                    entries[i].srcAShift <= '0;
-                                end else begin
-                                    entries[i].srcAMatched <= 1'b1;
-                                    entries[i].srcAShift <= issuedProducers[p].entry.delay;
-                                end
+                                entries[i].srcAMatched <= 1'b1;
+                                entries[i].srcAShift <= issuedProducers[p].entry.delay;
                             end
                             if (!entries[i].srcBRdy &&
                                 entries[i].srcB == issuedProducers[p].entry.dst) begin
-                                if (issuedProducers[p].entry.delay == ShiftType'(1)) begin
-                                    entries[i].srcBRdy <= 1'b1;
-                                    entries[i].srcBMatched <= 1'b0;
-                                    entries[i].srcBShift <= '0;
-                                end else begin
-                                    entries[i].srcBMatched <= 1'b1;
-                                    entries[i].srcBShift <= issuedProducers[p].entry.delay;
-                                end
+                                entries[i].srcBMatched <= 1'b1;
+                                entries[i].srcBShift <= issuedProducers[p].entry.delay;
                             end
                         end
                     end
@@ -455,10 +452,7 @@ module InOrderIssueQueue #(
     function automatic logic predict_wakeup_allowed(input IssueEntryPath entry);
         predict_wakeup_allowed =
             (entry.delay == ShiftType'(1)) ||
-            (entry.tubeType == TUBE_TYPE_MEM &&
-             (entry.delay == (ShiftType'(1) << 1) ||
-              entry.delay == (ShiftType'(1) << 2))) ||
-            (entry.tubeType == TUBE_TYPE_MUL && entry.delay == (ShiftType'(1) << 2));
+            (entry.tubeType == TUBE_TYPE_MUL && entry.delay == (ShiftType'(1) << 3));
     endfunction
 
     always_comb begin
@@ -548,25 +542,13 @@ module InOrderIssueQueue #(
                             predict_wakeup_allowed(issuedProducers[p].entry)) begin
                             if (!entries[i].srcARdy &&
                                 entries[i].srcA == issuedProducers[p].entry.dst) begin
-                                if (issuedProducers[p].entry.delay == ShiftType'(1)) begin
-                                    entries[i].srcARdy <= 1'b1;
-                                    entries[i].srcAMatched <= 1'b0;
-                                    entries[i].srcAShift <= '0;
-                                end else begin
-                                    entries[i].srcAMatched <= 1'b1;
-                                    entries[i].srcAShift <= issuedProducers[p].entry.delay;
-                                end
+                                entries[i].srcAMatched <= 1'b1;
+                                entries[i].srcAShift <= issuedProducers[p].entry.delay;
                             end
                             if (!entries[i].srcBRdy &&
                                 entries[i].srcB == issuedProducers[p].entry.dst) begin
-                                if (issuedProducers[p].entry.delay == ShiftType'(1)) begin
-                                    entries[i].srcBRdy <= 1'b1;
-                                    entries[i].srcBMatched <= 1'b0;
-                                    entries[i].srcBShift <= '0;
-                                end else begin
-                                    entries[i].srcBMatched <= 1'b1;
-                                    entries[i].srcBShift <= issuedProducers[p].entry.delay;
-                                end
+                                entries[i].srcBMatched <= 1'b1;
+                                entries[i].srcBShift <= issuedProducers[p].entry.delay;
                             end
                         end
                     end

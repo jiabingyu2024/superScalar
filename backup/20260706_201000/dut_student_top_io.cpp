@@ -43,16 +43,6 @@ CorePerfSample capture_student_top_perf(const Vstudent_top& top) {
     sample.wb_stall_cycles = top.dbg_perf_wb_stall_cycles;
     sample.rob_full_cycles = top.dbg_perf_rob_full_cycles;
     sample.issue_queue_full_cycles = top.dbg_perf_issue_queue_full_cycles;
-    sample.int_issue_queue_full_cycles = top.dbg_perf_int_issue_queue_full_cycles;
-    sample.mem_issue_queue_full_cycles = top.dbg_perf_mem_issue_queue_full_cycles;
-    sample.mul_issue_queue_full_cycles = top.dbg_perf_mul_issue_queue_full_cycles;
-    sample.rob_head_not_done_cycles = top.dbg_perf_rob_head_not_done_cycles;
-    sample.rob_head_not_done_int_cycles = top.dbg_perf_rob_head_not_done_int_cycles;
-    sample.rob_head_not_done_mem_cycles = top.dbg_perf_rob_head_not_done_mem_cycles;
-    sample.rob_head_not_done_mul_cycles = top.dbg_perf_rob_head_not_done_mul_cycles;
-    sample.rob_head_not_done_other_cycles = top.dbg_perf_rob_head_not_done_other_cycles;
-    sample.rob_head_store_commit_wait_cycles =
-        top.dbg_perf_rob_head_store_commit_wait_cycles;
     sample.free_list_empty_cycles = top.dbg_perf_free_list_empty_cycles;
     sample.store_buffer_full_cycles = top.dbg_perf_store_buffer_full_cycles;
     sample.serial_block_cycles = top.dbg_perf_serial_block_cycles;
@@ -70,9 +60,6 @@ CorePerfSample capture_student_top_perf(const Vstudent_top& top) {
     sample.commit_width0_cycles = top.dbg_perf_commit_width0_cycles;
     sample.commit_width1_cycles = top.dbg_perf_commit_width1_cycles;
     sample.commit_width2_cycles = top.dbg_perf_commit_width2_cycles;
-    sample.int_issue_count = top.dbg_perf_int_issue_count;
-    sample.mem_issue_count = top.dbg_perf_mem_issue_count;
-    sample.mul_issue_count = top.dbg_perf_mul_issue_count;
     return sample;
 }
 

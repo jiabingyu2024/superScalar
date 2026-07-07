@@ -128,15 +128,6 @@ module core(
             perf.wbStallCycles <= '0;
             perf.robFullCycles <= '0;
             perf.issueQueueFullCycles <= '0;
-            perf.intIssueQueueFullCycles <= '0;
-            perf.memIssueQueueFullCycles <= '0;
-            perf.mulIssueQueueFullCycles <= '0;
-            perf.robHeadNotDoneCycles <= '0;
-            perf.robHeadNotDoneIntCycles <= '0;
-            perf.robHeadNotDoneMemCycles <= '0;
-            perf.robHeadNotDoneMulCycles <= '0;
-            perf.robHeadNotDoneOtherCycles <= '0;
-            perf.robHeadStoreCommitWaitCycles <= '0;
             perf.freeListEmptyCycles <= '0;
             perf.storeBufferFullCycles <= '0;
             perf.serialBlockCycles <= '0;
@@ -153,22 +144,13 @@ module core(
             perf.commitWidth0Cycles <= '0;
             perf.commitWidth1Cycles <= '0;
             perf.commitWidth2Cycles <= '0;
-            perf.intIssueCount <= '0;
-            perf.memIssueCount <= '0;
-            perf.mulIssueCount <= '0;
         end else begin
             int commitThisCycle;
             int dispatchThisCycle;
             int issueThisCycle;
-            int intIssueThisCycle;
-            int memIssueThisCycle;
-            int mulIssueThisCycle;
             commitThisCycle = 0;
             dispatchThisCycle = 0;
             issueThisCycle = 0;
-            intIssueThisCycle = 0;
-            memIssueThisCycle = 0;
-            mulIssueThisCycle = 0;
             perf.cycle <= perf.cycle + 1'b1;
             for (int i = 0; i < WAY_NUM; i++) begin
                 if (cmStageIF.commitValid[i]) begin
@@ -181,15 +163,6 @@ module core(
             for (int i = 0; i < ISSUE_WIDTH; i++) begin
                 if (isStageIF.nextStage[i].valid) begin
                     issueThisCycle++;
-                    if (isStageIF.nextStage[i].tubeType inside {TUBE_TYPE_ALU,
-                                                                TUBE_TYPE_BRC,
-                                                                TUBE_TYPE_SYS}) begin
-                        intIssueThisCycle++;
-                    end else if (isStageIF.nextStage[i].tubeType == TUBE_TYPE_MEM) begin
-                        memIssueThisCycle++;
-                    end else if (isStageIF.nextStage[i].tubeType == TUBE_TYPE_MUL) begin
-                        mulIssueThisCycle++;
-                    end
                 end
             end
             perf.commitCnt <= perf.commitCnt + commitThisCycle;
@@ -203,30 +176,6 @@ module core(
             perf.wbStallCycles <= perf.wbStallCycles + ctrlIF.wbPipe.stall;
             perf.robFullCycles <= perf.robFullCycles + ctrlIF.robFull;
             perf.issueQueueFullCycles <= perf.issueQueueFullCycles + ctrlIF.issueQueueFull;
-            perf.intIssueQueueFullCycles <= perf.intIssueQueueFullCycles + ctrlIF.intIssueQueueFull;
-            perf.memIssueQueueFullCycles <= perf.memIssueQueueFullCycles + ctrlIF.memIssueQueueFull;
-            perf.mulIssueQueueFullCycles <= perf.mulIssueQueueFullCycles + ctrlIF.mulIssueQueueFull;
-            if (robIF.RobPopRes[0].valid && !robIF.RobPopRes[0].entry.done) begin
-                perf.robHeadNotDoneCycles <= perf.robHeadNotDoneCycles + 1'b1;
-                unique case (robIF.RobPopRes[0].entry.tubeType)
-                    TUBE_TYPE_ALU,
-                    TUBE_TYPE_BRC,
-                    TUBE_TYPE_SYS: perf.robHeadNotDoneIntCycles <=
-                        perf.robHeadNotDoneIntCycles + 1'b1;
-                    TUBE_TYPE_MEM: perf.robHeadNotDoneMemCycles <=
-                        perf.robHeadNotDoneMemCycles + 1'b1;
-                    TUBE_TYPE_MUL: perf.robHeadNotDoneMulCycles <=
-                        perf.robHeadNotDoneMulCycles + 1'b1;
-                    default: perf.robHeadNotDoneOtherCycles <=
-                        perf.robHeadNotDoneOtherCycles + 1'b1;
-                endcase
-            end
-            if (robIF.RobPopRes[0].valid &&
-                robIF.RobPopRes[0].entry.done &&
-                robIF.RobPopRes[0].entry.isStore &&
-                !storeBufferIF.StoreBufferCommitReady) begin
-                perf.robHeadStoreCommitWaitCycles <= perf.robHeadStoreCommitWaitCycles + 1'b1;
-            end
             perf.freeListEmptyCycles <= perf.freeListEmptyCycles + ctrlIF.freeListEmpty;
             perf.storeBufferFullCycles <= perf.storeBufferFullCycles +
                                           (ctrlIF.dsStallReq && !storeBufferIF.allocRdy);
@@ -239,9 +188,6 @@ module core(
                 (storeBufferIF.StoreBufferCommitReq.valid &&
                  storeBufferIF.StoreBufferCommit.valid &&
                  dromAccess.readEn);
-            perf.intIssueCount <= perf.intIssueCount + intIssueThisCycle;
-            perf.memIssueCount <= perf.memIssueCount + memIssueThisCycle;
-            perf.mulIssueCount <= perf.mulIssueCount + mulIssueThisCycle;
             perf.recoveryCycles <= perf.recoveryCycles + recoveryManagerIF.recoveryInfo.valid;
             unique case (dispatchThisCycle)
                 0: perf.dispatchWidth0Cycles <= perf.dispatchWidth0Cycles + 1'b1;

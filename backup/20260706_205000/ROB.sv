@@ -12,43 +12,18 @@ module ROB(ROBIF.ROB self);
     integer i;
 
     always_comb begin
-        int popCredit;
-
-        popCredit = 0;
-        for (i = 0; i < WAY_NUM; i++) begin
-            if (self.RobPopReq[i].req && count > popCredit) begin
-                popCredit++;
-            end
-        end
-
         for (i = 0; i < WAY_NUM; i++) begin
             RobIndexPath idx;
             idx = tail + RobIndexPath'(i);
-            self.RobPushRes[i].valid = (count - popCredit + i < ROB_DEPTH);
+            self.RobPushRes[i].valid = (count + i < ROB_DEPTH);
             self.RobPushRes[i].robIndex = idx;
             self.RobPushRes[i].position = tailPos ^ (idx < tail);
 
             idx = head + RobIndexPath'(i);
             self.RobPopRes[i].valid = (count > i) && entries[idx].valid;
             self.RobPopRes[i].entry = entries[idx];
-            for (int d = 0; d < WB_PORT_NUM; d++) begin
-                if (self.RobDoneReq[d].valid &&
-                    self.RobDoneReq[d].robIndex == idx &&
-                    entries[idx].valid) begin
-                    self.RobPopRes[i].entry.done = 1'b1;
-                    self.RobPopRes[i].entry.exception = self.RobDoneReq[d].exception;
-                    self.RobPopRes[i].entry.isSerial = self.RobDoneReq[d].isSerial;
-                    self.RobPopRes[i].entry.truePc = self.RobDoneReq[d].trueTargetPc;
-                    self.RobPopRes[i].entry.takenActual = self.RobDoneReq[d].taken;
-                    self.RobPopRes[i].entry.isMiss =
-                        entries[idx].isBranch &&
-                        ((entries[idx].takenPred != self.RobDoneReq[d].taken) ||
-                         (self.RobDoneReq[d].taken &&
-                          entries[idx].predPc != self.RobDoneReq[d].trueTargetPc));
-                end
-            end
         end
-        self.RobFreeCount = RobFreeCountPath'(ROB_DEPTH - count + popCredit);
+        self.RobFreeCount = RobFreeCountPath'(ROB_DEPTH - count);
     end
 
     always_ff @(posedge self.clk or posedge self.rst) begin

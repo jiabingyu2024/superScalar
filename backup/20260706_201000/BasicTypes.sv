@@ -51,11 +51,11 @@ package BasicTypes;
     localparam int MEM_WB_WIDTH = 2;     // load return + current MEM completion
     localparam int MUL_WB_WIDTH = MUL_ISSUE_WIDTH;
     localparam int ISSUE_WIDTH = INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + MUL_ISSUE_WIDTH;
-    localparam int WB_PORT_NUM = INT_ISSUE_WIDTH + MEM_WB_WIDTH + MUL_WB_WIDTH;
+    localparam int WB_PORT_NUM = INT_ISSUE_WIDTH * 3 + MEM_WB_WIDTH + MUL_WB_WIDTH;
 
     // Backend global indexes. Keep these here so pipeline/recovery/rename
     // types do not depend on one concrete module package.
-    localparam ROB_DEPTH = 64;
+    localparam ROB_DEPTH = 32;
     localparam ROB_DEPTH_WIDTH = $clog2(ROB_DEPTH);
     typedef logic [ROB_DEPTH_WIDTH-1:0] RobIndexPath;
 

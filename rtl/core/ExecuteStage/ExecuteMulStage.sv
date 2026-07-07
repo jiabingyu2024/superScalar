@@ -8,7 +8,7 @@ module ExecuteMulStage(
     CtrlIF.ExecuteStage ctrl,
     BypassIF.ExecuteMulStage bypass
 );
-    localparam int MUL_LATENCY = 3;
+    localparam int MUL_LATENCY = 2;
     localparam int DIV_LATENCY = 34;
 
     RrToExMulPath pipeReg [MUL_ISSUE_WIDTH];

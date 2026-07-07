@@ -88,15 +88,6 @@ void PerfStats::observe_core(uint64_t cycle, const CorePerfSample& sample) {
     wb_stall_cycles = sample.wb_stall_cycles;
     rob_full_cycles = sample.rob_full_cycles;
     issue_queue_full_cycles = sample.issue_queue_full_cycles;
-    int_issue_queue_full_cycles = sample.int_issue_queue_full_cycles;
-    mem_issue_queue_full_cycles = sample.mem_issue_queue_full_cycles;
-    mul_issue_queue_full_cycles = sample.mul_issue_queue_full_cycles;
-    rob_head_not_done_cycles = sample.rob_head_not_done_cycles;
-    rob_head_not_done_int_cycles = sample.rob_head_not_done_int_cycles;
-    rob_head_not_done_mem_cycles = sample.rob_head_not_done_mem_cycles;
-    rob_head_not_done_mul_cycles = sample.rob_head_not_done_mul_cycles;
-    rob_head_not_done_other_cycles = sample.rob_head_not_done_other_cycles;
-    rob_head_store_commit_wait_cycles = sample.rob_head_store_commit_wait_cycles;
     free_list_empty_cycles = sample.free_list_empty_cycles;
     store_buffer_full_cycles = sample.store_buffer_full_cycles;
     serial_block_cycles = sample.serial_block_cycles;
@@ -114,9 +105,6 @@ void PerfStats::observe_core(uint64_t cycle, const CorePerfSample& sample) {
     commit_width0_cycles = sample.commit_width0_cycles;
     commit_width1_cycles = sample.commit_width1_cycles;
     commit_width2_cycles = sample.commit_width2_cycles;
-    int_issue_count = sample.int_issue_count;
-    mem_issue_count = sample.mem_issue_count;
-    mul_issue_count = sample.mul_issue_count;
 }
 
 void PerfStats::write_json_fields(std::ostream& out) const {
@@ -187,20 +175,6 @@ void PerfStats::write_json_fields(std::ostream& out) const {
     out << "    \"resources\": {\n";
     out << "      \"rob_full_cycles\": " << rob_full_cycles << ",\n";
     out << "      \"issue_queue_full_cycles\": " << issue_queue_full_cycles << ",\n";
-    out << "      \"issue_queue_full_breakdown\": {\n";
-    out << "        \"int_cycles\": " << int_issue_queue_full_cycles << ",\n";
-    out << "        \"mem_cycles\": " << mem_issue_queue_full_cycles << ",\n";
-    out << "        \"mul_cycles\": " << mul_issue_queue_full_cycles << "\n";
-    out << "      },\n";
-    out << "      \"rob_head_block\": {\n";
-    out << "        \"not_done_cycles\": " << rob_head_not_done_cycles << ",\n";
-    out << "        \"not_done_int_cycles\": " << rob_head_not_done_int_cycles << ",\n";
-    out << "        \"not_done_mem_cycles\": " << rob_head_not_done_mem_cycles << ",\n";
-    out << "        \"not_done_mul_cycles\": " << rob_head_not_done_mul_cycles << ",\n";
-    out << "        \"not_done_other_cycles\": " << rob_head_not_done_other_cycles << ",\n";
-    out << "        \"store_commit_wait_cycles\": "
-        << rob_head_store_commit_wait_cycles << "\n";
-    out << "      },\n";
     out << "      \"free_list_empty_cycles\": " << free_list_empty_cycles << ",\n";
     out << "      \"store_buffer_full_cycles\": " << store_buffer_full_cycles << ",\n";
     out << "      \"serial_block_cycles\": " << serial_block_cycles << "\n";
@@ -212,11 +186,6 @@ void PerfStats::write_json_fields(std::ostream& out) const {
         << store_commit_blocked_by_load_cycles << "\n";
     out << "    },\n";
     out << "    \"width\": {\n";
-    out << "      \"issue_mix\": {\n";
-    out << "        \"int_uops\": " << int_issue_count << ",\n";
-    out << "        \"mem_uops\": " << mem_issue_count << ",\n";
-    out << "        \"mul_uops\": " << mul_issue_count << "\n";
-    out << "      },\n";
     out << "      \"dispatch\": {\n";
     out << "        \"w0_cycles\": " << dispatch_width0_cycles << ",\n";
     out << "        \"w1_cycles\": " << dispatch_width1_cycles << ",\n";
