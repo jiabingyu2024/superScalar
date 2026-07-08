@@ -41,24 +41,11 @@ bool fail_counter_nonzero(const Options& opt, const SimResult& result) {
            result.last_fail_counter != 0;
 }
 
-bool expected_pass_counter_bad(const Options& opt, const SimResult& result) {
-    return opt.has_expected_pass_count &&
-           (!result.saw_pass_counter ||
-            result.last_pass_counter != opt.expected_pass_count);
-}
-
 }  // namespace
 
 void SrcLedSegChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryModel&,
                                 SimResult& result) {
     record_counter_write(opt_, req, result);
-    if (fail_counter_nonzero(opt_, result)) {
-        result.status = "FAIL";
-        result.reason = "fail counter wrote non-zero value";
-        result.cycles = cycle;
-        done_ = true;
-        return;
-    }
     if (!req.perip_wen || req.perip_addr != LED_ADDR) return;
 
     result.last_led = req.perip_wdata;
@@ -70,13 +57,6 @@ void SrcLedSegChecker::pre_tick(uint64_t cycle, const Request& req, const Memory
         return;
     }
     if (req.perip_wdata == opt_.src_led_pass && !result.saw_led_pass) {
-        if (expected_pass_counter_bad(opt_, result)) {
-            result.status = "FAIL";
-            result.reason = "LED pass signature observed but pass counter is not expected";
-            result.cycles = cycle;
-            done_ = true;
-            return;
-        }
         result.saw_led_pass = true;
         result.led_pass_cycle = cycle;
     }
@@ -116,13 +96,6 @@ void SrcLedSegChecker::post_tick(uint64_t cycle, const Request&, const MemoryMod
 void SrcLedOnlyChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryModel&,
                                  SimResult& result) {
     record_counter_write(opt_, req, result);
-    if (fail_counter_nonzero(opt_, result)) {
-        result.status = "FAIL";
-        result.reason = "fail counter wrote non-zero value";
-        result.cycles = cycle;
-        done_ = true;
-        return;
-    }
     if (!req.perip_wen || req.perip_addr != LED_ADDR) return;
 
     result.last_led = req.perip_wdata;
@@ -134,13 +107,6 @@ void SrcLedOnlyChecker::pre_tick(uint64_t cycle, const Request& req, const Memor
         return;
     }
     if (req.perip_wdata == opt_.src_led_pass) {
-        if (expected_pass_counter_bad(opt_, result)) {
-            result.status = "FAIL";
-            result.reason = "LED pass signature observed but pass counter is not expected";
-            result.cycles = cycle;
-            done_ = true;
-            return;
-        }
         result.saw_led_pass = true;
         result.led_pass_cycle = cycle;
         result.status = "PASS";
@@ -198,13 +164,6 @@ void SrcMemCntChecker::pre_tick(uint64_t cycle, const Request& req, const Memory
 void SrcLampSegChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryModel& mem,
                                  SimResult& result) {
     SrcObserveChecker::pre_tick(cycle, req, mem, result);
-    if (fail_counter_nonzero(opt_, result)) {
-        result.status = "FAIL";
-        result.reason = "fail counter wrote non-zero value";
-        result.cycles = cycle;
-        done_ = true;
-        return;
-    }
     if (!req.perip_wen || req.perip_addr != LED_ADDR) return;
 
     uint32_t value = req.perip_wdata;

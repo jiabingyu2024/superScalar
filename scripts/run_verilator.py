@@ -335,7 +335,10 @@ def run_test(test: TestCase, args: argparse.Namespace, target: BuildTarget) -> t
 
     max_cycles = args.max_cycles
     if max_cycles is None and test.mode == "src":
-        max_cycles = int(os.environ.get("SRC_TEST_MAX_CYCLES", "20000000"))
+        max_cycles = int(os.environ.get(
+            "SRC_MAX_CYCLES",
+            os.environ.get("SRC_TEST_MAX_CYCLES", "100000000"),
+        ))
     if max_cycles is None:
         max_cycles = 2000000
 

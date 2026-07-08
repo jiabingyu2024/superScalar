@@ -162,15 +162,18 @@ module riscv_cpu (
 
     function automatic logic [31:0] load_extend(
         input logic [31:0] rdata,
-        input logic [2:0]  funct3
+        input logic [2:0]  funct3,
+        input logic [1:0]  addr_offset
     );
+        logic [31:0] shifted;
         begin
+            shifted = rdata >> {addr_offset, 3'b000};
             unique case (funct3)
-                3'b000: load_extend = {{24{rdata[7]}}, rdata[7:0]};
-                3'b001: load_extend = {{16{rdata[15]}}, rdata[15:0]};
+                3'b000: load_extend = {{24{shifted[7]}}, shifted[7:0]};
+                3'b001: load_extend = {{16{shifted[15]}}, shifted[15:0]};
                 3'b010: load_extend = rdata;
-                3'b100: load_extend = {24'd0, rdata[7:0]};
-                3'b101: load_extend = {16'd0, rdata[15:0]};
+                3'b100: load_extend = {24'd0, shifted[7:0]};
+                3'b101: load_extend = {16'd0, shifted[15:0]};
                 default: load_extend = rdata;
             endcase
         end
@@ -539,7 +542,10 @@ module riscv_cpu (
 
                 ST_WAIT_MEM: begin
                     if (cache_resp_valid) begin
-                        write_gpr(load_rd_q, load_extend(cache_resp_rdata, load_funct3_q));
+                        write_gpr(load_rd_q,
+                                  load_extend(cache_resp_rdata,
+                                              load_funct3_q,
+                                              load_addr_q[1:0]));
                         pc_q <= pc_q + 32'd4;
                         perf_commit <= perf_commit + 64'd1;
                         perf_load <= perf_load + 64'd1;

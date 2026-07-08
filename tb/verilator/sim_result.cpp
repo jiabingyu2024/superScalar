@@ -42,6 +42,16 @@ uint32_t encode_bcd_digits(uint32_t value, int digits) {
     return encoded;
 }
 
+uint32_t decode_bcd_digits(uint32_t value, int digits) {
+    uint32_t decoded = 0;
+    for (int i = digits - 1; i >= 0; --i) {
+        uint32_t digit = (value >> (i * 4)) & 0xfu;
+        if (digit > 9u) return 0xffffffffu;
+        decoded = decoded * 10u + digit;
+    }
+    return decoded;
+}
+
 const char* final_symbol_ascii(bool pass_match, bool fail_match) {
     if (pass_match) return "check";
     if (fail_match) return "cross";
@@ -112,6 +122,12 @@ void write_result_json(const Options& opt, const SimResult& result,
         }
         uint32_t expected_counter_low = encode_bcd6(perf.final_counter_ms) & low_mask;
         uint32_t display_value = perf.last_nonzero_seg_write;
+        uint32_t rv32i_from_seg =
+            decode_bcd_digits((display_value >> 24) & 0xffu, 2);
+        uint32_t mext_from_seg =
+            decode_bcd_digits((display_value >> 20) & 0xfu, 1);
+        if (rv32i_from_seg == 0xffffffffu) rv32i_from_seg = result.last_rv32i_count;
+        if (mext_from_seg == 0xffffffffu) mext_from_seg = result.last_mext_count;
         bool seg_count_matches = high_mask != 0 &&
                                  (display_value & high_mask) == expected_high;
         bool seg_counter_matches = (display_value & low_mask) == expected_counter_low;
@@ -125,8 +141,8 @@ void write_result_json(const Options& opt, const SimResult& result,
         out << "      \"right_8_lamps_value\": \"" << hex32(lamp_value) << "\",\n";
         out << "      \"rv32i_pass_counter\": " << result.last_pass_counter << ",\n";
         out << "      \"rv32i_fail_counter\": " << result.last_fail_counter << ",\n";
-        out << "      \"rv32i_count_from_seg\": " << result.last_rv32i_count << ",\n";
-        out << "      \"mext_count_from_seg\": " << result.last_mext_count << "\n";
+        out << "      \"rv32i_count_from_seg\": " << rv32i_from_seg << ",\n";
+        out << "      \"mext_count_from_seg\": " << mext_from_seg << "\n";
         out << "    },\n";
 
         out << "    \"led_readable\": {\n";

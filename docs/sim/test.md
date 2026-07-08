@@ -1,4 +1,4 @@
-补充说明：只基于 `data/src*/*.dump` 反推的 SRC 程序入口、执行步骤和最终 PASS/FAIL 逻辑，见 `docs/sim/src_dump_program_logic.md`。Verilator profile/checker 侧规则另见 `docs/sim/src_test_judgement.md`。
+补充说明：只基于 `data/src*/*.dump` 反推的 SRC 程序入口、执行步骤和最终 PASS/FAIL 逻辑，见 `docs/sim/src_dump_program_logic.md`。Verilator profile/checker 侧规则另见 `docs/sim/src_test_judgement.md`；本次 TB checker 修复记录见 `docs/sim/src_tb_checker_fix.md`。
 
 与初赛相比我们做了一些调整，如下图所示：
 1. ❎✅向左边移动了两排 LED 灯
