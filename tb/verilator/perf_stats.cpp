@@ -72,6 +72,10 @@ void PerfStats::observe_core(uint64_t cycle, const CorePerfSample& sample) {
     commit_count = sample.commit_count;
     branch_count = sample.branch_count;
     branch_miss_count = sample.branch_miss_count;
+    load_count = sample.load_count;
+    store_count = sample.store_count;
+    dcache_access = sample.dcache_access;
+    dcache_miss = sample.dcache_miss;
     cond_branch_count = sample.cond_branch_count;
     cond_branch_miss_count = sample.cond_branch_miss_count;
     jal_count = sample.jal_count;
@@ -117,6 +121,10 @@ void PerfStats::observe_core(uint64_t cycle, const CorePerfSample& sample) {
     int_issue_count = sample.int_issue_count;
     mem_issue_count = sample.mem_issue_count;
     mul_issue_count = sample.mul_issue_count;
+    frontend_stall_cycles = sample.stall_front;
+    mem_load_access_block_cycles = sample.stall_mem;
+    mul_issue_queue_full_cycles = sample.stall_muldiv;
+    mem_load_return_block_cycles = sample.stall_load_use;
 }
 
 void PerfStats::write_json_fields(std::ostream& out) const {
@@ -130,6 +138,14 @@ void PerfStats::write_json_fields(std::ostream& out) const {
                                   static_cast<double>(branch_count);
     double ipc = cycles == 0 ? 0.0 : static_cast<double>(commit_count) /
                                   static_cast<double>(cycles);
+    uint64_t dcache_hit =
+        dcache_access >= dcache_miss ? dcache_access - dcache_miss : 0;
+    double dcache_hit_rate =
+        dcache_access == 0 ? 0.0 : static_cast<double>(dcache_hit) /
+                                  static_cast<double>(dcache_access);
+    double dcache_miss_rate =
+        dcache_access == 0 ? 0.0 : static_cast<double>(dcache_miss) /
+                                  static_cast<double>(dcache_access);
     double elapsed_ms = cpu_freq_mhz <= 0.0 ? 0.0 :
         static_cast<double>(cycles) / (cpu_freq_mhz * 1000.0);
     auto miss_rate = [](uint64_t miss, uint64_t total) {
@@ -170,8 +186,17 @@ void PerfStats::write_json_fields(std::ostream& out) const {
     out << "    \"memory\": {\n";
     out << "      \"dram_read_count\": " << dram_read_count << ",\n";
     out << "      \"dram_write_count\": " << dram_write_count << ",\n";
+    out << "      \"load_count\": " << load_count << ",\n";
+    out << "      \"store_count\": " << store_count << ",\n";
     out << "      \"mmio_read_count\": " << mmio_read_count << ",\n";
     out << "      \"mmio_write_count\": " << mmio_write_count << "\n";
+    out << "    },\n";
+    out << "    \"dcache\": {\n";
+    out << "      \"access\": " << dcache_access << ",\n";
+    out << "      \"hit\": " << dcache_hit << ",\n";
+    out << "      \"miss\": " << dcache_miss << ",\n";
+    out << "      \"hit_rate\": " << dcache_hit_rate << ",\n";
+    out << "      \"miss_rate\": " << dcache_miss_rate << "\n";
     out << "    },\n";
     out << "    \"stalls\": {\n";
     out << "      \"frontend_cycles\": " << frontend_stall_cycles << ",\n";

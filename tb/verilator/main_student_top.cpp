@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
                     }
                     dump_at_current_time();
                     if (soc_due && top.w_clk_50Mhz) {
-                        mirror.tick_counter_clock(sim::DEFAULT_COUNTER_CYCLES_PER_MS);
+                        mirror.tick_counter_clock(opt.counter_cycles_per_ms);
                     }
                     return req;
                 }
@@ -96,14 +96,14 @@ int main(int argc, char** argv) {
                 }
                 dump_at_current_time();
                 if (soc_due && top.w_clk_50Mhz) {
-                    mirror.tick_counter_clock(sim::DEFAULT_COUNTER_CYCLES_PER_MS);
+                    mirror.tick_counter_clock(opt.counter_cycles_per_ms);
                 }
             }
         };
 
         for (int i = 0; i < 8; ++i) {
             sim::Request req = advance_to_next_cpu_posedge();
-            mirror.tick_request(req, false, sim::DEFAULT_COUNTER_CYCLES_PER_MS);
+            mirror.tick_request(req, false, opt.counter_cycles_per_ms);
         }
         top.w_clk_rst = 0;
         dump_at_current_time();
@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
             perf.observe_request(now, req);
             perf.observe_core(now, sim::capture_student_top_perf(top));
             checker->pre_tick(now, req, mirror, result);
-            mirror.tick_request(req, false, sim::DEFAULT_COUNTER_CYCLES_PER_MS);
+            mirror.tick_request(req, false, opt.counter_cycles_per_ms);
             checker->post_tick(now, req, mirror, result);
             perf.observe_state(now, mirror.counter_ms);
 

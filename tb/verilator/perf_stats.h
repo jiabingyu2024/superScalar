@@ -22,6 +22,10 @@ public:
     uint64_t commit_count = 0;
     uint64_t branch_count = 0;
     uint64_t branch_miss_count = 0;
+    uint64_t load_count = 0;
+    uint64_t store_count = 0;
+    uint64_t dcache_access = 0;
+    uint64_t dcache_miss = 0;
     uint64_t cond_branch_count = 0;
     uint64_t cond_branch_miss_count = 0;
     uint64_t jal_count = 0;

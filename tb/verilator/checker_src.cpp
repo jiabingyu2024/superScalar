@@ -14,14 +14,51 @@ uint32_t decode_bcd_nibbles(uint32_t value, int nibbles) {
     return decoded;
 }
 
-bool marker_matches(uint32_t value, bool has_marker, uint32_t marker) {
-    return has_marker && (value & marker) == marker;
+bool marker_matches(uint32_t value, bool has_marker, uint32_t marker,
+                    bool has_mask, uint32_t mask) {
+    if (!has_marker) return false;
+    if (has_mask) {
+        return (value & ~mask) == marker;
+    }
+    return value == marker;
+}
+
+void record_counter_write(const Options& opt, const Request& req, SimResult& result) {
+    if (!req.perip_wen) return;
+    uint32_t aligned = req.perip_addr & ~uint32_t{3};
+    if (opt.has_pass_counter_addr && aligned == (opt.pass_counter_addr & ~uint32_t{3})) {
+        result.saw_pass_counter = true;
+        result.last_pass_counter = req.perip_wdata;
+    }
+    if (opt.has_fail_counter_addr && aligned == (opt.fail_counter_addr & ~uint32_t{3})) {
+        result.saw_fail_counter = true;
+        result.last_fail_counter = req.perip_wdata;
+    }
+}
+
+bool fail_counter_nonzero(const Options& opt, const SimResult& result) {
+    return opt.has_fail_counter_addr && result.saw_fail_counter &&
+           result.last_fail_counter != 0;
+}
+
+bool expected_pass_counter_bad(const Options& opt, const SimResult& result) {
+    return opt.has_expected_pass_count &&
+           (!result.saw_pass_counter ||
+            result.last_pass_counter != opt.expected_pass_count);
 }
 
 }  // namespace
 
 void SrcLedSegChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryModel&,
                                 SimResult& result) {
+    record_counter_write(opt_, req, result);
+    if (fail_counter_nonzero(opt_, result)) {
+        result.status = "FAIL";
+        result.reason = "fail counter wrote non-zero value";
+        result.cycles = cycle;
+        done_ = true;
+        return;
+    }
     if (!req.perip_wen || req.perip_addr != LED_ADDR) return;
 
     result.last_led = req.perip_wdata;
@@ -33,6 +70,13 @@ void SrcLedSegChecker::pre_tick(uint64_t cycle, const Request& req, const Memory
         return;
     }
     if (req.perip_wdata == opt_.src_led_pass && !result.saw_led_pass) {
+        if (expected_pass_counter_bad(opt_, result)) {
+            result.status = "FAIL";
+            result.reason = "LED pass signature observed but pass counter is not expected";
+            result.cycles = cycle;
+            done_ = true;
+            return;
+        }
         result.saw_led_pass = true;
         result.led_pass_cycle = cycle;
     }
@@ -71,6 +115,14 @@ void SrcLedSegChecker::post_tick(uint64_t cycle, const Request&, const MemoryMod
 
 void SrcLedOnlyChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryModel&,
                                  SimResult& result) {
+    record_counter_write(opt_, req, result);
+    if (fail_counter_nonzero(opt_, result)) {
+        result.status = "FAIL";
+        result.reason = "fail counter wrote non-zero value";
+        result.cycles = cycle;
+        done_ = true;
+        return;
+    }
     if (!req.perip_wen || req.perip_addr != LED_ADDR) return;
 
     result.last_led = req.perip_wdata;
@@ -82,6 +134,13 @@ void SrcLedOnlyChecker::pre_tick(uint64_t cycle, const Request& req, const Memor
         return;
     }
     if (req.perip_wdata == opt_.src_led_pass) {
+        if (expected_pass_counter_bad(opt_, result)) {
+            result.status = "FAIL";
+            result.reason = "LED pass signature observed but pass counter is not expected";
+            result.cycles = cycle;
+            done_ = true;
+            return;
+        }
         result.saw_led_pass = true;
         result.led_pass_cycle = cycle;
         result.status = "PASS";
@@ -98,16 +157,7 @@ void SrcLedOnlyChecker::post_tick(uint64_t, const Request&, const MemoryModel& m
 }
 
 void SrcObserveChecker::observe_counter_write(const Request& req, SimResult& result) {
-    if (!req.perip_wen) return;
-    uint32_t aligned = req.perip_addr & ~uint32_t{3};
-    if (opt_.has_pass_counter_addr && aligned == (opt_.pass_counter_addr & ~uint32_t{3})) {
-        result.saw_pass_counter = true;
-        result.last_pass_counter = req.perip_wdata;
-    }
-    if (opt_.has_fail_counter_addr && aligned == (opt_.fail_counter_addr & ~uint32_t{3})) {
-        result.saw_fail_counter = true;
-        result.last_fail_counter = req.perip_wdata;
-    }
+    record_counter_write(opt_, req, result);
 }
 
 void SrcObserveChecker::pre_tick(uint64_t, const Request& req, const MemoryModel&,
@@ -128,8 +178,7 @@ void SrcMemCntChecker::pre_tick(uint64_t cycle, const Request& req, const Memory
                                 SimResult& result) {
     SrcObserveChecker::pre_tick(cycle, req, mem, result);
 
-    if (opt_.has_fail_counter_addr && result.saw_fail_counter &&
-        result.last_fail_counter != 0) {
+    if (fail_counter_nonzero(opt_, result)) {
         result.status = "FAIL";
         result.reason = "fail counter wrote non-zero value";
         result.cycles = cycle;
@@ -149,6 +198,13 @@ void SrcMemCntChecker::pre_tick(uint64_t cycle, const Request& req, const Memory
 void SrcLampSegChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryModel& mem,
                                  SimResult& result) {
     SrcObserveChecker::pre_tick(cycle, req, mem, result);
+    if (fail_counter_nonzero(opt_, result)) {
+        result.status = "FAIL";
+        result.reason = "fail counter wrote non-zero value";
+        result.cycles = cycle;
+        done_ = true;
+        return;
+    }
     if (!req.perip_wen || req.perip_addr != LED_ADDR) return;
 
     uint32_t value = req.perip_wdata;
@@ -156,7 +212,8 @@ void SrcLampSegChecker::pre_tick(uint64_t cycle, const Request& req, const Memor
         result.last_src_test_lamps = value & opt_.src_test_mask;
     }
 
-    if (marker_matches(value, opt_.has_src_fail_marker, opt_.src_fail_marker)) {
+    if (marker_matches(value, opt_.has_src_fail_marker, opt_.src_fail_marker,
+                       opt_.has_src_test_mask, opt_.src_test_mask)) {
         result.saw_src_fail_marker = true;
         result.status = "FAIL";
         result.reason = "SRC final fail lamp marker observed";
@@ -165,7 +222,8 @@ void SrcLampSegChecker::pre_tick(uint64_t cycle, const Request& req, const Memor
         return;
     }
 
-    if (marker_matches(value, opt_.has_src_pass_marker, opt_.src_pass_marker)) {
+    if (marker_matches(value, opt_.has_src_pass_marker, opt_.src_pass_marker,
+                       opt_.has_src_test_mask, opt_.src_test_mask)) {
         result.saw_src_pass_marker = true;
         if (opt_.has_src_test_mask && result.last_src_test_lamps != opt_.src_test_mask) {
             result.status = "FAIL";

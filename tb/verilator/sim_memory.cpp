@@ -92,11 +92,11 @@ void MemoryModel::write_word_masked(uint32_t addr, uint32_t data, uint8_t mask) 
 }
 
 uint32_t MemoryModel::current_perip_rdata() const {
-    if (read_valid_pipe1_) {
-        return read_shifted_word(read_addr_pipe1_);
+    if (read_valid_pipe0_) {
+        return read_shifted_word(read_addr_pipe0_);
     }
-    if (mmio_sel_pipe1_) {
-        switch (mmio_addr_pipe1_) {
+    if (mmio_sel_pipe0_) {
+        switch (mmio_addr_pipe0_) {
             case SW0_ADDR: return sw0;
             case SW1_ADDR: return sw1;
             case KEY_ADDR: return key & 0xffu;
@@ -104,10 +104,14 @@ uint32_t MemoryModel::current_perip_rdata() const {
             default: return 0xdeadbeefu;
         }
     }
-    if (cnt_sel_pipe1_) {
+    if (cnt_sel_pipe0_) {
         return counter_ms;
     }
     return 0;
+}
+
+bool MemoryModel::current_dmem_resp_valid() const {
+    return read_valid_pipe0_ || mmio_sel_pipe0_ || cnt_sel_pipe0_;
 }
 
 void MemoryModel::tick_counter(uint64_t cycles_per_ms) {

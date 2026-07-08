@@ -18,6 +18,7 @@ public:
     uint32_t irom_data_a() const;
     uint32_t irom_data_b() const;
     uint32_t current_perip_rdata() const;
+    bool current_dmem_resp_valid() const;
     void tick_posedge(const Request& req, uint64_t cycles_per_ms);
     void tick_request(const Request& req, bool advance_counter,
                       uint64_t cycles_per_ms);

@@ -4,11 +4,10 @@
  * @module DRAM
  * @description 32-bit data RAM, depth 65536 words.
  *              Port names match the generated BRAM IP used by the FPGA build.
- *              Read cycles register the word address and update douta on the
- *              next clock from the previous read address; write cycles do not
- *              advance the read-return pipeline. Address alignment and byte lane
- *              shifting are handled by `dram_driver`, so `addra` is already a
- *              word address.
+ *              Single-port RAM with byte write enable. Read cycles update
+ *              douta from the requested word on the rising clock edge. Address
+ *              alignment and byte lane shifting are handled by the SoC adapter,
+ *              so `addra` is already a word address.
  */
 module DRAM_0 #(
     parameter int unsigned ADDR_WIDTH = 16,
@@ -26,8 +25,6 @@ module DRAM_0 #(
     localparam int unsigned DEPTH = (1 << ADDR_WIDTH);
 
     logic [DATA_WIDTH-1:0] mem [0:DEPTH-1];
-    logic [ADDR_WIDTH-1:0] rd_addr_q;
-    logic                  rd_valid_q;
     logic                  read_en;
 
     assign read_en = ena && (wea == '0);
@@ -43,12 +40,8 @@ module DRAM_0 #(
     end
 
     always_ff @(posedge clka) begin
-        rd_valid_q <= read_en;
         if (read_en) begin
-            rd_addr_q <= addra;
-        end
-        if (rd_valid_q) begin
-            douta <= mem[rd_addr_q];
+            douta <= mem[addra];
         end
 
         if (ena) begin

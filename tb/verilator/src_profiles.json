@@ -3,25 +3,37 @@
     "name": "src0",
     "checker": "ledseg",
     "led_pass": "0x01221c08",
-    "led_fail": "0x24181824"
+    "led_fail": "0x24181824",
+    "pass_counter_addr": "0x80100000",
+    "fail_counter_addr": "0x80100004",
+    "expected_pass_count": 37
   },
   {
     "name": "src1",
     "checker": "ledseg",
     "led_pass": "0x01221c08",
-    "led_fail": "0x24181824"
+    "led_fail": "0x24181824",
+    "pass_counter_addr": "0x80100000",
+    "fail_counter_addr": "0x80100004",
+    "expected_pass_count": 37
   },
   {
     "name": "src2",
     "checker": "ledseg",
     "led_pass": "0x01221c08",
-    "led_fail": "0x24181824"
+    "led_fail": "0x24181824",
+    "pass_counter_addr": "0x80100000",
+    "fail_counter_addr": "0x80100004",
+    "expected_pass_count": 37
   },
   {
     "name": "srcSmoke",
     "checker": "ledonly",
     "led_pass": "0x01221c08",
-    "led_fail": "0x24181824"
+    "led_fail": "0x24181824",
+    "pass_counter_addr": "0x80100000",
+    "fail_counter_addr": "0x80100004",
+    "expected_pass_count": 37
   },
   {
     "name": "srcWithMext",
