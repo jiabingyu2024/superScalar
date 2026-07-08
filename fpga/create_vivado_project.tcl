@@ -10,7 +10,7 @@
 #   FPGA_INPUT_CLK_MHZ=200.000
 #   FPGA_PART=xc7k325tffg900-2
 #   FPGA_SYS_CLK_MHZ=50.000
-#   FPGA_CPU_CLK_MHZ=100.000
+#   FPGA_CPU_CLK_MHZ=50.000
 #   FPGA_FLATTEN_HIERARCHY=none
 #   FPGA_KEEP_EQUIVALENT_REGISTERS=true
 #   FPGA_ENABLE_POWER_OPT=false
@@ -34,7 +34,7 @@ if {[info exists ::env(FPGA_PART)]} {
 
 set input_clk_mhz 200.000
 set sys_clk_mhz   50.000
-set cpu_clk_mhz   100.000
+set cpu_clk_mhz   50.000
 set flatten_hierarchy none
 set keep_equivalent_registers true
 set enable_power_opt false
@@ -191,9 +191,45 @@ proc collect_sv_files {dir} {
     return $result
 }
 
-set core_files [collect_sv_files [file join $repo_dir rtl core]]
-set soc_files  [collect_sv_files [file join $repo_dir rtl soc]]
-set rtl_files  [lsort [concat $core_files $soc_files]]
+proc read_filelist_sources {filelist_path repo_dir} {
+    set result {}
+    set fh [open $filelist_path r]
+    while {[gets $fh raw_line] >= 0} {
+        set line [string trim [lindex [split $raw_line "#"] 0]]
+        if {$line eq ""} {
+            continue
+        }
+        set tokens [regexp -all -inline {\S+} $line]
+        set idx 0
+        while {$idx < [llength $tokens]} {
+            set token [lindex $tokens $idx]
+            if {$token eq "-f"} {
+                incr idx
+                set nested [file normalize [file join $repo_dir [lindex $tokens $idx]]]
+                set result [concat $result [read_filelist_sources $nested $repo_dir]]
+            } elseif {[string match "-f*" $token]} {
+                set nested_rel [string range $token 2 end]
+                set nested [file normalize [file join $repo_dir $nested_rel]]
+                set result [concat $result [read_filelist_sources $nested $repo_dir]]
+            } elseif {[regexp {\.s?vh?$|\.sv$} $token]} {
+                if {[string match "rtl/ip/*" $token]} {
+                    error "FPGA source filelist must not include Verilator IP model: $token"
+                }
+                lappend result [file normalize [file join $repo_dir $token]]
+            }
+            incr idx
+        }
+    }
+    close $fh
+    return $result
+}
+
+set core_filelist [file join $repo_dir scripts filelists core.f]
+set soc_filelist  [file join $repo_dir scripts filelists soc.f]
+set rtl_files [concat \
+    [read_filelist_sources $core_filelist $repo_dir] \
+    [read_filelist_sources $soc_filelist $repo_dir] \
+]
 
 # Keep packages and shared type files ahead of users; Vivado will still update
 # compile order after all sources and IP are present.

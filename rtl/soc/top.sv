@@ -32,6 +32,9 @@ module top(
 
     wire w_clk_50Mhz, cpu_clk;
     wire w_clk_rst;
+    logic rst_50m_meta;
+    logic rst_50m_sync;
+    wire  rst_50m_n;
 
     wire [7:0] virtual_key;
     wire [63:0] virtual_sw;
@@ -50,12 +53,24 @@ module top(
         .locked(w_clk_rst)
     );
 
+    always_ff @(posedge w_clk_50Mhz or negedge w_clk_rst) begin
+        if (!w_clk_rst) begin
+            rst_50m_meta <= 1'b1;
+            rst_50m_sync <= 1'b1;
+        end else begin
+            rst_50m_meta <= 1'b0;
+            rst_50m_sync <= rst_50m_meta;
+        end
+    end
+
+    assign rst_50m_n = ~rst_50m_sync;
+
     uart #(
         .CLK_FREQ(50000000),
         .BAUD_RATE(9600)
     ) uart_inst(
         .clk(w_clk_50Mhz),
-        .rst_n(w_clk_rst),
+        .rst_n(rst_50m_n),
         .rx(i_uart_rx),
         .rx_data(rx_data),
         .rx_ready(rx_ready),
@@ -67,7 +82,7 @@ module top(
 
     twin_controller twin_controller_inst(
         .clk(w_clk_50Mhz),
-        .rst_n(w_clk_rst),
+        .rst_n(rst_50m_n),
         .rx_ready(rx_ready),
         .rx_data(rx_data),
         .tx_start(tx_start),

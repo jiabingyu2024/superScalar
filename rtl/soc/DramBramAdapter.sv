@@ -27,10 +27,7 @@ module DramBramAdapter #(
     assign dram_wdata = req_wdata << {req_addr[1:0], 3'b000};
     assign dram_we = (req_valid && req_write) ? ((req_wstrb << req_addr[1:0]) & 4'hf) : 4'h0;
 
-    DRAM_0 #(
-        .ADDR_WIDTH(ADDR_WIDTH),
-        .DATA_WIDTH(32)
-    ) dram (
+    DRAM_0 dram (
         .addra(dram_addr),
         .clka (clk),
         .dina (dram_wdata),

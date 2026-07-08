@@ -50,14 +50,38 @@ module student_top #(
     logic        dmem_req_uncached;
     logic        dmem_resp_valid;
     logic [31:0] dmem_resp_rdata;
+    logic        cpu_rst_meta;
+    logic        cpu_rst_sync;
+    logic        cnt_rst_meta;
+    logic        cnt_rst_sync;
 
     logic [P_SW_CNT-1:0]  virtual_sw_cpu_d1;
     logic [P_SW_CNT-1:0]  virtual_sw_cpu_d2;
     logic [P_KEY_CNT-1:0] virtual_key_cpu_d1;
     logic [P_KEY_CNT-1:0] virtual_key_cpu_d2;
 
-    always_ff @(posedge w_cpu_clk) begin
+    always_ff @(posedge w_cpu_clk or posedge w_clk_rst) begin
         if (w_clk_rst) begin
+            cpu_rst_meta <= 1'b1;
+            cpu_rst_sync <= 1'b1;
+        end else begin
+            cpu_rst_meta <= 1'b0;
+            cpu_rst_sync <= cpu_rst_meta;
+        end
+    end
+
+    always_ff @(posedge w_clk_50Mhz or posedge w_clk_rst) begin
+        if (w_clk_rst) begin
+            cnt_rst_meta <= 1'b1;
+            cnt_rst_sync <= 1'b1;
+        end else begin
+            cnt_rst_meta <= 1'b0;
+            cnt_rst_sync <= cnt_rst_meta;
+        end
+    end
+
+    always_ff @(posedge w_cpu_clk) begin
+        if (cpu_rst_sync) begin
             virtual_sw_cpu_d1  <= '0;
             virtual_sw_cpu_d2  <= '0;
             virtual_key_cpu_d1 <= '0;
@@ -73,7 +97,7 @@ module student_top #(
     assign irom_word_addr = irom_addr[13:2];
 
     myCPU Core_cpu (
-        .cpu_rst          (w_clk_rst),
+        .cpu_rst          (cpu_rst_sync),
         .cpu_clk          (w_cpu_clk),
         .irom_addr        (irom_addr),
         .irom_data        (instruction),
@@ -117,7 +141,8 @@ module student_top #(
     ) mem_bridge (
         .clk               (w_cpu_clk),
         .cnt_clk           (w_clk_50Mhz),
-        .rst               (w_clk_rst),
+        .rst               (cpu_rst_sync),
+        .cnt_rst           (cnt_rst_sync),
         .req_valid         (dmem_req_valid),
         .req_ready         (dmem_req_ready),
         .req_write         (dmem_req_write),

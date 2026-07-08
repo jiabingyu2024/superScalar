@@ -7,6 +7,7 @@ module SocMemBridge #(
     input  logic        clk,
     input  logic        cnt_clk,
     input  logic        rst,
+    input  logic        cnt_rst,
 
     input  logic        req_valid,
     output logic        req_ready,
@@ -128,7 +129,7 @@ module SocMemBridge #(
     counter counter_inst (
         .cpu_clk      (clk),
         .cnt_clk      (cnt_clk),
-        .rst          (rst),
+        .rst          (cnt_rst),
         .cnt_enable_cpu(cnt_enable_cfg_q),
         .perip_rdata  (cnt_rdata)
     );

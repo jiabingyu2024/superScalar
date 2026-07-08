@@ -62,6 +62,8 @@
 | `archive/2026-07-05/034_ipc_bottleneck_optimization_plan.md` | 基于新增性能分桶重新分析 `srcWithMext` IPC 瓶颈，并制定 MEM/ROB/唤醒优化计划。 |
 | `archive/2026-07-05/035_ipc_lt05_root_cause_and_optimization.md` | 汇总 IPC < 0.5 根因，执行阶段 1/2 优化并记录 MEM result buffer、store fairness、ROB32 与 MUL 预计唤醒结果。 |
 | `archive/2026-07-05/036_srcWithMext_post_phase12_ipc_root_cause.md` | 基于阶段 1/2 后 100M 长窗口重新定位 IPC 仍低原因，确认新主瓶颈为 IssueQueue 满且缺少 ready 项。 |
+| `archive/2026-07-08/049_srcWithMext_current_result_optimization_space.md` | 基于当前单发射阻塞核的完整 `srcWithMext` PASS 结果，重新归因 memory/MulDiv stall 并给出优化优先级。 |
+| `archive/2026-07-08/050_fpga_board_all_zero_bringup_review.md` | 审查 Tcl 建工程上板后 SEG/LED 全 0 的原因，修复 FPGA source 边界和 reset 同步释放，并记录官方模板对比。 |
 
 ## 后续维护规则
 
