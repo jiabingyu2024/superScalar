@@ -1,4 +1,6 @@
 build/
+__pycache__/
+*.pyc
 fpga/digital_twin/
 fpga/build/
 
