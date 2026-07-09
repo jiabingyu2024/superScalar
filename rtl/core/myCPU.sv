@@ -46,7 +46,7 @@ module myCPU (
     logic [63:0] perf_stall_muldiv;
     logic [63:0] perf_stall_load_use;
 
-    riscv_cpu cpu (
+    core cpu (
         .clk              (cpu_clk),
         .rst              (cpu_rst),
         .irom_addr        (irom_addr),
@@ -60,7 +60,9 @@ module myCPU (
         .dmem_req_wstrb   (dmem_req_wstrb),
         .dmem_req_uncached(dmem_req_uncached),
         .dmem_resp_valid  (dmem_resp_valid),
-        .dmem_resp_rdata  (dmem_resp_rdata),
+        .dmem_resp_rdata  (dmem_resp_rdata)
+`ifdef VERILATOR_TB
+        ,
         .perf_cycle       (perf_cycle),
         .perf_commit      (perf_commit),
         .perf_branch      (perf_branch),
@@ -73,6 +75,7 @@ module myCPU (
         .perf_stall_mem   (perf_stall_mem),
         .perf_stall_muldiv(perf_stall_muldiv),
         .perf_stall_load_use(perf_stall_load_use)
+`endif
     );
 
 `ifdef VERILATOR_TB

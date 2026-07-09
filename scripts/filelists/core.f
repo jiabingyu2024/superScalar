@@ -1,20 +1,14 @@
-# Five-stage core RTL filelist. Paths are relative to the repository root.
+# Core RTL filelist. Paths are relative to the repository root.
+# Keep packages/types before modules that import them.
 
-rtl/core/CoreTypes.sv
-rtl/core/front/BranchPredictor.sv
-rtl/core/front/PcGen.sv
-rtl/core/front/FetchStage.sv
-rtl/core/decode/Decode.sv
-rtl/core/regs/RegFile.sv
-rtl/core/regs/CsrFile.sv
-rtl/core/execute/Alu.sv
-rtl/core/execute/BranchUnit.sv
-rtl/core/execute/MulDivUnit.sv
-rtl/core/memory/StoreWriteBuffer.sv
+rtl/core/BasicTypes.sv
+rtl/core/InOrderTypes.sv
+rtl/core/InOrderFetchStage.sv
+rtl/core/InOrderDecodeStage.sv
+rtl/core/InOrderIssueQueue.sv
+rtl/core/InOrderExecuteStage.sv
 rtl/core/memory/DCache.sv
-rtl/core/memory/LoadStoreUnit.sv
-rtl/core/control/HazardUnit.sv
-rtl/core/control/PipelineCtrl.sv
-rtl/core/perf/PerfCounter.sv
-rtl/core/riscv_cpu.sv
+rtl/core/execute/MulDivUnit.sv
+rtl/core/InOrderMulDivUnit.sv
+rtl/core/core.sv
 rtl/core/myCPU.sv

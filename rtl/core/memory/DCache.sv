@@ -54,6 +54,8 @@ module DCache #(
     logic [1:0]  fill_word_q;
     logic [31:0] fill_data_q [0:WORDS_PER_LINE-1];
     logic [31:0] uncached_addr_q;
+    logic        cpu_resp_valid_q;
+    logic [31:0] cpu_resp_rdata_q;
 
     logic [INDEX_W-1:0] req_index_c;
     logic [31:TAG_LSB]  req_tag_c;
@@ -61,6 +63,10 @@ module DCache #(
     logic               req_cacheable_c;
     logic               req_hit_c;
     logic [31:0]        cache_word_c;
+    logic [31:0]        store_data_shifted_c;
+    logic [3:0]         store_mask_shifted_c;
+    logic [31:0]        store_word_next_c;
+    logic               hit_resp_c;
 
     assign req_cacheable_c = !cpu_req_uncached &&
                              (cpu_req_addr >= CACHE_ADDR_START) &&
@@ -72,6 +78,21 @@ module DCache #(
                        valid_q[req_index_c] &&
                        (tag_q[req_index_c] == req_tag_c);
     assign cache_word_c = data_q[req_index_c][req_word_c];
+    assign store_data_shifted_c = cpu_req_wdata << {cpu_req_addr[1:0], 3'b000};
+    assign store_mask_shifted_c = (cpu_req_wstrb << cpu_req_addr[1:0]) & 4'hf;
+    assign hit_resp_c = (state_q == DC_IDLE) && cpu_req_valid && !cpu_req_write &&
+                        req_cacheable_c && req_hit_c;
+    assign cpu_resp_valid = hit_resp_c || cpu_resp_valid_q;
+    assign cpu_resp_rdata = hit_resp_c ? cache_word_c : cpu_resp_rdata_q;
+
+    always_comb begin
+        store_word_next_c = cache_word_c;
+        for (int b = 0; b < 4; b++) begin
+            if (store_mask_shifted_c[b]) begin
+                store_word_next_c[b*8 +: 8] = store_data_shifted_c[b*8 +: 8];
+            end
+        end
+    end
 
     always_comb begin
         cpu_req_ready = 1'b0;
@@ -121,8 +142,8 @@ module DCache #(
     always_ff @(posedge clk) begin
         if (rst) begin
             state_q <= DC_IDLE;
-            cpu_resp_valid <= 1'b0;
-            cpu_resp_rdata <= 32'd0;
+            cpu_resp_valid_q <= 1'b0;
+            cpu_resp_rdata_q <= 32'd0;
             miss_addr_q <= 32'd0;
             miss_target_word_q <= 2'd0;
             fill_word_q <= 2'd0;
@@ -134,7 +155,7 @@ module DCache #(
                 valid_q[idx] <= 1'b0;
             end
         end else begin
-            cpu_resp_valid <= 1'b0;
+            cpu_resp_valid_q <= 1'b0;
 
             if (state_q != DC_IDLE || (cpu_req_valid && !cpu_req_ready)) begin
                 perf_stall_mem <= perf_stall_mem + 64'd1;
@@ -149,15 +170,17 @@ module DCache #(
 
                         if (cpu_req_write) begin
                             if (req_cacheable_c) begin
-                                valid_q[req_index_c] <= 1'b0;
-                                perf_dcache_miss <= perf_dcache_miss + 64'd1;
+                                if (req_hit_c) begin
+                                    data_q[req_index_c][req_word_c] <= store_word_next_c;
+                                end else begin
+                                    perf_dcache_miss <= perf_dcache_miss + 64'd1;
+                                end
                             end
                         end else if (!req_cacheable_c) begin
                             uncached_addr_q <= cpu_req_addr;
                             state_q <= DC_UNCACHED_WAIT;
                         end else if (req_hit_c) begin
-                            cpu_resp_valid <= 1'b1;
-                            cpu_resp_rdata <= cache_word_c;
+                            cpu_resp_valid_q <= 1'b0;
                         end else begin
                             perf_dcache_miss <= perf_dcache_miss + 64'd1;
                             miss_addr_q <= cpu_req_addr;
@@ -170,8 +193,8 @@ module DCache #(
 
                 DC_UNCACHED_WAIT: begin
                     if (mem_resp_valid) begin
-                        cpu_resp_valid <= 1'b1;
-                        cpu_resp_rdata <= mem_resp_rdata;
+                        cpu_resp_valid_q <= 1'b1;
+                        cpu_resp_rdata_q <= mem_resp_rdata;
                         state_q <= DC_IDLE;
                     end
                 end
@@ -199,12 +222,12 @@ module DCache #(
                             tag_q[fill_index] <= miss_addr_q[31:TAG_LSB];
                             valid_q[fill_index] <= 1'b1;
                             unique case (miss_target_word_q)
-                                2'd0: cpu_resp_rdata <= fill_data_q[0];
-                                2'd1: cpu_resp_rdata <= fill_data_q[1];
-                                2'd2: cpu_resp_rdata <= fill_data_q[2];
-                                default: cpu_resp_rdata <= mem_resp_rdata;
+                                2'd0: cpu_resp_rdata_q <= fill_data_q[0];
+                                2'd1: cpu_resp_rdata_q <= fill_data_q[1];
+                                2'd2: cpu_resp_rdata_q <= fill_data_q[2];
+                                default: cpu_resp_rdata_q <= mem_resp_rdata;
                             endcase
-                            cpu_resp_valid <= 1'b1;
+                            cpu_resp_valid_q <= 1'b1;
                             state_q <= DC_IDLE;
                         end else begin
                             fill_word_q <= fill_word_q + 2'd1;
