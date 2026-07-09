@@ -287,13 +287,17 @@ set_property -dict [list \
 
 create_ip -name blk_mem_gen -vendor xilinx.com -library ip -version 8.4 -module_name IROM_0
 set_property -dict [list \
-    CONFIG.Memory_Type {Single_Port_ROM} \
+    CONFIG.Memory_Type {Dual_Port_ROM} \
     CONFIG.Write_Width_A {32} \
     CONFIG.Write_Depth_A {4096} \
     CONFIG.Read_Width_A {32} \
+    CONFIG.Read_Width_B {32} \
     CONFIG.Enable_A {Use_ENA_Pin} \
+    CONFIG.Enable_B {Use_ENB_Pin} \
     CONFIG.Register_PortA_Output_of_Memory_Primitives {false} \
     CONFIG.Register_PortA_Output_of_Memory_Core {false} \
+    CONFIG.Register_PortB_Output_of_Memory_Primitives {false} \
+    CONFIG.Register_PortB_Output_of_Memory_Core {false} \
     CONFIG.Load_Init_File {true} \
     CONFIG.Coe_File $irom_coe \
 ] [get_ips IROM_0]
@@ -308,7 +312,7 @@ set_property -dict [list \
     CONFIG.Use_Byte_Write_Enable {true} \
     CONFIG.Byte_Size {8} \
     CONFIG.Operating_Mode_A {READ_FIRST} \
-    CONFIG.Register_PortA_Output_of_Memory_Primitives {false} \
+    CONFIG.Register_PortA_Output_of_Memory_Primitives {true} \
     CONFIG.Register_PortA_Output_of_Memory_Core {false} \
     CONFIG.Load_Init_File {true} \
     CONFIG.Coe_File $dram_coe \

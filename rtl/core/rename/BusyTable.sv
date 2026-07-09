@@ -9,6 +9,8 @@ module CoreBusyTable #(
     input  logic clk,
     input  logic rst,
     input  logic clear_i,
+    input  logic recover_i,
+    input  PhyRegNumPath [LOGIC_REG_NUM-1:0] recover_map_i,
 
     input  PhyRegNumPath [QUERY_WIDTH-1:0] query_src1_i,
     output logic [QUERY_WIDTH-1:0] query_src1_ready_o,
@@ -53,6 +55,14 @@ module CoreBusyTable #(
             for (int i = 0; i < PHY_REG_NUM; i = i + 1) begin
                 ready_q[i] <= (i < LOGIC_REG_NUM);
             end
+        end else if (recover_i) begin
+            for (int i = 0; i < PHY_REG_NUM; i = i + 1) begin
+                ready_q[i] <= 1'b0;
+            end
+            for (int r = 0; r < LOGIC_REG_NUM; r = r + 1) begin
+                ready_q[recover_map_i[r]] <= 1'b1;
+            end
+            ready_q[0] <= 1'b1;
         end else begin
             for (int b = 0; b < MARK_BUSY_WIDTH; b = b + 1) begin
                 if (mark_busy_i[b] && (mark_busy_phy_i[b] != '0)) begin

@@ -20,7 +20,10 @@ module DramBramAdapter #(
     logic [31:0]           dram_wdata;
     logic [31:0]           dram_rdata_raw;
     logic [3:0]            dram_we;
-    logic [1:0]            read_offset_q;
+    logic [1:0]            read_offset_d1;
+    logic [1:0]            read_offset_d2;
+    logic                  read_valid_d1;
+    logic                  read_valid_d2;
 
     assign req_ready = 1'b1;
     assign dram_addr = req_addr[ADDR_WIDTH+1:2];
@@ -38,15 +41,20 @@ module DramBramAdapter #(
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            resp_valid   <= 1'b0;
-            read_offset_q <= 2'd0;
+            read_valid_d1 <= 1'b0;
+            read_valid_d2 <= 1'b0;
+            read_offset_d1 <= 2'd0;
+            read_offset_d2 <= 2'd0;
         end else begin
-            resp_valid <= req_valid && !req_write;
+            read_valid_d1 <= req_valid && !req_write;
+            read_valid_d2 <= read_valid_d1;
             if (req_valid && !req_write) begin
-                read_offset_q <= req_addr[1:0];
+                read_offset_d1 <= req_addr[1:0];
             end
+            read_offset_d2 <= read_offset_d1;
         end
     end
 
-    assign resp_rdata = dram_rdata_raw >> {read_offset_q, 3'b000};
+    assign resp_valid = read_valid_d2;
+    assign resp_rdata = dram_rdata_raw >> {read_offset_d2, 3'b000};
 endmodule

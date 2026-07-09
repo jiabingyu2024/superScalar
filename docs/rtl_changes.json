@@ -1,3 +1,4 @@
+[
 {
   "timestamp": "2026-07-09T13:35:33+08:00",
   "trigger": "Board srcWithMext shows SEG high digits 0x374 instead of 0x378 while Verilator passes, indicating four M-extension subtests fail only on FPGA.",
@@ -31,4 +32,60 @@
     "make sim-src TEST=srcWithMext MAX_CYCLES=500000000 BUILD_JOBS=4 OBJCACHE= reached SEG last_nonzero_raw=0x37800000 with mext_count_from_seg=8; it timed out before the final pass marker because the 500M-cycle cap was below this build's full runtime."
   ],
   "notes": "Root cause: the previous RTL and Verilator DIV_0 model were self-consistently wrong, both treating [31:0] as quotient and [63:32] as remainder. Verilator therefore passed, while FPGA used the real Vivado div_gen packing and caused DIV/DIVU/REM/REMU subtests to fail. Rebuild the Vivado project or regenerate DIV_0 before producing a new bitstream."
+},
+{
+  "timestamp": "2026-07-09T22:46:52+08:00",
+  "trigger": "srcSmoke failed with SEG=0 after branch recovery; VCD showed x8 was renamed to p0 after a JAL redirect although the frame-pointer addi had committed.",
+  "backup_dir": "backup/20260709_224652_arat_commit_fix",
+  "files_modified": [
+    {
+      "path": "rtl/core/commit/CommitUnit.sv",
+      "change_type": "logic_fix",
+      "notes": "Only retirement entries that allocated a destination physical register now drive commit_arch_o/commit_prd_o to RenameUnit. Non-writing uops keep commit_valid_o for retire/perf/store-buffer purposes but no longer update aRAT with pseudo rd bits."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the aRAT commit-map corruption fix and the intended verification cascade."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_srcSmoke_then_rv32_regression",
+  "verification": [],
+  "notes": "Root cause: store and branch instructions still carry instruction bits in the decoded rd field. CommitUnit previously forwarded that field to RenameUnit whenever commit_valid_o was high, so a store such as fe042423 could update aRAT[x8] to p0. A later branch/JAL recovery restored sRAT from the corrupted aRAT, causing loads using x8 as a base to address 0xffffffdc instead of the stack frame."
+},
+{
+  "timestamp": "2026-07-10T00:02:46+08:00",
+  "trigger": "Vivado/Tcl IP integration review found IROM_0 Dual_Port_ROM B-port clock mismatch and stale DIV_0 packing documentation.",
+  "backup_dir": "backup/20260710_000246_irom_clkb_doc_fix",
+  "files_modified": [
+    {
+      "path": "rtl/soc/student_top.sv",
+      "change_type": "port_connection_fix",
+      "notes": "Connected IROM_0.clkb to w_cpu_clk so the top-level instance matches Vivado blk_mem_gen Dual_Port_ROM wrapper ports."
+    },
+    {
+      "path": "rtl/ip/IROM_0.sv",
+      "change_type": "ip_model_interface_fix",
+      "notes": "Added clkb to the Verilator dual-port ROM model and clocked B-port address capture from clkb."
+    },
+    {
+      "path": "docs/fpga/vivado_project.md",
+      "change_type": "documentation",
+      "notes": "Documented IROM A/B clocking and corrected DIV_0 quotient/remainder packing."
+    },
+    {
+      "path": "docs/fpga/ip_timing_alignment.md",
+      "change_type": "documentation",
+      "notes": "Updated IROM timing contract to include clka/clkb and same-clock top-level wiring."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the Vivado IP integration fix."
+    }
+  ],
+  "cascade_scope": "recompile_and_check_student_top_then_vivado_project_generation",
+  "verification": [],
+  "notes": "Vivado 2023.2 blk_mem_gen_v8_4 component metadata enables clkb for non-single-port native memories including Dual_Port_ROM. Its changelog states common_clock internally connects clkb to clka but preserves the interface, so both clocks must be wired to the same source."
 }
+]

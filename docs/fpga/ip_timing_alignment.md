@@ -77,8 +77,8 @@ SoC 侧的假设如下：
 
 | IP | Verilator 行为模型 | Vivado Tcl 当前参数 | RTL 消费方合同 | 修改时必须同步检查 |
 | --- | --- | --- | --- | --- |
-| `IROM_0` | `rtl/ip/IROM_0.sv` 在 `ena` 时锁存 `addra`，`douta = mem[addra_q]`。取指侧按 1 拍 ROM 读延迟使用。 | `Single_Port_ROM`，`Enable_A=Use_ENA_Pin`，`Register_PortA_Output_of_Memory_Primitives=false`，`Register_PortA_Output_of_Memory_Core=false`。 | `rtl/soc/student_top.sv` 连接 CPU `irom_addr/irom_data/irom_ena`。CPU 取指状态机默认下一拍可用。 | 若打开 ROM 输出寄存器或改成更深 pipeline，必须调整 CPU fetch/PC 对齐逻辑，并同步改 `rtl/ip/IROM_0.sv`。 |
-| `DRAM_0` | `rtl/ip/DRAM_0.sv` 在读周期 `douta <= mem[addra]`，行为模型是 1 拍读返回。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=false`，`Register_PortA_Output_of_Memory_Core=false`。FPGA DRAM 必须保持 `READ_LATENCY=1`。 | `rtl/soc/DramBramAdapter.sv` 当前把读响应和 byte offset 延后 1 拍。 | 若打开任意输出寄存器或增加 pipeline，必须先确认生成 wrapper 的 `C_READ_LATENCY_A`，再同步调整 adapter 和 `rtl/ip/DRAM_0.sv`。 |
+| `IROM_0` | `rtl/ip/IROM_0.sv` 在 `ena/enb` 时分别用 `clka/clkb` 锁存 `addra/addrb`，`douta/doutb = mem[addr*_q]`。取指侧按 1 拍 ROM 读延迟使用。 | `Dual_Port_ROM`，A/B 端口同接 CPU 时钟，均使用 enable pin，A/B 端口输出寄存器均关闭。 | `rtl/soc/student_top.sv` 连接 CPU `irom_addrA/B`、`irom_dataA/B`、`irom_enaA/B`，并把 `clka/clkb` 都接到 `w_cpu_clk`。CPU 取指状态机默认下一拍可用。 | 若打开 ROM 输出寄存器、改成更深 pipeline 或让 A/B 口异步时钟，必须调整 CPU fetch/PC 对齐逻辑，并同步改 `rtl/ip/IROM_0.sv`。 |
+| `DRAM_0` | `rtl/ip/DRAM_0.sv` 读请求后两拍更新 `douta`，行为模型是 2 拍读返回。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=true`，`Register_PortA_Output_of_Memory_Core=false`。FPGA DRAM 目标 `READ_LATENCY=2`。 | `rtl/soc/DramBramAdapter.sv` 当前把读响应和 byte offset 延后 2 拍。 | 若打开任意输出寄存器或增加 pipeline，必须先确认生成 wrapper 的 `C_READ_LATENCY_A`，再同步调整 adapter 和 `rtl/ip/DRAM_0.sv`。 |
 | `MUL_0` | `rtl/ip/MUL_0.sv` 是 33x33 signed multiplier，`pipe0/pipe1/P` 共 3 级寄存输出。 | `mult_gen`，`PipeStages=3`，33 位 signed 输入，自定义 66 位输出。 | `rtl/core/execute/MulDivUnit.sv` 用 `mul_count_q` 等待固定乘法结果拍数。 | 若 Tcl `PipeStages` 改变，必须同步改 `MUL_0.sv` pipeline 深度和 `MulDivUnit.sv` 的等待计数。 |
 | `DIV_0` | `rtl/ip/DIV_0.sv` 固定 `DIV_LATENCY=34`，AXI-stream valid 管线后输出 `{quotient, remainder}`。 | `div_gen`，`Latency_Configuration=Manual`，`Latency=34`，`FlowControl=Blocking`，unsigned radix-2 divider，remainder mode。 | `rtl/core/execute/MulDivUnit.sv` 等待 `m_axis_dout_tvalid`，并按 Vivado 2023.2 生成 demo TB 的约定解包：`div_data[63:32]=quotient`、`div_data[31:0]=remainder`。 | 若 Tcl `Latency`、`FlowControl` 或 output packing 改变，必须同步改 `DIV_0.sv`，并检查 `MulDivUnit.sv` 是否还满足握手和选位协议。 |
 | `pll` | `rtl/ip/pll.sv` 只服务仿真，不代表真实锁相环时钟收敛和相位行为。 | `clk_wiz` 生成 `clk_out1` 系统时钟和 `clk_out2` CPU 时钟，频率由 `FPGA_SYS_CLK_MHZ/FPGA_CPU_CLK_MHZ` 控制。 | `rtl/soc/top.sv` 用 `locked` 派生 reset，同步释放到 50 MHz 和 CPU 时钟域。 | 若改 CPU 频率，必须重新看 timing report、UART `CLK_FREQ`、counter 换算、跨时钟 reset 和 CDC。 |
@@ -91,13 +91,13 @@ SoC 侧的假设如下：
 
 ```text
 cycle N:   req_valid && !req_write 被接受，DRAM_0.ena=1，addra 有效
-cycle N+1: dram_rdata_raw 对应 cycle N 的地址，adapter 拉高 resp_valid
+cycle N+2: dram_rdata_raw 对应 cycle N 的地址，adapter 拉高 resp_valid
 ```
 
 因此当前 `DramBramAdapter.sv` 必须：
 
-- 对读请求 valid 打 1 拍后生成 `resp_valid`。
-- 对 `req_addr[1:0]` 的 byte offset 同步打 1 拍。
+- 对读请求 valid 打 2 拍后生成 `resp_valid`。
+- 对 `req_addr[1:0]` 的 byte offset 同步打 2 拍。
 - store 写通道保持当拍发给 BRAM，不要被读响应 pipeline 影响。
 - `req_ready` 当前恒为 1；如果未来改成可反压 DRAM，就必须重新审查 DCache miss/fill 状态机。
 
@@ -147,7 +147,7 @@ cycle N+1: IROM_0 输出 cycle N 地址对应的 irom_data
 
 当前 `riscv_cpu.sv` 直接在 `ST_EXEC` 使用 `irom_data` 作为 `exec_inst_c`，并在等待 load/muldiv 时继续预取 `pred_next_pc_c`。这意味着 IROM latency、PC 更新和分支重定向是绑在一起的。修改时必须注意：
 
-- 如果 IROM 仍是 1 拍，`student_top.sv` 只需要保持 `irom_word_addr = irom_addr[13:2]` 和 `IROM_0.ena=irom_ena`。
+- 如果 IROM 仍是 1 拍，`student_top.sv` 只需要保持 `irom_word_addrA/B = irom_addrA/B[13:2]` 和 `IROM_0.ena/enb=irom_enaA/B`。
 - 如果 IROM 改成 2 拍或更多，core fetch 状态机必须显式增加等待/valid 对齐；不能只在 `student_top` 里给 `irom_data` 再打一拍。
 - 如果新 core 需要 `irom_resp_valid`、`irom_req_ready` 或 instruction bus stall，SoC 必须给 IROM 包一层 adapter；当前 `myCPU` 端口没有这些信号。
 - 如果 IROM depth 改变，必须同步改三处：Tcl `Write_Depth_A`、`rtl/ip/IROM_0.sv ADDR_WIDTH` 或加载文件大小、`student_top.sv irom_word_addr` 位宽/截位。

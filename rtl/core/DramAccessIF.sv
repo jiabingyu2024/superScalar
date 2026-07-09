@@ -1,8 +1,6 @@
 import CoreTypesPkg::*;
 
 interface DramAccessIF(input logic clk, rst);
-    localparam logic [3:0] STORE_STARVE_LIMIT = 4'd2;
-
     logic    exReadEn;
     AddrPath exReadAddr;
     DataPath exReadData;
@@ -22,15 +20,15 @@ interface DramAccessIF(input logic clk, rst);
     DataPath readData;
     logic    accessReady;
 
-    logic [3:0] storeStarveCnt;
-    logic       storeForce;
+    logic       exReadPending;
     logic       readGrant;
     logic       writeGrant;
+    logic       readDone;
 
     always_comb begin
-        storeForce = storeWriteEn && (storeStarveCnt >= STORE_STARVE_LIMIT);
-        readGrant = exReadEn && !storeForce;
-        writeGrant = storeWriteEn && (!exReadEn || storeForce);
+        readGrant = exReadEn && !exReadPending;
+        readDone = exReadPending && accessReady;
+        writeGrant = storeWriteEn && !exReadPending && !readGrant;
 
         readEn = readGrant;
         writeEn = writeGrant;
@@ -39,21 +37,17 @@ interface DramAccessIF(input logic clk, rst);
         writeMask = storeWriteMask;
 
         exReadData = readData;
-        exReadReady = accessReady && readGrant;
+        exReadReady = readDone;
         storeWriteReady = accessReady && writeGrant;
     end
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            storeStarveCnt <= '0;
-        end else if (storeWriteReady) begin
-            storeStarveCnt <= '0;
-        end else if (storeWriteEn && exReadEn && readGrant && accessReady) begin
-            if (storeStarveCnt != 4'hf) begin
-                storeStarveCnt <= storeStarveCnt + 1'b1;
-            end
-        end else if (!storeWriteEn) begin
-            storeStarveCnt <= '0;
+            exReadPending <= 1'b0;
+        end else if (readDone) begin
+            exReadPending <= 1'b0;
+        end else if (readGrant) begin
+            exReadPending <= 1'b1;
         end
     end
 

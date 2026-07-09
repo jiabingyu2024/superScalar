@@ -31,7 +31,10 @@ module CoreRenameUnit (
 
     input  logic [RETIRE_WIDTH-1:0] commit_valid_i,
     input  LgcRegNumPath [RETIRE_WIDTH-1:0] commit_arch_i,
-    input  PhyRegNumPath [RETIRE_WIDTH-1:0] commit_prd_i
+    input  PhyRegNumPath [RETIRE_WIDTH-1:0] commit_prd_i,
+
+    output PhyRegNumPath [LOGIC_REG_NUM-1:0] srat_map_o,
+    output PhyRegNumPath [LOGIC_REG_NUM-1:0] arat_map_o
 );
     PhyRegNumPath srat_q [LOGIC_REG_NUM-1:0];
     PhyRegNumPath arat_q [LOGIC_REG_NUM-1:0];
@@ -74,6 +77,15 @@ module CoreRenameUnit (
             lane_fire[i] = 1'b0;
             current_map[i] = srat_q[in_uop_i[i].rd];
         end
+        for (int r = 0; r < LOGIC_REG_NUM; r = r + 1) begin
+            srat_map_o[r] = srat_q[r];
+            arat_map_o[r] = arat_q[r];
+            for (int c = 0; c < RETIRE_WIDTH; c = c + 1) begin
+                if (commit_valid_i[c] && (commit_arch_i[c] == LgcRegNumPath'(r)) && (r != 0)) begin
+                    arat_map_o[r] = commit_prd_i[c];
+                end
+            end
+        end
 
         for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
             out_uop_o[i].valid = in_valid_i[i];
@@ -83,7 +95,7 @@ module CoreRenameUnit (
             out_uop_o[i].prs2 = map_with_older_lane(in_uop_i[i].rs2, i);
             busy_query_src1_o[i] = out_uop_o[i].prs1;
             busy_query_src2_o[i] = out_uop_o[i].prs2;
-            out_uop_o[i].old_prd = current_map[i];
+            out_uop_o[i].old_prd = map_with_older_lane(in_uop_i[i].rd, i);
             out_uop_o[i].prd = needs_prd[i] ? free_alloc_phy_i[i] : '0;
             out_uop_o[i].alloc_prd = needs_prd[i];
             out_uop_o[i].src1_ready = busy_query_src1_ready_i[i] || (out_uop_o[i].prs1 == '0);
@@ -111,7 +123,7 @@ module CoreRenameUnit (
         end else begin
             if (clear_i || recover_i) begin
                 for (int r = 0; r < LOGIC_REG_NUM; r = r + 1) begin
-                    srat_q[r] <= arat_q[r];
+                    srat_q[r] <= arat_map_o[r];
                 end
             end else begin
                 for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin

@@ -36,10 +36,14 @@ module student_top #(
     output logic [63:0]                  dbg_perf_stall_load_use
 `endif
 );
-    logic [31:0] irom_addr;
-    logic [11:0] irom_word_addr;
-    logic [31:0] instruction;
-    logic        irom_ena;
+    logic [31:0] irom_addrA;
+    logic [31:0] irom_addrB;
+    logic [11:0] irom_word_addrA;
+    logic [11:0] irom_word_addrB;
+    logic [31:0] instructionA;
+    logic [31:0] instructionB;
+    logic        irom_enaA;
+    logic        irom_enaB;
 
     logic        dmem_req_valid;
     logic        dmem_req_ready;
@@ -94,14 +98,18 @@ module student_top #(
         end
     end
 
-    assign irom_word_addr = irom_addr[13:2];
+    assign irom_word_addrA = irom_addrA[13:2];
+    assign irom_word_addrB = irom_addrB[13:2];
 
     myCPU Core_cpu (
         .cpu_rst          (cpu_rst_sync),
         .cpu_clk          (w_cpu_clk),
-        .irom_addr        (irom_addr),
-        .irom_data        (instruction),
-        .irom_ena         (irom_ena),
+        .irom_addrA       (irom_addrA),
+        .irom_dataA       (instructionA),
+        .irom_enaA        (irom_enaA),
+        .irom_addrB       (irom_addrB),
+        .irom_dataB       (instructionB),
+        .irom_enaB        (irom_enaB),
         .dmem_req_valid   (dmem_req_valid),
         .dmem_req_ready   (dmem_req_ready),
         .dmem_req_write   (dmem_req_write),
@@ -124,15 +132,63 @@ module student_top #(
         .dbg_perf_stall_front(dbg_perf_stall_front),
         .dbg_perf_stall_mem  (dbg_perf_stall_mem),
         .dbg_perf_stall_muldiv(dbg_perf_stall_muldiv),
-        .dbg_perf_stall_load_use(dbg_perf_stall_load_use)
+        .dbg_perf_stall_load_use(dbg_perf_stall_load_use),
+        .dbg_perf_cond_branch(),
+        .dbg_perf_cond_branch_miss(),
+        .dbg_perf_jal(),
+        .dbg_perf_jal_miss(),
+        .dbg_perf_jalr(),
+        .dbg_perf_jalr_miss(),
+        .dbg_perf_frontend_stall_cycles(),
+        .dbg_perf_id_stall_cycles(),
+        .dbg_perf_rn_stall_cycles(),
+        .dbg_perf_ds_stall_cycles(),
+        .dbg_perf_is_stall_cycles(),
+        .dbg_perf_rr_stall_cycles(),
+        .dbg_perf_ex_stall_cycles(),
+        .dbg_perf_wb_stall_cycles(),
+        .dbg_perf_rob_full_cycles(),
+        .dbg_perf_issue_queue_full_cycles(),
+        .dbg_perf_int_issue_queue_full_cycles(),
+        .dbg_perf_mem_issue_queue_full_cycles(),
+        .dbg_perf_mul_issue_queue_full_cycles(),
+        .dbg_perf_rob_head_not_done_cycles(),
+        .dbg_perf_rob_head_not_done_int_cycles(),
+        .dbg_perf_rob_head_not_done_mem_cycles(),
+        .dbg_perf_rob_head_not_done_mul_cycles(),
+        .dbg_perf_rob_head_not_done_other_cycles(),
+        .dbg_perf_rob_head_store_commit_wait_cycles(),
+        .dbg_perf_free_list_empty_cycles(),
+        .dbg_perf_store_buffer_full_cycles(),
+        .dbg_perf_serial_block_cycles(),
+        .dbg_perf_mem_load_return_block_cycles(),
+        .dbg_perf_mem_load_access_block_cycles(),
+        .dbg_perf_store_commit_blocked_by_load_cycles(),
+        .dbg_perf_recovery_cycles(),
+        .dbg_perf_dispatch_width0_cycles(),
+        .dbg_perf_dispatch_width1_cycles(),
+        .dbg_perf_dispatch_width2_cycles(),
+        .dbg_perf_issue_width0_cycles(),
+        .dbg_perf_issue_width1_cycles(),
+        .dbg_perf_issue_width2_cycles(),
+        .dbg_perf_commit_width0_cycles(),
+        .dbg_perf_commit_width1_cycles(),
+        .dbg_perf_commit_width2_cycles(),
+        .dbg_perf_int_issue_count(),
+        .dbg_perf_mem_issue_count(),
+        .dbg_perf_mul_issue_count()
 `endif
     );
 
     IROM_0 Mem_IROM (
-        .addra(irom_word_addr),
+        .addra(irom_word_addrA),
+        .addrb(irom_word_addrB),
         .clka (w_cpu_clk),
-        .ena  (irom_ena),
-        .douta(instruction)
+        .clkb (w_cpu_clk),
+        .ena  (irom_enaA),
+        .enb  (irom_enaB),
+        .douta(instructionA),
+        .doutb(instructionB)
     );
 
     SocMemBridge #(

@@ -22,6 +22,7 @@ module CoreMultiPushFifo #(
     logic [PTR_WIDTH:0] count_q;
     logic [PTR_WIDTH:0] push_count;
     logic [PTR_WIDTH:0] pop_count;
+    logic [PTR_WIDTH:0] push_offset [PUSH_WIDTH-1:0];
     integer i;
 
     function automatic logic [PTR_WIDTH-1:0] wrap_add(
@@ -44,6 +45,7 @@ module CoreMultiPushFifo #(
     always_comb begin
         push_count = '0;
         for (i = 0; i < PUSH_WIDTH; i = i + 1) begin
+            push_offset[i] = push_count;
             push_ready_o[i] = (count_q + push_count < DEPTH[PTR_WIDTH:0]);
             if (push_valid_i[i] && push_ready_o[i]) begin
                 push_count = push_count + 1'b1;
@@ -53,6 +55,9 @@ module CoreMultiPushFifo #(
         pop_count = '0;
         for (i = 0; i < POP_WIDTH; i = i + 1) begin
             pop_valid_o[i] = (count_q > pop_count);
+            if ((i != 0) && !pop_ready_i[i-1]) begin
+                pop_valid_o[i] = 1'b0;
+            end
             pop_data_o[i] = mem_q[wrap_add(rd_ptr_q, pop_count)];
             if (pop_ready_i[i] && pop_valid_o[i]) begin
                 pop_count = pop_count + 1'b1;
@@ -70,7 +75,7 @@ module CoreMultiPushFifo #(
         end else begin
             for (int p = 0; p < PUSH_WIDTH; p = p + 1) begin
                 if (push_valid_i[p] && push_ready_o[p]) begin
-                    mem_q[wrap_add(wr_ptr_q, p[PTR_WIDTH:0])] <= push_data_i[p];
+                    mem_q[wrap_add(wr_ptr_q, push_offset[p])] <= push_data_i[p];
                 end
             end
             rd_ptr_q <= wrap_add(rd_ptr_q, pop_count);

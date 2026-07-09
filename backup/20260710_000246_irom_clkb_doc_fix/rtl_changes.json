@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-07-09T22:46:52+08:00",
+  "trigger": "srcSmoke failed with SEG=0 after branch recovery; VCD showed x8 was renamed to p0 after a JAL redirect although the frame-pointer addi had committed.",
+  "backup_dir": "backup/20260709_224652_arat_commit_fix",
+  "files_modified": [
+    {
+      "path": "rtl/core/commit/CommitUnit.sv",
+      "change_type": "logic_fix",
+      "notes": "Only retirement entries that allocated a destination physical register now drive commit_arch_o/commit_prd_o to RenameUnit. Non-writing uops keep commit_valid_o for retire/perf/store-buffer purposes but no longer update aRAT with pseudo rd bits."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the aRAT commit-map corruption fix and the intended verification cascade."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_srcSmoke_then_rv32_regression",
+  "verification": [],
+  "notes": "Root cause: store and branch instructions still carry instruction bits in the decoded rd field. CommitUnit previously forwarded that field to RenameUnit whenever commit_valid_o was high, so a store such as fe042423 could update aRAT[x8] to p0. A later branch/JAL recovery restored sRAT from the corrupted aRAT, causing loads using x8 as a base to address 0xffffffdc instead of the stack frame."
+}

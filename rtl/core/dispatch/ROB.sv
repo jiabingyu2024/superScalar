@@ -22,6 +22,9 @@ module CoreROB #(
     input  logic [COMPLETE_WIDTH-1:0][31:0] complete_exception_cause_i,
     input  logic [COMPLETE_WIDTH-1:0] complete_branch_miss_i,
     input  PcPath [COMPLETE_WIDTH-1:0] complete_redirect_pc_i,
+    input  logic [COMPLETE_WIDTH-1:0] complete_csr_write_i,
+    input  logic [COMPLETE_WIDTH-1:0][11:0] complete_csr_addr_i,
+    input  DataPath [COMPLETE_WIDTH-1:0] complete_csr_wdata_i,
 
     input  logic [RETIRE_W-1:0] retire_ready_i,
     output logic [RETIRE_W-1:0] retire_valid_o,
@@ -108,6 +111,7 @@ module CoreROB #(
                 if (alloc_fire[a]) begin
                     entry_q[wrap_add(tail_q, alloc_offset[a])].valid <= 1'b1;
                     entry_q[wrap_add(tail_q, alloc_offset[a])].done <= 1'b0;
+                    entry_q[wrap_add(tail_q, alloc_offset[a])].rob_idx <= wrap_add(tail_q, alloc_offset[a]);
                     entry_q[wrap_add(tail_q, alloc_offset[a])].uop <= alloc_uop_i[a].uop;
                     entry_q[wrap_add(tail_q, alloc_offset[a])].prd <= alloc_uop_i[a].prd;
                     entry_q[wrap_add(tail_q, alloc_offset[a])].old_prd <= alloc_uop_i[a].old_prd;
@@ -117,6 +121,9 @@ module CoreROB #(
                     entry_q[wrap_add(tail_q, alloc_offset[a])].exception_cause <= '0;
                     entry_q[wrap_add(tail_q, alloc_offset[a])].branch_miss <= 1'b0;
                     entry_q[wrap_add(tail_q, alloc_offset[a])].redirect_pc <= '0;
+                    entry_q[wrap_add(tail_q, alloc_offset[a])].csr_write <= 1'b0;
+                    entry_q[wrap_add(tail_q, alloc_offset[a])].csr_addr <= '0;
+                    entry_q[wrap_add(tail_q, alloc_offset[a])].csr_wdata <= '0;
                 end
             end
 
@@ -128,6 +135,9 @@ module CoreROB #(
                     entry_q[complete_idx_i[c]].exception_cause <= complete_exception_cause_i[c];
                     entry_q[complete_idx_i[c]].branch_miss <= complete_branch_miss_i[c];
                     entry_q[complete_idx_i[c]].redirect_pc <= complete_redirect_pc_i[c];
+                    entry_q[complete_idx_i[c]].csr_write <= complete_csr_write_i[c];
+                    entry_q[complete_idx_i[c]].csr_addr <= complete_csr_addr_i[c];
+                    entry_q[complete_idx_i[c]].csr_wdata <= complete_csr_wdata_i[c];
                 end
             end
 

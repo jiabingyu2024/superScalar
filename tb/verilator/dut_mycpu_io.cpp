@@ -5,7 +5,8 @@
 namespace sim {
 
 void drive_mycpu_inputs(VmyCPU& top, const MemoryModel& mem) {
-    top.irom_data = mem.irom_data_a();
+    top.irom_dataA = mem.irom_data_a();
+    top.irom_dataB = mem.irom_data_b();
     top.dmem_req_ready = 1;
     top.dmem_resp_valid = mem.current_dmem_resp_valid();
     top.dmem_resp_rdata = mem.current_perip_rdata();
@@ -13,10 +14,10 @@ void drive_mycpu_inputs(VmyCPU& top, const MemoryModel& mem) {
 
 Request capture_mycpu_request(const VmyCPU& top) {
     Request req;
-    req.irom_addr_a = top.irom_addr;
-    req.irom_addr_b = top.irom_addr + 4u;
-    req.irom_ena_a = top.irom_ena;
-    req.irom_ena_b = false;
+    req.irom_addr_a = top.irom_addrA;
+    req.irom_addr_b = top.irom_addrB;
+    req.irom_ena_a = top.irom_enaA;
+    req.irom_ena_b = top.irom_enaB;
     req.perip_addr = top.dmem_req_valid ? top.dmem_req_addr : 0;
     req.perip_wdata = top.dmem_req_wdata;
     req.perip_mask = top.dmem_req_wstrb & 0xfu;

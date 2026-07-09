@@ -17,17 +17,29 @@ module myCPU (
 
 
     // Interface to DRAM & peripheral bridge
-    output logic [31:0] perip_addr,
-    output logic        perip_wen,
-    output logic [3:0]  perip_mask,
-    output logic [31:0] perip_wdata,
-    input  logic [31:0] perip_rdata
+    output logic        dmem_req_valid,
+    input  logic        dmem_req_ready,
+    output logic        dmem_req_write,
+    output logic [31:0] dmem_req_addr,
+    output logic [31:0] dmem_req_wdata,
+    output logic [3:0]  dmem_req_wstrb,
+    output logic        dmem_req_uncached,
+    input  logic        dmem_resp_valid,
+    input  logic [31:0] dmem_resp_rdata
 `ifdef VERILATOR_TB
     ,
     output logic [63:0] dbg_perf_cycle,
     output logic [63:0] dbg_perf_commit,
     output logic [63:0] dbg_perf_branch,
     output logic [63:0] dbg_perf_branch_miss,
+    output logic [63:0] dbg_perf_load,
+    output logic [63:0] dbg_perf_store,
+    output logic [63:0] dbg_perf_dcache_access,
+    output logic [63:0] dbg_perf_dcache_miss,
+    output logic [63:0] dbg_perf_stall_front,
+    output logic [63:0] dbg_perf_stall_mem,
+    output logic [63:0] dbg_perf_stall_muldiv,
+    output logic [63:0] dbg_perf_stall_load_use,
     output logic [63:0] dbg_perf_cond_branch,
     output logic [63:0] dbg_perf_cond_branch_miss,
     output logic [63:0] dbg_perf_jal,
@@ -93,13 +105,15 @@ module myCPU (
     end
 
     always_comb begin
-        perip_addr = (dromAccess.readEn || dromAccess.writeEn) ? dromAccess.accessAddr : '0;
-        perip_wen = dromAccess.writeEn;
-        perip_mask = dromAccess.writeEn ? dromAccess.writeMask : '0;
-        perip_wdata = dromAccess.writeData;
+        dmem_req_valid = dromAccess.readEn || dromAccess.writeEn;
+        dmem_req_write = dromAccess.writeEn;
+        dmem_req_addr = dmem_req_valid ? dromAccess.accessAddr : '0;
+        dmem_req_wdata = dromAccess.writeData;
+        dmem_req_wstrb = dromAccess.writeEn ? dromAccess.writeMask : '0;
+        dmem_req_uncached = 1'b1;
 
-        dromAccess.readData = perip_rdata;
-        dromAccess.accessReady = 1'b1;
+        dromAccess.readData = dmem_resp_rdata;
+        dromAccess.accessReady = dromAccess.writeEn ? dmem_req_ready : dmem_resp_valid;
     end
 
 `ifdef VERILATOR_TB
@@ -107,6 +121,14 @@ module myCPU (
     assign dbg_perf_commit = perfIF.commitCnt;
     assign dbg_perf_branch = perfIF.branchCnt;
     assign dbg_perf_branch_miss = perfIF.branchMissCnt;
+    assign dbg_perf_load = 64'd0;
+    assign dbg_perf_store = 64'd0;
+    assign dbg_perf_dcache_access = 64'd0;
+    assign dbg_perf_dcache_miss = 64'd0;
+    assign dbg_perf_stall_front = perfIF.frontendStallCycles;
+    assign dbg_perf_stall_mem = perfIF.memLoadAccessBlockCycles + perfIF.memLoadReturnBlockCycles;
+    assign dbg_perf_stall_muldiv = 64'd0;
+    assign dbg_perf_stall_load_use = 64'd0;
     assign dbg_perf_cond_branch = perfIF.condBranchCnt;
     assign dbg_perf_cond_branch_miss = perfIF.condBranchMissCnt;
     assign dbg_perf_jal = perfIF.jalCnt;
