@@ -343,7 +343,8 @@ module core(
     stage_ex u_stage_ex (
         .i_clk           (clk),
         .i_rst_n         (rst_n),
-        .i_flush_e       (flush_e_m),
+        .i_flush_e       (branch_error_m),
+        .i_stall_e       (stall_d_e),
         .i_rs1_data      (rs1_data_e),
         .i_rs2_data      (rs2_data_e),
         .i_imm           (imm_e),
@@ -469,25 +470,5 @@ module core(
         .i_wb_src        (wb_src_w),
         .o_wb_data       (wb_data_w)
     );
-
-`ifdef VERILATOR_TB
-    logic [63:0] dbg_cycle_q;
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            dbg_cycle_q <= 64'd0;
-        end else begin
-            dbg_cycle_q <= dbg_cycle_q + 64'd1;
-            if ($test$plusargs("core_watch") &&
-                (dbg_cycle_q >= 64'd2400) &&
-                ((dbg_cycle_q < 64'd5000) || (dbg_cycle_q[19:0] == 20'd0))) begin
-                $display("CORE cyc=%0d pcP=%08x pcD=%08x instD=%08x pcE=%08x m_rd=%0b m_wr=%0b m_addr=%08x m_wdata=%08x m_mask=%x ready=%0b mem_busy=%0b m_busy=%0b stallPFDEMW=%0b%0b%0b%0b%0b rdM=%0d rdM2=%0d rdW=%0d wb_we=%0b wb_src=%0b wb_data=%08x dram_rdata=%08x",
-                         dbg_cycle_q, pc_p, pc_d, inst_d, pc_e,
-                         mem_read_m, mem_write_m, alu_res_m, a2_data_m, mem_mask_m, dram_req_ready,
-                         mem_busy_m, m_busy_e, stall_p_f, stall_f_d, stall_d_e, stall_e_m, stall_m_w,
-                         rd_addr_m, rd_addr_m2, rd_addr_w, reg_write_w, wb_src_w, wb_data_w, dram_rdata);
-            end
-        end
-    end
-`endif
 
 endmodule

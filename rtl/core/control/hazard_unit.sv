@@ -82,16 +82,23 @@ module hazard_unit(
         o_stall_p_f = load_use_hazard || i_m_busy || i_mem_busy;
         o_stall_f_d = load_use_hazard || i_m_busy || i_mem_busy;
         o_stall_d_e = i_m_busy || i_mem_busy;
-        o_stall_e_m = i_m_busy || i_mem_busy;
-        o_stall_m_w = i_mem_busy;
+        // When EX is busy with MUL/DIV, let the older M1 instruction drain once
+        // and inject bubbles into EX/M. Holding EX/M would replay the same M1
+        // load/store every busy cycle on this ready-valid DCache port.
+        o_stall_e_m = i_mem_busy;
+        // A DCache miss stalls the M1 request, but the older instruction already
+        // in M2 must still drain to WB.  While M1 is held, M2 is turned into a
+        // bubble via o_flush_m_w below; stalling M2/WB would pair the eventual
+        // miss return data with stale M2 metadata on the release cycle.
+        o_stall_m_w = 1'b0;
 
         o_flush_p_f = i_error;
         o_flush_f_d = i_error;
         o_flush_d_e = i_error || (load_use_hazard && !i_m_busy && !i_mem_busy);
         // Redirect is reported from EX/M1, so the current EX instruction is
         // already a younger wrong-path instruction and must be squashed.
-        o_flush_e_m = i_error;
-        o_flush_m_w = 1'b0;
+        o_flush_e_m = i_error || (i_m_busy && !i_mem_busy);
+        o_flush_m_w = i_mem_busy;
 
         o_pc_predict = i_predict_taken ? i_predict_target : (i_pc_cur + 32'd4);
 

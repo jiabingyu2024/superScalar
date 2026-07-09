@@ -12,6 +12,7 @@ module stage_ex(
     input  logic                            i_clk,
     input  logic                            i_rst_n,
     input  logic                            i_flush_e,
+    input  logic                            i_stall_e,
 
     input  logic  [`DATA_BUS]               i_rs1_data,
     input  logic  [`DATA_BUS]               i_rs2_data,
@@ -57,26 +58,52 @@ module stage_ex(
     logic [`DATA_BUS] a2_data;
     logic [`DATA_BUS] rs1_exec_data;
     logic [`DATA_BUS] rs2_exec_data;
+    logic [`DATA_BUS] rs1_exec_mux;
+    logic [`DATA_BUS] rs2_exec_mux;
+    logic [`DATA_BUS] rs1_exec_hold_q;
+    logic [`DATA_BUS] rs2_exec_hold_q;
+    logic             exec_hold_valid_q;
     logic [`PC_BUS]   t1_data;
     logic [`DATA_BUS] alu_res_raw;
 
     // ---- Forwarding mux ----
     always_comb begin
         unique case (i_rs1_fwd_sel)
-            `FWD_E_M:  rs1_exec_data = i_fwd_e_m;
-            `FWD_M_M:  rs1_exec_data = i_fwd_m_m;
-            `FWD_M_W:  rs1_exec_data = i_fwd_m_w;
-            default:   rs1_exec_data = i_rs1_data;
+            `FWD_E_M:  rs1_exec_mux = i_fwd_e_m;
+            `FWD_M_M:  rs1_exec_mux = i_fwd_m_m;
+            `FWD_M_W:  rs1_exec_mux = i_fwd_m_w;
+            default:   rs1_exec_mux = i_rs1_data;
         endcase
         unique case (i_rs2_fwd_sel)
-            `FWD_E_M:  rs2_exec_data = i_fwd_e_m;
-            `FWD_M_M:  rs2_exec_data = i_fwd_m_m;
-            `FWD_M_W:  rs2_exec_data = i_fwd_m_w;
-            default:   rs2_exec_data = i_rs2_data;
+            `FWD_E_M:  rs2_exec_mux = i_fwd_e_m;
+            `FWD_M_M:  rs2_exec_mux = i_fwd_m_m;
+            `FWD_M_W:  rs2_exec_mux = i_fwd_m_w;
+            default:   rs2_exec_mux = i_rs2_data;
         endcase
+
+        rs1_exec_data = exec_hold_valid_q ? rs1_exec_hold_q : rs1_exec_mux;
+        rs2_exec_data = exec_hold_valid_q ? rs2_exec_hold_q : rs2_exec_mux;
         t1_data = (i_inst_spec == `EX_JALR) ? rs1_exec_data : i_pc_d_e;
         a1_data = (i_inst_spec == `EX_AUIPC) ? i_pc : rs1_exec_data;
         a2_data = (i_is_rs2_imm || (i_inst_spec == `EX_AUIPC)) ? i_imm : rs2_exec_data;
+    end
+
+    always_ff @(posedge i_clk or negedge i_rst_n) begin
+        if (!i_rst_n) begin
+            exec_hold_valid_q <= 1'b0;
+            rs1_exec_hold_q   <= '0;
+            rs2_exec_hold_q   <= '0;
+        end else if (i_flush_e) begin
+            exec_hold_valid_q <= 1'b0;
+            rs1_exec_hold_q   <= '0;
+            rs2_exec_hold_q   <= '0;
+        end else if (i_stall_e && !exec_hold_valid_q) begin
+            exec_hold_valid_q <= 1'b1;
+            rs1_exec_hold_q   <= rs1_exec_mux;
+            rs2_exec_hold_q   <= rs2_exec_mux;
+        end else if (!i_stall_e) begin
+            exec_hold_valid_q <= 1'b0;
+        end
     end
 
     // ---- ALU ----

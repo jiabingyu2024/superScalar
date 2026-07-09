@@ -10,9 +10,9 @@
 //   the existing M2 stage can consume it in the next cycle.
 // - Returned load data is shifted down by the original byte offset, matching the
 //   current DramBramAdapter contract used by stage_m2.
-// - Miss refill uses ordinary 32-bit reads. The requested word is fetched first
-//   and replayed to the core, then the remaining words are filled in the
-//   background. A later memory op stalls until the background fill completes.
+// - Miss refill uses ordinary 32-bit reads and is fully blocking: fill the whole
+//   line first, then replay the original load to the core. This keeps the M1/M2
+//   timing identical for hit and miss paths on the current five-stage pipeline.
 //------------------------------------------------------------------------------
 module DCache #(
     parameter int unsigned LINE_COUNT = 512,
@@ -69,7 +69,6 @@ module DCache #(
     logic [1:0]  miss_target_word_q;
     logic [1:0]  fill_word_q;
     logic [2:0]  fill_count_q;
-    logic [31:0] replay_rdata_q;
     logic [31:0] resp_rdata_q;
     logic        resp_valid_q;
 
@@ -148,7 +147,7 @@ module DCache #(
                     end else begin
                         mem_req_valid    = 1'b1;
                         mem_req_write    = 1'b0;
-                        mem_req_addr     = req_cacheable_c ? {cpu_req_addr[31:4], req_word_c, 2'b00}
+                        mem_req_addr     = req_cacheable_c ? {cpu_req_addr[31:4], 4'b0000}
                                                            : cpu_req_addr;
                         mem_req_uncached = !req_cacheable_c;
                         cpu_req_ready    = 1'b0;
@@ -173,7 +172,9 @@ module DCache #(
         endcase
     end
 
-    assign cpu_resp_valid = resp_valid_q;
+    assign cpu_resp_valid = resp_valid_q ||
+                            (state_q == DC_UNCACHED_REPLAY) ||
+                            (state_q == DC_MISS_REPLAY);
     assign cpu_resp_rdata = resp_rdata_q;
 
     always_ff @(posedge clk) begin
@@ -183,7 +184,6 @@ module DCache #(
             miss_target_word_q <= 2'd0;
             fill_word_q <= 2'd0;
             fill_count_q <= 3'd0;
-            replay_rdata_q <= 32'd0;
             resp_rdata_q <= 32'd0;
             resp_valid_q <= 1'b0;
             perf_dcache_access <= 64'd0;
@@ -225,7 +225,7 @@ module DCache #(
                                 perf_dcache_miss <= perf_dcache_miss + 64'd1;
                                 miss_addr_q <= cpu_req_addr;
                                 miss_target_word_q <= req_word_c;
-                                fill_word_q <= req_word_c;
+                                fill_word_q <= 2'd0;
                                 fill_count_q <= 3'd0;
                                 state_q <= DC_MISS_WAIT;
                             end else begin
@@ -237,15 +237,13 @@ module DCache #(
 
                 DC_UNCACHED_WAIT: begin
                     if (mem_resp_valid) begin
-                        replay_rdata_q <= mem_resp_rdata;
+                        resp_rdata_q <= mem_resp_rdata;
                         state_q <= DC_UNCACHED_REPLAY;
                     end
                 end
 
                 DC_UNCACHED_REPLAY: begin
                     if (cpu_req_valid) begin
-                        resp_rdata_q <= replay_rdata_q;
-                        resp_valid_q <= 1'b1;
                         state_q <= DC_IDLE;
                     end
                 end
@@ -260,21 +258,16 @@ module DCache #(
                     if (mem_resp_valid) begin
                         data_q[miss_index_c][fill_word_q] <= mem_resp_rdata;
 
-                        if (fill_count_q == 3'd0) begin
-                            replay_rdata_q <= fill_resp_shifted_c;
-                            fill_count_q <= 3'd1;
-                            fill_word_q <= next_fill_word_c;
-                            if (WORDS_PER_LINE == 1) begin
-                                tag_q[miss_index_c] <= miss_tag_c;
-                                valid_q[miss_index_c] <= 1'b1;
-                            end
-                            state_q <= DC_MISS_REPLAY;
-                        end else if (fill_count_q == 3'(WORDS_PER_LINE - 1)) begin
+                        if (fill_word_q == miss_target_word_q) begin
+                            resp_rdata_q <= fill_resp_shifted_c;
+                        end
+
+                        if (fill_count_q == 3'(WORDS_PER_LINE - 1)) begin
                             tag_q[miss_index_c] <= miss_tag_c;
                             valid_q[miss_index_c] <= 1'b1;
                             fill_count_q <= 3'd0;
                             fill_word_q <= miss_target_word_q;
-                            state_q <= DC_IDLE;
+                            state_q <= DC_MISS_REPLAY;
                         end else begin
                             fill_count_q <= fill_count_q + 3'd1;
                             fill_word_q <= next_fill_word_c;
@@ -285,15 +278,7 @@ module DCache #(
 
                 DC_MISS_REPLAY: begin
                     if (cpu_req_valid) begin
-                        resp_rdata_q <= replay_rdata_q;
-                        resp_valid_q <= 1'b1;
-                        if (fill_count_q >= 3'(WORDS_PER_LINE)) begin
-                            tag_q[miss_index_c] <= miss_tag_c;
-                            valid_q[miss_index_c] <= 1'b1;
-                            state_q <= DC_IDLE;
-                        end else begin
-                            state_q <= DC_MISS_REQ;
-                        end
+                        state_q <= DC_IDLE;
                     end
                 end
 
@@ -303,26 +288,5 @@ module DCache #(
             endcase
         end
     end
-
-`ifdef VERILATOR_TB
-    logic [63:0] dbg_cycle_q;
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            dbg_cycle_q <= 64'd0;
-        end else begin
-            dbg_cycle_q <= dbg_cycle_q + 64'd1;
-            if ($test$plusargs("dcache_watch") &&
-                (dbg_cycle_q >= 64'd2400) &&
-                ((dbg_cycle_q < 64'd5000) || (dbg_cycle_q[19:0] == 20'd0) ||
-                 (cpu_req_valid && !cpu_req_ready))) begin
-                $display("DCACHE cyc=%0d state=%0d cpu_v=%0b cpu_rdy=%0b wr=%0b addr=%08x wdata=%08x wstrb=%x cacheable=%0b hit=%0b resp=%08x mem_v=%0b mem_rdy=%0b mem_wr=%0b mem_addr=%08x mem_wdata=%08x mem_wstrb=%x mem_resp_v=%0b mem_resp=%08x miss_addr=%08x fill_word=%0d fill_count=%0d acc=%0d miss=%0d stall=%0d",
-                         dbg_cycle_q, state_q, cpu_req_valid, cpu_req_ready, cpu_req_write, cpu_req_addr,
-                         cpu_req_wdata, cpu_req_wstrb, req_cacheable_c, req_hit_c, resp_rdata_q,
-                         mem_req_valid, mem_req_ready, mem_req_write, mem_req_addr, mem_req_wdata, mem_req_wstrb, mem_resp_valid, mem_resp_rdata,
-                         miss_addr_q, fill_word_q, fill_count_q, perf_dcache_access, perf_dcache_miss, perf_stall_mem);
-            end
-        end
-    end
-`endif
 
 endmodule
