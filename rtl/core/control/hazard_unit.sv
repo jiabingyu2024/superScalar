@@ -28,6 +28,9 @@ module hazard_unit(
     input  logic                            i_error,
     input  logic  [`PC_BUS]                 i_right_pc,
 
+    input  logic                            i_m_busy,
+    input  logic                            i_mem_busy,
+
     output logic                            o_stall_p_f,
     output logic                            o_stall_f_d,
     output logic                            o_stall_d_e,
@@ -65,6 +68,9 @@ module hazard_unit(
         end else if (i_error) begin
             load_use_hazard_hold_d <= 1'b0;
             load_use_hazard_hold_f <= 1'b0;
+        end else if (i_m_busy || i_mem_busy) begin
+            load_use_hazard_hold_d <= load_use_hazard_hold_d;
+            load_use_hazard_hold_f <= load_use_hazard_hold_f;
         end else begin
             load_use_hazard_hold_d <= load_use_hazard_raw_e;
             load_use_hazard_hold_f <= load_use_hazard_raw_f && !load_use_hazard_raw_e;
@@ -73,15 +79,15 @@ module hazard_unit(
 
     always_comb begin
 
-        o_stall_p_f = load_use_hazard;
-        o_stall_f_d = load_use_hazard;
-        o_stall_d_e = 1'b0;
-        o_stall_e_m = 1'b0;
-        o_stall_m_w = 1'b0;
+        o_stall_p_f = load_use_hazard || i_m_busy || i_mem_busy;
+        o_stall_f_d = load_use_hazard || i_m_busy || i_mem_busy;
+        o_stall_d_e = i_m_busy || i_mem_busy;
+        o_stall_e_m = i_m_busy || i_mem_busy;
+        o_stall_m_w = i_mem_busy;
 
         o_flush_p_f = i_error;
         o_flush_f_d = i_error;
-        o_flush_d_e = i_error || load_use_hazard;
+        o_flush_d_e = i_error || (load_use_hazard && !i_m_busy && !i_mem_busy);
         // Redirect is reported from EX/M1, so the current EX instruction is
         // already a younger wrong-path instruction and must be squashed.
         o_flush_e_m = i_error;
@@ -91,7 +97,7 @@ module hazard_unit(
 
         if (i_error) begin
             o_pc_next = i_right_pc;
-        end else if (load_use_hazard) begin
+        end else if (load_use_hazard || i_m_busy || i_mem_busy) begin
             o_pc_next = i_pc_cur;
         end else begin
             o_pc_next = o_pc_predict;

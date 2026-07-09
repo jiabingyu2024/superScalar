@@ -41,6 +41,10 @@ module stage_id(
     // output logic                            o_is_lui,
     // output logic                            o_bcmp1_src,
 
+    output logic                            o_is_m_ext,
+    output logic  [`M_OP_BUS]               o_m_op,
+    output logic  [11:0]                    o_csr_addr,
+
     output logic  [`DATA_BUS]               o_imm,
     output logic  [`DATA_BUS]               o_rs1_data,
     output logic  [`RF_BUS]                 o_rs1_addr,
@@ -70,7 +74,10 @@ module stage_id(
         .o_func3         (o_func3),
         .o_is_branch     (o_is_branch),
         .o_mem_mask      (o_mem_mask),
-        .o_load_unsigned (o_load_unsigned)
+        .o_load_unsigned (o_load_unsigned),
+        .o_is_m_ext      (o_is_m_ext),
+        .o_m_op          (o_m_op),
+        .o_csr_addr      (o_csr_addr)
     );
 
     imm_unit u_imm_unit (

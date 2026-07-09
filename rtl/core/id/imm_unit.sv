@@ -26,5 +26,8 @@ module imm_unit(
                    ({32{opcode == `OP_LUI || opcode == `OP_AUIPC}} &
                     {i_instr[31:12], 12'b0}) |
                    ({32{opcode == `OP_JAL}} &
-                    {{11{i_instr[31]}}, i_instr[31], i_instr[19:12], i_instr[20], i_instr[30:21], 1'b0});
+                    {{11{i_instr[31]}}, i_instr[31], i_instr[19:12], i_instr[20], i_instr[30:21], 1'b0}) |
+                   // CSR immediate (CSRRWI/CSRRSI/CSRRCI): zimm = zero-extended instr[19:15]
+                   ({32{opcode == `OP_SYSTEM && i_instr[14]}} &
+                    {27'b0, i_instr[19:15]});
 endmodule

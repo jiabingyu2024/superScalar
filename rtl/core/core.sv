@@ -18,7 +18,9 @@ module core(
     output logic                                     irom_ena,   // assign irom_ena = stall_p_f;
 
     input  logic  [`DATA_BUS]                        dram_rdata,
+    input  logic                                     dram_req_ready,
     output logic                                     dram_wen,
+    output logic                                     dram_ren,
     output logic  [`RAM_ADDR_BUS]                    dram_addr,
     output logic  [`DATA_BUS]                        dram_wdata,
     output logic  [3:0]                              dram_mask
@@ -51,6 +53,9 @@ module core(
     logic [3:0]       mem_mask_d;
     logic             load_unsigned_d;
     logic             is_branch_d;
+    logic             is_m_ext_d;
+    logic [2:0]       m_op_d;
+    logic [11:0]      csr_addr_d;
     logic [`DATA_BUS] imm_d;
     logic [`DATA_BUS] rs1_data_d;
     logic [`RF_BUS]   rs1_addr_d;
@@ -79,6 +84,9 @@ module core(
     logic [`PC_BUS]   pc_e;
     logic [`PC_BUS]   pc_target_e;
     logic [`PC_BUS]   pc_predict_e;
+    logic             is_m_ext_e;
+    logic [2:0]       m_op_e;
+    logic [11:0]      csr_addr_e;
 
     logic [1:0]       rs1_fwd_sel_d;
     logic [1:0]       rs2_fwd_sel_d;
@@ -136,10 +144,15 @@ module core(
     logic             flush_d_e;
     logic             flush_e_m;
     logic             flush_m_w;
+    logic             m_busy_e;
+    logic             mem_req_m;
+    logic             mem_busy_m;
 
     assign irom_addr = pc_p;
     assign irom_ena  = !stall_p_f;
     assign pc_target_d = pc_d + imm_d;
+    assign mem_req_m  = mem_read_m || mem_write_m;
+    assign mem_busy_m = mem_req_m && !dram_req_ready;
 
     stage_pc u_stage_pc (
         .i_clk       (clk),
@@ -197,6 +210,8 @@ module core(
         .i_predict_target(predict_target_f),
         .i_error         (branch_error_m),
         .i_right_pc      (branch_right_pc_m),
+        .i_m_busy        (m_busy_e),
+        .i_mem_busy      (mem_busy_m),
         .o_stall_p_f     (stall_p_f),
         .o_stall_f_d     (stall_f_d),
         .o_stall_d_e     (stall_d_e),
@@ -244,6 +259,9 @@ module core(
         .o_mem_mask      (mem_mask_d),
         .o_load_unsigned (load_unsigned_d),
         .o_is_branch     (is_branch_d),
+        .o_is_m_ext      (is_m_ext_d),
+        .o_m_op          (m_op_d),
+        .o_csr_addr      (csr_addr_d),
         .o_imm           (imm_d),
         .o_rs1_data      (rs1_data_d),
         .o_rs1_addr      (rs1_addr_d),
@@ -292,6 +310,9 @@ module core(
         .i_pc_predict    (pc_predict_d),
         .i_rs1_fwd_sel   (rs1_fwd_sel_d),
         .i_rs2_fwd_sel   (rs2_fwd_sel_d),
+        .i_is_m_ext      (is_m_ext_d),
+        .i_m_op          (m_op_d),
+        .i_csr_addr      (csr_addr_d),
         .o_rs1_data      (rs1_data_e),
         .o_rs2_data      (rs2_data_e),
         .o_rd_addr       (rd_addr_e),
@@ -313,10 +334,16 @@ module core(
         .o_pc_target     (pc_target_e),
         .o_pc_predict    (pc_predict_e),
         .o_rs1_fwd_sel   (rs1_fwd_sel_e),
-        .o_rs2_fwd_sel   (rs2_fwd_sel_e)
+        .o_rs2_fwd_sel   (rs2_fwd_sel_e),
+        .o_is_m_ext      (is_m_ext_e),
+        .o_m_op          (m_op_e),
+        .o_csr_addr      (csr_addr_e)
     );
 
     stage_ex u_stage_ex (
+        .i_clk           (clk),
+        .i_rst_n         (rst_n),
+        .i_flush_e       (flush_e_m),
         .i_rs1_data      (rs1_data_e),
         .i_rs2_data      (rs2_data_e),
         .i_imm           (imm_e),
@@ -334,6 +361,9 @@ module core(
         .i_is_branch     (is_branch_e),
         .i_is_rs2_imm    (is_rs2_imm_e),
         .i_inst_spec     (inst_spec_e),
+        .i_is_m_ext      (is_m_ext_e),
+        .i_m_op          (m_op_e),
+        .i_csr_addr      (csr_addr_e),
         .o_alu_res       (alu_res_e),
         .o_a2_data       (a2_data_e),
         .o_update_taken  (update_taken_e),
@@ -341,7 +371,8 @@ module core(
         .o_update_pc     (update_pc_e),
         .o_update_target (update_target_e),
         .o_error         (error_e),
-        .o_right_pc      (right_pc_e)
+        .o_right_pc      (right_pc_e),
+        .o_m_busy        (m_busy_e)
     );
 
     reg_ex_m1 u_reg_ex_m1 (
@@ -382,6 +413,7 @@ module core(
     );
 
     assign dram_wen   = mem_write_m;
+    assign dram_ren   = mem_read_m;
     assign dram_addr  = alu_res_m[`RAM_ADDR_BUS];
     assign dram_wdata = a2_data_m;
     assign dram_mask  = mem_mask_m;
@@ -418,7 +450,7 @@ module core(
         .i_clk           (clk),
         .i_rst_n         (rst_n),
         .i_flush         (1'b0),
-        .i_stall         (1'b0),
+        .i_stall         (stall_m_w),
         .i_reg_write     (reg_write_m2),
         .i_wb_src        (wb_src_m2),
         .i_alu_res       (alu_res_m2),
@@ -437,4 +469,25 @@ module core(
         .i_wb_src        (wb_src_w),
         .o_wb_data       (wb_data_w)
     );
+
+`ifdef VERILATOR_TB
+    logic [63:0] dbg_cycle_q;
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dbg_cycle_q <= 64'd0;
+        end else begin
+            dbg_cycle_q <= dbg_cycle_q + 64'd1;
+            if ($test$plusargs("core_watch") &&
+                (dbg_cycle_q >= 64'd2400) &&
+                ((dbg_cycle_q < 64'd5000) || (dbg_cycle_q[19:0] == 20'd0))) begin
+                $display("CORE cyc=%0d pcP=%08x pcD=%08x instD=%08x pcE=%08x m_rd=%0b m_wr=%0b m_addr=%08x m_wdata=%08x m_mask=%x ready=%0b mem_busy=%0b m_busy=%0b stallPFDEMW=%0b%0b%0b%0b%0b rdM=%0d rdM2=%0d rdW=%0d wb_we=%0b wb_src=%0b wb_data=%08x dram_rdata=%08x",
+                         dbg_cycle_q, pc_p, pc_d, inst_d, pc_e,
+                         mem_read_m, mem_write_m, alu_res_m, a2_data_m, mem_mask_m, dram_req_ready,
+                         mem_busy_m, m_busy_e, stall_p_f, stall_f_d, stall_d_e, stall_e_m, stall_m_w,
+                         rd_addr_m, rd_addr_m2, rd_addr_w, reg_write_w, wb_src_w, wb_data_w, dram_rdata);
+            end
+        end
+    end
+`endif
+
 endmodule

@@ -181,9 +181,10 @@ def build_verilator(target: BuildTarget, force: bool, jobs: int, cxx: str | None
     for define in target.defines:
         cmd.append(f"-D{define}")
     cmd.extend([
+        "+incdir+rtl/include",
         "-f",
         str(target.filelist.relative_to(REPO)),
-        *target.sources,
+        *[str(REPO / s) for s in target.sources],
         "-Mdir",
         str(target.out_dir),
         "-o",

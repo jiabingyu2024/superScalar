@@ -7,6 +7,8 @@ rtl/soc/display_seg.sv
 rtl/soc/counter.sv
 rtl/soc/DramBramAdapter.sv
 rtl/soc/SocMemBridge.sv
+rtl/soc/dram_driver.sv
+rtl/soc/perip_bridge.sv
 rtl/soc/uart.sv
 rtl/soc/twin_controller.sv
 rtl/soc/student_top.sv

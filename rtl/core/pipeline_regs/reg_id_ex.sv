@@ -47,6 +47,9 @@ module reg_id_ex(
     input logic [1:0]               i_rs1_fwd_sel,
     input logic [1:0]               i_rs2_fwd_sel,
 
+    input logic                     i_is_m_ext,
+    input logic [`M_OP_BUS]         i_m_op,
+    input logic [11:0]              i_csr_addr,
 
     output logic [`DATA_BUS]        o_rs1_data,
     output logic [`DATA_BUS]        o_rs2_data,
@@ -77,7 +80,11 @@ module reg_id_ex(
     output logic [`PC_BUS]          o_pc_target,
     output logic [`PC_BUS]          o_pc_predict,
     output logic [1:0]              o_rs1_fwd_sel,
-    output logic [1:0]              o_rs2_fwd_sel
+    output logic [1:0]              o_rs2_fwd_sel,
+
+    output logic                    o_is_m_ext,
+    output logic [`M_OP_BUS]        o_m_op,
+    output logic [11:0]             o_csr_addr
 );
 
     always_ff @(posedge i_clk or negedge i_rst_n) begin
@@ -104,6 +111,9 @@ module reg_id_ex(
             o_pc_predict     <= '0;
             o_rs1_fwd_sel    <= `FWD_RF;
             o_rs2_fwd_sel    <= `FWD_RF;
+            o_is_m_ext       <= 1'b0;
+            o_m_op           <= 3'b000;
+            o_csr_addr       <= 12'h0;
         end else if (i_flush) begin
             o_rs1_data       <= '0;
             o_rs2_data       <= '0;
@@ -127,6 +137,9 @@ module reg_id_ex(
             o_pc_predict     <= '0;
             o_rs1_fwd_sel    <= `FWD_RF;
             o_rs2_fwd_sel    <= `FWD_RF;
+            o_is_m_ext       <= 1'b0;
+            o_m_op           <= 3'b000;
+            o_csr_addr       <= 12'h0;
         end else if (!i_stall) begin
             o_rs1_data       <= i_rs1_data;
             o_rs2_data       <= i_rs2_data;
@@ -150,6 +163,9 @@ module reg_id_ex(
             o_pc_predict     <= i_pc_predict;
             o_rs1_fwd_sel    <= i_rs1_fwd_sel;
             o_rs2_fwd_sel    <= i_rs2_fwd_sel;
+            o_is_m_ext       <= i_is_m_ext;
+            o_m_op           <= i_m_op;
+            o_csr_addr       <= i_csr_addr;
         end
     end
 endmodule

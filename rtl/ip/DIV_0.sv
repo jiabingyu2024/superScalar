@@ -6,8 +6,8 @@
  *              Unsigned 32/32 divider with remainder output and fixed 34-cycle
  *              registered latency. The output packing follows Divider Generator
  *              remainder mode for 32-bit operands:
- *              m_axis_dout_tdata[31:0]  = quotient
- *              m_axis_dout_tdata[63:32] = remainder
+ *              m_axis_dout_tdata[63:32] = quotient
+ *              m_axis_dout_tdata[31:0]  = remainder
  */
 module DIV_0 (
     input  logic        aclk,
@@ -43,7 +43,7 @@ module DIV_0 (
     end
 
     always_ff @(posedge aclk) begin
-        dataPipe[0] <= {remainder, quotient};
+        dataPipe[0] <= {quotient, remainder};
         validPipe[0] <= fire;
         for (int i = 1; i < DIV_LATENCY; i++) begin
             dataPipe[i] <= dataPipe[i-1];

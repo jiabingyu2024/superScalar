@@ -26,10 +26,14 @@ module control_unit(
 
     output logic                            o_is_branch,
     output logic  [3:0]                     o_mem_mask,
-    output logic                            o_load_unsigned
+    output logic                            o_load_unsigned,
     // output logic                            o_is_jtype,
     // output logic                            o_is_lui,
-    
+
+    output logic                            o_is_m_ext,
+    output logic  [`M_OP_BUS]              o_m_op,
+
+    output logic  [11:0]                    o_csr_addr
 );
 
     logic [6:0] opcode;
@@ -52,10 +56,15 @@ module control_unit(
         o_is_branch     = 1'b0;
         o_mem_mask      = `MASK_WORD;
         o_load_unsigned = 1'b0;
+        o_is_m_ext      = 1'b0;
+        o_m_op          = func3;
+        o_csr_addr      = i_instr[31:20];
 
         unique case (opcode)
             `OP_R_TYPE: begin
                 o_reg_write = 1'b1;
+                o_is_m_ext  = (func7 == `FUNC7_MULDIV);
+                o_m_op      = func3;
                 unique case (func3)
                     `FUNC3_ADD_SUB: o_alu_ctrl = (func7 == `FUNC7_SUB) ? `ALU_SUB : `ALU_ADD;
                     `FUNC3_SLT:     o_alu_ctrl = `ALU_LT;
@@ -137,6 +146,38 @@ module control_unit(
                 o_is_rs2_imm = 1'b1;
                 o_inst_spec  = `EX_AUIPC;
                 o_alu_ctrl   = `ALU_ADD;
+            end
+
+            // fence / fence.i — treated as NOP (no cache in this pipeline)
+            `OP_MISC_MEM: begin
+            end
+
+            // CSR instructions, ecall, ebreak, mret
+            `OP_SYSTEM: begin
+                unique case (func3)
+                    3'b000: begin
+                        // ecall / ebreak / mret (distinguished by instr[31:20])
+                        case (i_instr[31:20])
+                            12'h000: o_inst_spec = `EX_ECALL;  // ecall
+                            12'h001: o_inst_spec = `EX_EBREAK; // ebreak
+                            12'h302: o_inst_spec = `EX_MRET;   // mret
+                            default: ;                          // others → NOP
+                        endcase
+                    end
+                    `FUNC3_CSRRW,
+                    `FUNC3_CSRRS,
+                    `FUNC3_CSRRC,
+                    `FUNC3_CSRRWI,
+                    `FUNC3_CSRRSI,
+                    `FUNC3_CSRRCI: begin
+                        o_reg_write  = 1'b1;
+                        o_inst_spec  = `EX_CSR;
+                        // Immediate variants (func3[2]=1): ALU operand comes
+                        // from zimm (imm_unit puts it in o_imm).
+                        o_is_rs2_imm = func3[2];
+                    end
+                    default: ;
+                endcase
             end
 
             default: begin

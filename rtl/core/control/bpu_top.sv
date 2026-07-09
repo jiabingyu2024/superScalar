@@ -53,13 +53,16 @@ module bpu_top (
     assign wr_idx = i_update_pc[BPU_IDX_W+1:2];
     assign wr_tag = i_update_pc[`PC_WID-1:BPU_IDX_W+2];
 
+    // Reset array in blocking style: Verilator does not support non-blocking
+    // assignments to arrays inside for loops.
+    integer i;
     always_ff @(posedge i_clk or negedge i_rst_n) begin
         if (!i_rst_n) begin
-            for (idx = 0; idx < BPU_ENTRIES; idx = idx + 1) begin
-                tag_mem[idx]     <= '0;
-                target_mem[idx]  <= '0;
-                counter_mem[idx] <= 2'b01;
-                valid_mem[idx]   <= 1'b0;
+            for (i = 0; i < BPU_ENTRIES; i = i + 1) begin
+                tag_mem[i]     = '0;
+                target_mem[i]  = '0;
+                counter_mem[i] = 2'b01;
+                valid_mem[i]   = 1'b0;
             end
         end else if (i_update_en) begin
             valid_mem[wr_idx]  <= 1'b1;
