@@ -80,7 +80,7 @@ SoC 侧的假设如下：
 | `IROM_0` | `rtl/ip/IROM_0.sv` 在 `ena` 时锁存 `addra`，`douta = mem[addra_q]`。取指侧按 1 拍 ROM 读延迟使用。 | `Single_Port_ROM`，`Enable_A=Use_ENA_Pin`，`Register_PortA_Output_of_Memory_Primitives=false`，`Register_PortA_Output_of_Memory_Core=false`。 | `rtl/soc/student_top.sv` 连接 CPU `irom_addr/irom_data/irom_ena`。CPU 取指状态机默认下一拍可用。 | 若打开 ROM 输出寄存器或改成更深 pipeline，必须调整 CPU fetch/PC 对齐逻辑，并同步改 `rtl/ip/IROM_0.sv`。 |
 | `DRAM_0` | `rtl/ip/DRAM_0.sv` 在读周期 `douta <= mem[addra]`，行为模型是 1 拍读返回。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=false`，`Register_PortA_Output_of_Memory_Core=false`。FPGA DRAM 必须保持 `READ_LATENCY=1`。 | `rtl/soc/DramBramAdapter.sv` 当前把读响应和 byte offset 延后 1 拍。 | 若打开任意输出寄存器或增加 pipeline，必须先确认生成 wrapper 的 `C_READ_LATENCY_A`，再同步调整 adapter 和 `rtl/ip/DRAM_0.sv`。 |
 | `MUL_0` | `rtl/ip/MUL_0.sv` 是 33x33 signed multiplier，`pipe0/pipe1/P` 共 3 级寄存输出。 | `mult_gen`，`PipeStages=3`，33 位 signed 输入，自定义 66 位输出。 | `rtl/core/execute/MulDivUnit.sv` 用 `mul_count_q` 等待固定乘法结果拍数。 | 若 Tcl `PipeStages` 改变，必须同步改 `MUL_0.sv` pipeline 深度和 `MulDivUnit.sv` 的等待计数。 |
-| `DIV_0` | `rtl/ip/DIV_0.sv` 固定 `DIV_LATENCY=34`，AXI-stream valid 管线后输出 `{quotient, remainder}`。 | `div_gen`，`Latency_Configuration=Manual`，`Latency=34`，`FlowControl=Blocking`，unsigned radix-2 divider，remainder mode。 | `rtl/core/execute/MulDivUnit.sv` 等待 `m_axis_dout_tvalid`，并按 Vivado 2023.2 生成 demo TB 的约定解包：`div_data[63:32]=quotient`、`div_data[31:0]=remainder`。 | 若 Tcl `Latency`、`FlowControl` 或 output packing 改变，必须同步改 `DIV_0.sv`，并检查 `MulDivUnit.sv` 是否还满足握手和选位协议。 |
+| `DIV_0` | `rtl/ip/DIV_0.sv` 固定 `DIV_LATENCY=34`，AXI-stream valid 管线后给出 quotient/remainder。 | `div_gen`，`Latency_Configuration=Manual`，`Latency=34`，`FlowControl=Blocking`，unsigned radix-2 divider。 | `rtl/core/execute/MulDivUnit.sv` 等待 `m_axis_dout_tvalid`，不硬编码完成拍数，但仿真模型必须与 Tcl latency 一致。 | 若 Tcl `Latency` 或 `FlowControl` 改变，必须同步改 `DIV_0.sv`，并检查 `MulDivUnit.sv` 是否还满足握手协议。 |
 | `pll` | `rtl/ip/pll.sv` 只服务仿真，不代表真实锁相环时钟收敛和相位行为。 | `clk_wiz` 生成 `clk_out1` 系统时钟和 `clk_out2` CPU 时钟，频率由 `FPGA_SYS_CLK_MHZ/FPGA_CPU_CLK_MHZ` 控制。 | `rtl/soc/top.sv` 用 `locked` 派生 reset，同步释放到 50 MHz 和 CPU 时钟域。 | 若改 CPU 频率，必须重新看 timing report、UART `CLK_FREQ`、counter 换算、跨时钟 reset 和 CDC。 |
 
 ## DRAM Adapter 特别注意
@@ -197,16 +197,8 @@ MUL_LATENCY = Vivado PipeStages = rtl/ip/MUL_0 pipeline depth = MulDivUnit wait 
 当前合同：
 
 - Tcl: `div_gen`，`Latency=34`，`FlowControl=Blocking`，`Radix2`，unsigned 输入，remainder mode。
-- 行为模型: `DIV_LATENCY=34`，输入 valid 后经过 valid 管线输出 `{quotient, remainder}`。
+- 行为模型: `DIV_LATENCY=34`，输入 valid 后经过 valid 管线输出 `{remainder, quotient}`。
 - `MulDivUnit`: 对正常除法等待 `m_axis_dout_tvalid`，对除 0 和 `INT_MIN / -1` 由 core 内部走 `MD_SPECIAL`，不启动 IP。
-
-Vivado 2023.2 实测注意事项：
-
-- 用当前 Tcl 参数生成 `DIV_0` 后，Vivado 自带 demo testbench 中的解包是：
-  - `remainder <= m_axis_dout_tdata(31 downto 0)`
-  - `quotient  <= m_axis_dout_tdata(63 downto 32)`
-- 因此 RTL 和 Verilator 行为模型必须保持 `m_axis_dout_tdata = {quotient, remainder}`。如果误写成 `{remainder, quotient}`，Verilator 会因为模型和 RTL 同错而通过，但 FPGA 真实 `div_gen` 会让 `DIV/DIVU/REM/REMU` 四类子测试全部失败；`srcWithMext` 的 SEG 典型表现是 M 扩展计数停在 `4`，即高位显示 `0x374xxxxx` 而不是 `0x378xxxxx`。
-- 以后不要只凭手写注释判断 packing；重新生成 IP 后优先查 `DIV_0.gen/.../demo_tb/tb_DIV_0.vhd` 或等价 wrapper/testbench 中的 quotient/remainder 赋值。
 
 修改除法时必须同步：
 
@@ -214,7 +206,7 @@ Vivado 2023.2 实测注意事项：
 | --- | --- |
 | Tcl `Latency` 改变 | `rtl/ip/DIV_0.sv DIV_LATENCY` 改成同值；`MulDivUnit` 若仍等 `div_valid`，通常无需改等待计数。 |
 | Tcl `FlowControl` 改变 | 行为模型必须模拟 `tready/tvalid`；`MulDivUnit` 当前忽略 `tready`，若真实 IP 会反压，必须改 start 握手。 |
-| 输出 packing 改变 | 行为模型和 `MulDivUnit` 的 `div_quot_u=div_data[63:32]`、`div_rem_u=div_data[31:0]` 必须同时改。 |
+| 输出 packing 改变 | 行为模型和 `MulDivUnit` 的 `div_quot_u=div_data[31:0]`、`div_rem_u=div_data[63:32]` 必须同时改。 |
 | signed divider 改为 IP 内部处理 | `MulDivUnit` 当前在 IP 外部取绝对值和修正符号；不要和 signed IP 重复修正。 |
 
 M 扩展验证不能只跑一个 `mul`。至少覆盖 `mul/mulh/mulhsu/mulhu/div/divu/rem/remu`、除 0、`0x8000_0000 / -1`、连续两条 M 指令，以及 M 指令后紧跟使用结果的相关场景。

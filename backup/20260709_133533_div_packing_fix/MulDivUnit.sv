@@ -97,8 +97,8 @@ module MulDivUnit (
         .m_axis_dout_tdata     (div_data)
     );
 
-    assign div_quot_u = div_data[63:32];
-    assign div_rem_u = div_data[31:0];
+    assign div_quot_u = div_data[31:0];
+    assign div_rem_u = div_data[63:32];
     assign div_quot_s = (div_lhs_neg_q ^ div_rhs_neg_q) ? ((~div_quot_u) + 32'd1) : div_quot_u;
     assign div_rem_s = div_lhs_neg_q ? ((~div_rem_u) + 32'd1) : div_rem_u;
 

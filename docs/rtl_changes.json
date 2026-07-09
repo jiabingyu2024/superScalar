@@ -1,69 +1,34 @@
 {
-  "timestamp": "2026-07-09T13:15:00+08:00",
-  "trigger": "srcWithMext Verilator PASS but board still reports wrong SEG/fail symbol; routed timing report shows CDC timing violation",
-  "backup_dir": "backup/20260709_131500_timing_cdc_report",
+  "timestamp": "2026-07-09T13:35:33+08:00",
+  "trigger": "Board srcWithMext shows SEG high digits 0x374 instead of 0x378 while Verilator passes, indicating four M-extension subtests fail only on FPGA.",
+  "backup_dir": "backup/20260709_133533_div_packing_fix",
   "files_modified": [
     {
-      "path": "rtl/soc/DramBramAdapter.sv",
+      "path": "rtl/core/execute/MulDivUnit.sv",
       "change_type": "logic_fix",
-      "notes": "Restored DRAM read response and byte-offset alignment to one cycle after checking the generated Vivado wrapper reports READ_LATENCY=1."
+      "notes": "Changed DIV_0 result unpacking to match Vivado 2023.2 div_gen remainder-mode output: quotient is m_axis_dout_tdata[63:32], remainder is [31:0]."
     },
     {
-      "path": "fpga/create_vivado_project.tcl",
-      "change_type": "ip_config_and_constraint_fix",
-      "notes": "Set DRAM_0 Register_PortA_Output_of_Memory_Primitives=false and generate a late CDC XDC that groups clk_out1_pll and clk_out2_pll asynchronously; removed Tcl if/else from the generated XDC because Vivado ignored those commands during implementation."
-    },
-    {
-      "path": "fpga/build/digital_twin_srcWithMext/constraints/digital_twin_cdc.xdc",
-      "change_type": "generated_constraint_hotfix",
-      "notes": "Updated the already-generated build constraint file to the same plain XDC set_clock_groups command so the current project can be reimplemented without regenerating from Tcl first."
-    },
-    {
-      "path": "rtl/soc/counter.sv",
-      "change_type": "cdc_fix",
-      "notes": "Split counter reset into cpu_rst and cnt_rst so each clock domain uses a reset synchronized to that domain; marked CDC synchronizer stages with ASYNC_REG."
-    },
-    {
-      "path": "rtl/soc/top.sv",
-      "change_type": "cdc_fix",
-      "notes": "Added a 50 MHz synchronized mirror for slow status signals feeding twin_controller; later static review found the dynamically scanned SEG bus must not be crossed this way."
-    },
-    {
-      "path": "rtl/soc/student_top.sv",
-      "change_type": "cdc_annotation",
-      "notes": "Marked reset, virtual switch, and key synchronizer stages with ASYNC_REG."
-    },
-    {
-      "path": "rtl/soc/SocMemBridge.sv",
-      "change_type": "cdc_fix",
-      "notes": "Connected counter CPU-side reset to the CPU domain reset and counter-side reset to the 50 MHz counter domain reset; moved SEG scan generation to the 50 MHz domain after synchronizing the raw seg_wdata register, avoiding bitwise CDC of the dynamic 40-bit scanned SEG bus."
-    },
-    {
-      "path": "rtl/soc/perip_bridge.sv",
-      "change_type": "interface_update",
-      "notes": "Updated the legacy counter instantiation to the split-reset interface to avoid future recursive-compile port mismatches."
+      "path": "rtl/ip/DIV_0.sv",
+      "change_type": "simulation_model_fix",
+      "notes": "Changed the Verilator behavior model to emit m_axis_dout_tdata as {quotient, remainder}, matching generated Vivado DIV_0 demo testbench behavior."
     },
     {
       "path": "docs/fpga/ip_timing_alignment.md",
       "change_type": "documentation",
-      "notes": "Corrected the DRAM timing contract to one-cycle READ_LATENCY, documented generated C_READ_LATENCY_A as the source of truth, and recorded the routed timing evidence for the clk_out2_pll -> clk_out1_pll CDC failure."
+      "notes": "Documented the DIV_0 output packing contract, the Vivado demo testbench evidence, and the board symptom where srcWithMext reaches 0x374xxxxx instead of 0x378xxxxx."
     },
     {
       "path": "docs/rtl_changes.json",
       "change_type": "documentation",
-      "notes": "Recorded the second board-debug pass and backup location."
+      "notes": "Recorded the DIV_0 packing alignment fix and verification evidence."
     }
   ],
-  "cascade_scope": "compile_and_lint_and_cdc_check",
+  "cascade_scope": "recompile_and_regenerate_vivado_ip_project",
   "verification": [
-    "Static review: generated fpga/build/.../DRAM_0.v reports X_INTERFACE READ_LATENCY 1 and C_READ_LATENCY_A=1.",
-    "Static review: generated IROM_0 also reports READ_LATENCY 1, matching the current fetch-side assumption.",
-    "Static review: existing fpga/build/digital_twin_srcWithMext/pll.xci still shows CLKOUT2_REQUESTED_OUT_FREQ=80.000, so that build is stale or was generated with FPGA_CPU_CLK_MHZ=80 rather than the current Tcl default of 50.",
-    "Static review: existing routed timing report says Timing constraints are not met; clk_out2_pll -> clk_out1_pll has WNS=-0.131ns/TNS=-0.750ns across 9 failing endpoints.",
-    "Routed timing report fpga/build/digital_twin_srcWithMext/digital_twin.runs/impl_1/top_timing_summary_routed.rpt shows intra-clock timing is met: clk_out2_pll WNS=+0.433ns and clk_out1_pll WNS=+16.730ns. The only failing setup path is inter-clock clk_out2_pll -> clk_out1_pll with WNS=-0.029ns.",
-    "The failing endpoint in that report is student_top_inst/mem_bridge/seg_driver/count_reg[4] to virtual_seg_50_d1_reg[12], confirming the old build was timing the dynamically scanned SEG bus across CPU and 50 MHz domains.",
-    "Implementation runme.log reports CRITICAL WARNING [Designutils 20-1307]: Command 'if' is not supported in the XDC constraint file digital_twin_cdc.xdc, so the previous asynchronous clock grouping did not take effect.",
-    "Static review after srcWithMext Verilator PASS: top-level still crossed the continuously changing 40-bit scanned SEG bus from CPU clock to 50 MHz for twin_controller. This can produce incoherent segment snapshots on FPGA even when the CPU program passes."
+    "Generated a temporary Vivado 2023.2 DIV_0 div_gen IP with the current Tcl parameters. Its demo_tb/tb_DIV_0.vhd assigns remainder <= m_axis_dout_tdata(31 downto 0) and quotient <= m_axis_dout_tdata(63 downto 32).",
+    "make sim-rv32 SUITE=rv32um BUILD_JOBS=4 OBJCACHE= passed all 8 rv32um tests: div, divu, mul, mulh, mulhsu, mulhu, rem, remu.",
+    "make sim-src TEST=srcWithMext MAX_CYCLES=500000000 BUILD_JOBS=4 OBJCACHE= reached SEG last_nonzero_raw=0x37800000 with mext_count_from_seg=8; it timed out before the final pass marker because the 500M-cycle cap was below this build's full runtime."
   ],
-  "notes": "Current evidence points to board-only CDC/IP-alignment risks, not a CPU core frequency bottleneck. The routed design failed because a stale/old SEG scan path crossed from clk_out2_pll to clk_out1_pll and because the generated CDC XDC used unsupported Tcl control flow, preventing set_clock_groups from applying. Rebuild from clean RTL/Tcl after these fixes and re-check runme.log for zero XDC critical warnings plus timing summary with no inter-clock setup violations."
+  "notes": "Root cause: the previous RTL and Verilator DIV_0 model were self-consistently wrong, both treating [31:0] as quotient and [63:32] as remainder. Verilator therefore passed, while FPGA used the real Vivado div_gen packing and caused DIV/DIVU/REM/REMU subtests to fail. Rebuild the Vivado project or regenerate DIV_0 before producing a new bitstream."
 }
