@@ -32,6 +32,27 @@ module riscv_cpu (
     output logic [63:0] perf_stall_mem,
     output logic [63:0] perf_stall_muldiv,
     output logic [63:0] perf_stall_load_use
+`ifdef VERILATOR_TB
+    ,
+    output logic        dbg_commit_valid,
+    output logic [31:0] dbg_commit_pc,
+    output logic [31:0] dbg_commit_inst,
+    output logic        dbg_commit_wen,
+    output logic [4:0]  dbg_commit_rd,
+    output logic [31:0] dbg_commit_wdata,
+    output logic        dbg_commit_is_load,
+    output logic        dbg_commit_is_store,
+    output logic        dbg_commit_is_mmio,
+    output logic        dbg_commit_is_trap,
+    output logic [31:0] dbg_commit_cause,
+    output logic [31:0] dbg_commit_next_pc,
+    output logic [1023:0] dbg_gpr_flat,
+    output logic [31:0] dbg_csr_mstatus,
+    output logic [31:0] dbg_csr_mtvec,
+    output logic [31:0] dbg_csr_mscratch,
+    output logic [31:0] dbg_csr_mepc,
+    output logic [31:0] dbg_csr_mcause
+`endif
 );
     typedef enum logic [2:0] {
         ST_FETCH,
@@ -50,7 +71,11 @@ module riscv_cpu (
     logic [4:0]  load_rd_q;
     logic [2:0]  load_funct3_q;
     logic [31:0] load_addr_q;
+    logic [31:0] load_pc_q;
+    logic [31:0] load_inst_q;
     logic [4:0]  muldiv_rd_q;
+    logic [31:0] muldiv_pc_q;
+    logic [31:0] muldiv_inst_q;
 
     logic [31:0] csr_mstatus_q;
     logic [31:0] csr_mtvec_q;
@@ -212,8 +237,29 @@ module riscv_cpu (
             if (rd != 5'd0) begin
                 regs_q[rd] <= value;
             end
+`ifdef VERILATOR_TB
+            dbg_commit_wen <= (rd != 5'd0);
+            dbg_commit_rd <= rd;
+            dbg_commit_wdata <= value;
+`endif
         end
     endtask
+
+`ifdef VERILATOR_TB
+    genvar dbg_gpr_idx;
+    generate
+        for (dbg_gpr_idx = 0; dbg_gpr_idx < 32; dbg_gpr_idx++) begin : g_dbg_gpr_flat
+            assign dbg_gpr_flat[dbg_gpr_idx * 32 +: 32] =
+                (dbg_gpr_idx == 0) ? 32'd0 : regs_q[dbg_gpr_idx];
+        end
+    endgenerate
+
+    assign dbg_csr_mstatus  = csr_mstatus_q;
+    assign dbg_csr_mtvec    = csr_mtvec_q;
+    assign dbg_csr_mscratch = csr_mscratch_q;
+    assign dbg_csr_mepc     = csr_mepc_q;
+    assign dbg_csr_mcause   = csr_mcause_q;
+`endif
 
     function automatic logic [31:0] div_result(
         input logic [31:0] lhs,
@@ -306,7 +352,11 @@ module riscv_cpu (
             load_rd_q <= 5'd0;
             load_funct3_q <= 3'd0;
             load_addr_q <= 32'd0;
+            load_pc_q <= 32'd0;
+            load_inst_q <= 32'd0;
             muldiv_rd_q <= 5'd0;
+            muldiv_pc_q <= 32'd0;
+            muldiv_inst_q <= 32'd0;
             csr_mstatus_q <= 32'd0;
             csr_mtvec_q <= 32'd0;
             csr_mscratch_q <= 32'd0;
@@ -329,9 +379,37 @@ module riscv_cpu (
                 btb_tag_q[idx] <= 24'd0;
                 btb_target_q[idx] <= 32'd0;
             end
+`ifdef VERILATOR_TB
+            dbg_commit_valid <= 1'b0;
+            dbg_commit_pc <= 32'd0;
+            dbg_commit_inst <= 32'd0;
+            dbg_commit_wen <= 1'b0;
+            dbg_commit_rd <= 5'd0;
+            dbg_commit_wdata <= 32'd0;
+            dbg_commit_is_load <= 1'b0;
+            dbg_commit_is_store <= 1'b0;
+            dbg_commit_is_mmio <= 1'b0;
+            dbg_commit_is_trap <= 1'b0;
+            dbg_commit_cause <= 32'd0;
+            dbg_commit_next_pc <= 32'd0;
+`endif
         end else begin
             perf_cycle <= perf_cycle + 64'd1;
             regs_q[0] <= 32'd0;
+`ifdef VERILATOR_TB
+            dbg_commit_valid <= 1'b0;
+            dbg_commit_pc <= 32'd0;
+            dbg_commit_inst <= 32'd0;
+            dbg_commit_wen <= 1'b0;
+            dbg_commit_rd <= 5'd0;
+            dbg_commit_wdata <= 32'd0;
+            dbg_commit_is_load <= 1'b0;
+            dbg_commit_is_store <= 1'b0;
+            dbg_commit_is_mmio <= 1'b0;
+            dbg_commit_is_trap <= 1'b0;
+            dbg_commit_cause <= 32'd0;
+            dbg_commit_next_pc <= 32'd0;
+`endif
             if (state_q == ST_FETCH) begin
                 perf_stall_front <= perf_stall_front + 64'd1;
             end
@@ -363,6 +441,8 @@ module riscv_cpu (
                     logic        is_ctrl;
                     logic        btb_update_valid;
                     logic        btb_update_taken;
+                    logic        trap;
+                    logic [31:0] trap_cause;
 
                     opcode = exec_inst_c[6:0];
                     funct3 = exec_inst_c[14:12];
@@ -378,6 +458,8 @@ module riscv_cpu (
                     is_ctrl = 1'b0;
                     btb_update_valid = 1'b0;
                     btb_update_taken = 1'b0;
+                    trap = 1'b0;
+                    trap_cause = 32'd0;
 
                     unique case (opcode)
                         7'b0110111: write_gpr(rd, imm_u(exec_inst_c)); // LUI
@@ -422,6 +504,8 @@ module riscv_cpu (
                                 load_rd_q <= rd;
                                 load_funct3_q <= funct3;
                                 load_addr_q <= mem_req_addr_c;
+                                load_pc_q <= pc_q;
+                                load_inst_q <= exec_inst_c;
                                 state_q <= ST_WAIT_MEM;
                                 commit = 1'b0;
                             end else begin
@@ -456,6 +540,8 @@ module riscv_cpu (
                             if (funct7 == 7'b0000001) begin
                                 if (!muldiv_busy) begin
                                     muldiv_rd_q <= rd;
+                                    muldiv_pc_q <= pc_q;
+                                    muldiv_inst_q <= exec_inst_c;
                                     state_q <= ST_WAIT_MULDIV;
                                 end
                                 commit = 1'b0;
@@ -484,11 +570,15 @@ module riscv_cpu (
                                 csr_mcause_q <= 32'd11;
                                 next_pc = csr_mtvec_q;
                                 is_ctrl = 1'b1;
+                                trap = 1'b1;
+                                trap_cause = 32'd11;
                             end else if (exec_inst_c == 32'h0010_0073) begin // EBREAK
                                 csr_mepc_q <= pc_q;
                                 csr_mcause_q <= 32'd3;
                                 next_pc = csr_mtvec_q;
                                 is_ctrl = 1'b1;
+                                trap = 1'b1;
+                                trap_cause = 32'd3;
                             end else if (exec_inst_c == 32'h3020_0073) begin // MRET
                                 next_pc = csr_mepc_q;
                                 is_ctrl = 1'b1;
@@ -537,6 +627,17 @@ module riscv_cpu (
                         pc_q <= next_pc;
                         perf_commit <= perf_commit + 64'd1;
                         state_q <= redirect ? ST_FETCH : ST_EXEC;
+`ifdef VERILATOR_TB
+                        dbg_commit_valid <= 1'b1;
+                        dbg_commit_pc <= pc_q;
+                        dbg_commit_inst <= exec_inst_c;
+                        dbg_commit_is_load <= 1'b0;
+                        dbg_commit_is_store <= (opcode == 7'b0100011);
+                        dbg_commit_is_mmio <= 1'b0;
+                        dbg_commit_is_trap <= trap;
+                        dbg_commit_cause <= trap_cause;
+                        dbg_commit_next_pc <= next_pc;
+`endif
                     end
                 end
 
@@ -550,6 +651,17 @@ module riscv_cpu (
                         perf_commit <= perf_commit + 64'd1;
                         perf_load <= perf_load + 64'd1;
                         state_q <= ST_EXEC;
+`ifdef VERILATOR_TB
+                        dbg_commit_valid <= 1'b1;
+                        dbg_commit_pc <= load_pc_q;
+                        dbg_commit_inst <= load_inst_q;
+                        dbg_commit_is_load <= 1'b1;
+                        dbg_commit_is_store <= 1'b0;
+                        dbg_commit_is_mmio <= 1'b0;
+                        dbg_commit_is_trap <= 1'b0;
+                        dbg_commit_cause <= 32'd0;
+                        dbg_commit_next_pc <= pc_q + 32'd4;
+`endif
                     end
                 end
 
@@ -559,6 +671,17 @@ module riscv_cpu (
                         pc_q <= pc_q + 32'd4;
                         perf_commit <= perf_commit + 64'd1;
                         state_q <= ST_EXEC;
+`ifdef VERILATOR_TB
+                        dbg_commit_valid <= 1'b1;
+                        dbg_commit_pc <= muldiv_pc_q;
+                        dbg_commit_inst <= muldiv_inst_q;
+                        dbg_commit_is_load <= 1'b0;
+                        dbg_commit_is_store <= 1'b0;
+                        dbg_commit_is_mmio <= 1'b0;
+                        dbg_commit_is_trap <= 1'b0;
+                        dbg_commit_cause <= 32'd0;
+                        dbg_commit_next_pc <= pc_q + 32'd4;
+`endif
                     end
                 end
 

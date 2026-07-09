@@ -30,7 +30,25 @@ module myCPU (
     output logic [63:0] dbg_perf_stall_front,
     output logic [63:0] dbg_perf_stall_mem,
     output logic [63:0] dbg_perf_stall_muldiv,
-    output logic [63:0] dbg_perf_stall_load_use
+    output logic [63:0] dbg_perf_stall_load_use,
+    output logic        dbg_commit_valid,
+    output logic [31:0] dbg_commit_pc,
+    output logic [31:0] dbg_commit_inst,
+    output logic        dbg_commit_wen,
+    output logic [4:0]  dbg_commit_rd,
+    output logic [31:0] dbg_commit_wdata,
+    output logic        dbg_commit_is_load,
+    output logic        dbg_commit_is_store,
+    output logic        dbg_commit_is_mmio,
+    output logic        dbg_commit_is_trap,
+    output logic [31:0] dbg_commit_cause,
+    output logic [31:0] dbg_commit_next_pc,
+    output logic [1023:0] dbg_gpr_flat,
+    output logic [31:0] dbg_csr_mstatus,
+    output logic [31:0] dbg_csr_mtvec,
+    output logic [31:0] dbg_csr_mscratch,
+    output logic [31:0] dbg_csr_mepc,
+    output logic [31:0] dbg_csr_mcause
 `endif
 );
     logic [63:0] perf_cycle;
@@ -73,6 +91,27 @@ module myCPU (
         .perf_stall_mem   (perf_stall_mem),
         .perf_stall_muldiv(perf_stall_muldiv),
         .perf_stall_load_use(perf_stall_load_use)
+`ifdef VERILATOR_TB
+        ,
+        .dbg_commit_valid (dbg_commit_valid),
+        .dbg_commit_pc    (dbg_commit_pc),
+        .dbg_commit_inst  (dbg_commit_inst),
+        .dbg_commit_wen   (dbg_commit_wen),
+        .dbg_commit_rd    (dbg_commit_rd),
+        .dbg_commit_wdata (dbg_commit_wdata),
+        .dbg_commit_is_load (dbg_commit_is_load),
+        .dbg_commit_is_store(dbg_commit_is_store),
+        .dbg_commit_is_mmio (dbg_commit_is_mmio),
+        .dbg_commit_is_trap (dbg_commit_is_trap),
+        .dbg_commit_cause   (dbg_commit_cause),
+        .dbg_commit_next_pc (dbg_commit_next_pc),
+        .dbg_gpr_flat       (dbg_gpr_flat),
+        .dbg_csr_mstatus    (dbg_csr_mstatus),
+        .dbg_csr_mtvec      (dbg_csr_mtvec),
+        .dbg_csr_mscratch   (dbg_csr_mscratch),
+        .dbg_csr_mepc       (dbg_csr_mepc),
+        .dbg_csr_mcause     (dbg_csr_mcause)
+`endif
     );
 
 `ifdef VERILATOR_TB

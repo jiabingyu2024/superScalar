@@ -4,41 +4,36 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import run_verilator as rv
+
 
 REPO = Path(__file__).resolve().parents[1]
 BUILD_DIR = REPO / "build"
-RESULT_DIR = BUILD_DIR / "result"
-LOG_DIR = BUILD_DIR / "log"
-WAVE_DIR = BUILD_DIR / "wave"
-SRC_PROFILE_FILE = REPO / "tb" / "verilator" / "src_profiles.json"
+RESULT_DIR = BUILD_DIR / "result" / "difftest"
+LOG_DIR = BUILD_DIR / "log" / "difftest"
+WAVE_DIR = BUILD_DIR / "wave" / "difftest"
 
-COMMON_TB_SOURCES = [
-    "tb/verilator/sim_common.cpp",
-    "tb/verilator/sim_config.cpp",
-    "tb/verilator/sim_memory.cpp",
-    "tb/verilator/sim_display.cpp",
-    "tb/verilator/sim_trace.cpp",
-    "tb/verilator/sim_control.cpp",
-    "tb/verilator/sim_result.cpp",
-    "tb/verilator/perf_stats.cpp",
-    "tb/verilator/checker.cpp",
-    "tb/verilator/checker_rv32.cpp",
-    "tb/verilator/checker_src.cpp",
+COMMON_TB_SOURCES = rv.COMMON_TB_SOURCES
+DIFFTEST_COMMON_SOURCES = [
+    "tb/difftest/adapter/difftest_adapter.cpp",
 ]
-MYCPU_TB_SOURCES = [
-    "tb/verilator/main_mycpu.cpp",
+MYCPU_DIFFTEST_SOURCES = [
+    "tb/difftest/harness/main_difftest_mycpu.cpp",
+    "tb/difftest/adapter/dut_commit_io.cpp",
     "tb/verilator/dut_mycpu_io.cpp",
+    *DIFFTEST_COMMON_SOURCES,
     *COMMON_TB_SOURCES,
 ]
-STUDENT_TOP_TB_SOURCES = [
-    "tb/verilator/main_student_top.cpp",
+STUDENT_TOP_DIFFTEST_SOURCES = [
+    "tb/difftest/harness/main_difftest_student_top.cpp",
+    "tb/difftest/adapter/dut_student_top_commit_io.cpp",
     "tb/verilator/dut_student_top_io.cpp",
+    *DIFFTEST_COMMON_SOURCES,
     *COMMON_TB_SOURCES,
 ]
 
@@ -52,96 +47,44 @@ class BuildTarget:
     out_dir: Path
     bin_path: Path
     log_path: Path
-    defines: tuple[str, ...] = ()
+    defines: tuple[str, ...] = ("VERILATOR_TB", "ENABLE_DIFFTEST")
 
 
 def build_target_for_mode(mode: str) -> BuildTarget:
     if mode == "rv32":
-        out_dir = BUILD_DIR / "verilator" / "mycpu"
+        out_dir = BUILD_DIR / "verilator" / "mycpu_difftest"
         return BuildTarget(
-            name="mycpu",
+            name="mycpu_difftest",
             top_module="myCPU",
             filelist=REPO / "scripts" / "filelists" / "verilator_mycpu.f",
-            sources=MYCPU_TB_SOURCES,
+            sources=MYCPU_DIFFTEST_SOURCES,
             out_dir=out_dir,
-            bin_path=out_dir / "sim_mycpu",
-            log_path=LOG_DIR / "build_mycpu.log",
-            defines=("VERILATOR_TB",),
+            bin_path=out_dir / "sim_mycpu_difftest",
+            log_path=LOG_DIR / "build_mycpu_difftest.log",
         )
     if mode == "src":
-        out_dir = BUILD_DIR / "verilator" / "student_top"
+        out_dir = BUILD_DIR / "verilator" / "student_top_difftest"
         return BuildTarget(
-            name="student_top",
+            name="student_top_difftest",
             top_module="student_top",
             filelist=REPO / "scripts" / "filelists" / "verilator_student_top.f",
-            sources=STUDENT_TOP_TB_SOURCES,
+            sources=STUDENT_TOP_DIFFTEST_SOURCES,
             out_dir=out_dir,
-            bin_path=out_dir / "sim_student_top",
-            log_path=LOG_DIR / "build_student_top.log",
-            defines=("VERILATOR_TB",),
+            bin_path=out_dir / "sim_student_top_difftest",
+            log_path=LOG_DIR / "build_student_top_difftest.log",
         )
     raise SystemExit(f"unknown mode: {mode}")
 
 
-def collect_filelist_sources(path: Path, seen: set[Path] | None = None) -> list[Path]:
-    if seen is None:
-        seen = set()
-    path = path.resolve()
-    if path in seen or not path.exists():
-        return []
-    seen.add(path)
-
-    sources: list[Path] = [path]
-    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        parts = line.split()
-        i = 0
-        while i < len(parts):
-            token = parts[i]
-            if token == "-f" and i + 1 < len(parts):
-                nested = (REPO / parts[i + 1]).resolve()
-                sources.extend(collect_filelist_sources(nested, seen))
-                i += 2
-                continue
-            if token.startswith("-f") and len(token) > 2:
-                nested = (REPO / token[2:]).resolve()
-                sources.extend(collect_filelist_sources(nested, seen))
-            elif token.endswith((".sv", ".v", ".vh")):
-                sources.append((REPO / token).resolve())
-            i += 1
-    return sources
-
-
-@dataclass(frozen=True)
-class TestCase:
-    name: str
-    mode: str
-    irom_hex: Path
-    dram_hex: Path | None = None
-    dump: Path | None = None
-    tohost: int | None = None
-    src_checker: str = "ledseg"
-    src_led_pass: int | None = None
-    src_led_fail: int | None = None
-    pass_counter_addr: int | None = None
-    fail_counter_addr: int | None = None
-    expected_pass_count: int | None = None
-    src_test_mask: int | None = None
-    src_pass_marker: int | None = None
-    src_fail_marker: int | None = None
-    expected_rv32i_count: int | None = None
-    expected_mext_count: int | None = None
-
-
-def run(cmd: list[str], *, cwd: Path = REPO, log: Path | None = None) -> int:
+def run(cmd: list[str], *, cwd: Path = REPO, log: Path | None = None,
+        env: dict[str, str] | None = None) -> int:
     if log is None:
-        proc = subprocess.run(cmd, cwd=cwd)
+        proc = subprocess.run(cmd, cwd=cwd, env=env)
         return proc.returncode
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("w", encoding="utf-8") as f:
-        proc = subprocess.run(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT, text=True)
+        proc = subprocess.run(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT,
+                              text=True, env=env)
     return proc.returncode
 
 
@@ -151,8 +94,10 @@ def source_newer_than_bin(target: BuildTarget) -> bool:
     bin_mtime = target.bin_path.stat().st_mtime
     candidates = [REPO / src for src in target.sources]
     candidates.extend((REPO / "tb" / "verilator").glob("*.h"))
+    candidates.extend((REPO / "tb" / "difftest").glob("**/*.h"))
     candidates.extend((REPO / "scripts" / "filelists").glob("*.f"))
-    candidates.extend(collect_filelist_sources(target.filelist))
+    candidates.extend(rv.collect_filelist_sources(target.filelist))
+    candidates.append(REPO / "scripts" / "run_difftest.py")
     for path in candidates:
         if path.exists() and path.stat().st_mtime > bin_mtime:
             return True
@@ -197,118 +142,10 @@ def build_verilator(target: BuildTarget, force: bool, jobs: int, cxx: str | None
         cmd.extend(["-MAKEFLAGS", f"CXX={cxx} OBJCACHE="])
     rc = run(cmd, log=target.log_path)
     if rc != 0:
-        raise SystemExit(f"Verilator build failed, see {target.log_path}")
+        raise SystemExit(f"DiffTest Verilator build failed, see {target.log_path}")
 
 
-def parse_tohost(dump: Path) -> int | None:
-    if not dump.exists():
-        return None
-    pattern = re.compile(r"#\s*([0-9a-fA-F]+)\s+<tohost>")
-    for line in dump.read_text(encoding="utf-8", errors="ignore").splitlines():
-        m = pattern.search(line)
-        if m:
-            return int(m.group(1), 16)
-    return None
-
-
-def parse_int_value(value: object) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        return int(value, 0)
-    raise TypeError(f"bad integer value in src profile: {value!r}")
-
-
-def load_src_profiles() -> dict[str, dict[str, object]]:
-    if not SRC_PROFILE_FILE.exists():
-        return {}
-    raw = json.loads(SRC_PROFILE_FILE.read_text(encoding="utf-8"))
-    if not isinstance(raw, list):
-        raise SystemExit(f"{SRC_PROFILE_FILE} must contain a JSON list")
-    profiles: dict[str, dict[str, object]] = {}
-    for item in raw:
-        if not isinstance(item, dict) or "name" not in item:
-            raise SystemExit(f"bad src profile entry in {SRC_PROFILE_FILE}: {item!r}")
-        profiles[str(item["name"])] = item
-    return profiles
-
-
-def rv32_tests(args: argparse.Namespace) -> list[TestCase]:
-    roots: list[Path]
-    if args.suite:
-        roots = [REPO / "data" / args.suite]
-        if not roots[0].is_dir():
-            raise SystemExit(f"unknown rv32 suite: {args.suite}")
-    else:
-        roots = sorted(p for p in (REPO / "data").glob("rv32*") if p.is_dir())
-
-    hex_files: list[Path] = []
-    if args.test:
-        for root in roots:
-            candidate = root / f"{args.test}.hex"
-            if candidate.exists():
-                hex_files.append(candidate)
-        if not hex_files:
-            raise SystemExit(f"unknown rv32 test: {args.test}")
-    else:
-        for root in roots:
-            hex_files.extend(sorted(root.glob("*.hex")))
-
-    tests: list[TestCase] = []
-    for hex_path in sorted(hex_files):
-        name = hex_path.stem
-        dump = hex_path.with_suffix(".dump")
-        tohost = parse_tohost(dump)
-        if tohost is None:
-            tests.append(TestCase(name=name, mode="rv32", irom_hex=hex_path, dump=dump))
-        else:
-            tests.append(TestCase(name=name, mode="rv32", irom_hex=hex_path,
-                                  dump=dump, tohost=tohost))
-    return tests
-
-
-def src_tests(args: argparse.Namespace) -> list[TestCase]:
-    roots: list[Path]
-    if args.test:
-        roots = [REPO / "data" / args.test]
-        if not roots[0].is_dir():
-            raise SystemExit(f"unknown src test: {args.test}")
-    else:
-        roots = sorted(p for p in (REPO / "data").glob("src*") if p.is_dir())
-
-    profiles = load_src_profiles()
-    tests: list[TestCase] = []
-    for root in roots:
-        irom = root / "irom.hex"
-        dram = root / "dram.hex"
-        if not irom.exists() or not dram.exists():
-            continue
-        dumps = sorted(root.glob("*.dump"))
-        profile = profiles.get(root.name, {})
-        tests.append(TestCase(name=root.name, mode="src", irom_hex=irom,
-                              dram_hex=dram, dump=dumps[0] if dumps else None,
-                              src_checker=str(profile.get("checker", "observe")),
-                              src_led_pass=parse_int_value(profile.get("led_pass")),
-                              src_led_fail=parse_int_value(profile.get("led_fail")),
-                              pass_counter_addr=parse_int_value(profile.get("pass_counter_addr")),
-                              fail_counter_addr=parse_int_value(profile.get("fail_counter_addr")),
-                              expected_pass_count=parse_int_value(
-                                  profile.get("expected_pass_count")),
-                              src_test_mask=parse_int_value(profile.get("test_lamp_mask")),
-                              src_pass_marker=parse_int_value(profile.get("pass_marker")),
-                              src_fail_marker=parse_int_value(profile.get("fail_marker")),
-                              expected_rv32i_count=parse_int_value(
-                                  profile.get("expected_rv32i_count")),
-                              expected_mext_count=parse_int_value(
-                                  profile.get("expected_mext_count"))))
-    if not tests:
-        raise SystemExit("no src tests found")
-    return tests
-
-
-def write_unsupported_result(test: TestCase, reason: str) -> Path:
+def write_unsupported_result(test: rv.TestCase, reason: str) -> Path:
     path = RESULT_DIR / test.mode / f"{test.name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
@@ -316,11 +153,16 @@ def write_unsupported_result(test: TestCase, reason: str) -> Path:
         "mode": test.mode,
         "status": "UNSUPPORTED",
         "reason": reason,
+        "difftest": {
+            "mode": "commit_trace_selfcheck",
+            "reference_enabled": False,
+        },
     }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
 
 
-def run_test(test: TestCase, args: argparse.Namespace, target: BuildTarget) -> tuple[str, Path]:
+def run_test(test: rv.TestCase, args: argparse.Namespace,
+             target: BuildTarget) -> tuple[str, Path]:
     result = RESULT_DIR / test.mode / f"{test.name}.json"
     log = LOG_DIR / test.mode / f"{test.name}.log"
     wave = WAVE_DIR / test.mode / f"{test.name}.fst"
@@ -384,7 +226,10 @@ def run_test(test: TestCase, args: argparse.Namespace, target: BuildTarget) -> t
         cmd.append("--trace")
         cmd.append(f"--wave={wave}")
 
-    rc = run(cmd, log=log)
+    env = os.environ.copy()
+    if args.difftrace:
+        env["DIFFTRACE"] = "1"
+    rc = run(cmd, log=log, env=env)
     if result.exists():
         try:
             status = json.loads(result.read_text(encoding="utf-8")).get("status", "UNKNOWN")
@@ -396,13 +241,16 @@ def run_test(test: TestCase, args: argparse.Namespace, target: BuildTarget) -> t
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build and run Verilator rv32/src tests.")
+    parser = argparse.ArgumentParser(
+        description="Build and run isolated commit-trace DiffTest harnesses.")
     sub = parser.add_subparsers(dest="mode", required=True)
 
     def add_common(p: argparse.ArgumentParser) -> None:
         p.add_argument("--test")
         p.add_argument("--max-cycles", type=int)
         p.add_argument("--trace", action="store_true")
+        p.add_argument("--difftrace", action="store_true",
+                       help="print every commit observed by the difftest harness")
         p.add_argument("--build", action="store_true", help="force rebuild before running")
         p.add_argument("--build-only", action="store_true")
         p.add_argument("--no-build", action="store_true")
@@ -430,7 +278,7 @@ def main() -> int:
     if args.build_only:
         return 0
 
-    tests = rv32_tests(args) if args.mode == "rv32" else src_tests(args)
+    tests = rv.rv32_tests(args) if args.mode == "rv32" else rv.src_tests(args)
     if args.test is None and not getattr(args, "all", False) and getattr(args, "suite", None) is None:
         raise SystemExit("batch run requires --all or --suite; single run requires --test")
 
