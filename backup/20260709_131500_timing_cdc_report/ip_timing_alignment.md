@@ -220,12 +220,7 @@ M 扩展验证不能只跑一个 `mul`。至少覆盖 `mul/mulh/mulhsu/mulhu/div
 - 物理 `virtual_led/virtual_seg` 可以继续由 CPU 域寄存器直接驱动到 IO；但任何被 50 MHz 逻辑读取、缓存或串口回传的 CPU 域信号都必须先同步到 50 MHz 域。
 - 修改 PLL 输出频率后必须重新生成工程并重新看 routed timing summary。旧 build 中的 PLL XCI、timing report 和 bitstream 不会自动继承 Tcl 默认值。
 
-已知板级线索：
-
-- 旧 `digital_twin_srcWithMext` routed timing report 曾显示 `clk_out2_pll -> clk_out1_pll` setup 违例，WNS=-0.131 ns、TNS=-0.750 ns、9 个 failing endpoints。这类问题不会被 Verilator 暴露。
-- 2026-07-09 复查 `fpga/build/digital_twin_srcWithMext/digital_twin.runs/impl_1/top_timing_summary_routed.rpt`：CPU 域 `clk_out2_pll` 的 intra-clock WNS 为 +0.433 ns，50 MHz 域 `clk_out1_pll` 的 intra-clock WNS 为 +16.730 ns；整体 WNS=-0.029 ns 只来自 `clk_out2_pll -> clk_out1_pll`，最差路径是 `student_top_inst/mem_bridge/seg_driver/count_reg[4]` 到 `virtual_seg_50_d1_reg[12]`。
-- 同一轮 `runme.log` 明确报出 `digital_twin_cdc.xdc` 中的 `if` 命令不被 XDC parser 支持，因此原本想生成的 `set_clock_groups -asynchronous` 没有生效。CDC XDC 必须保持为纯 XDC 命令，不能在 XDC 文件里写 `if`/`else` fallback。
-- 动态扫描后的 `virtual_seg[39:0]` 不允许从 CPU 域逐 bit 同步到 50 MHz 域；应同步 raw `seg_wdata`，再在 50 MHz 域生成段码/位选，或者使用握手快照。否则 timing 和功能都可能表现为“Verilator pass，上板 SEG 错号/错数”。
+已知板级线索：旧 `digital_twin_srcWithMext` routed timing report 曾显示 `clk_out2_pll -> clk_out1_pll` setup 违例，WNS=-0.131 ns、TNS=-0.750 ns、9 个 failing endpoints。这类问题不会被 Verilator 暴露。
 
 ## 修改 Checklist
 
