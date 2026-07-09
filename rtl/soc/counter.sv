@@ -23,8 +23,7 @@
 module counter(
     input  logic         cpu_clk,
     input  logic         cnt_clk,
-    input  logic         cpu_rst,
-    input  logic         cnt_rst,
+    input  logic         rst,
 
     input  logic         cnt_enable_cpu,
     output logic [31:0]  perip_rdata
@@ -43,14 +42,12 @@ module counter(
     logic [15:0] cnt_1ms;
     logic [31:0] cnt_ms_bin;
     logic [31:0] cnt_ms_gray;
-    (* ASYNC_REG = "TRUE" *) logic cnt_enable_cnt_d1;
-    (* ASYNC_REG = "TRUE" *) logic cnt_enable_cnt_d2;
-    (* ASYNC_REG = "TRUE" *) logic [31:0] cnt_gray_cpu_d1;
-    (* ASYNC_REG = "TRUE" *) logic [31:0] cnt_gray_cpu_d2;
+    logic cnt_enable_cnt_d1, cnt_enable_cnt_d2;
+    logic [31:0] cnt_gray_cpu_d1, cnt_gray_cpu_d2;
 
     // CPU->counter CDC: synchronize level control into cnt_clk domain.
     always_ff @(posedge cnt_clk) begin
-        if (cnt_rst) begin
+        if (rst) begin
             cnt_enable_cnt_d1 <= 1'b0;
             cnt_enable_cnt_d2 <= 1'b0;
         end else begin
@@ -60,7 +57,7 @@ module counter(
     end
 
     always_ff @(posedge cnt_clk) begin
-        if (cnt_rst) begin
+        if (rst) begin
             cnt_1ms <= 0;
         end else if (cnt_enable_cnt_d2) begin
             if (cnt_1ms == 49999) begin
@@ -74,7 +71,7 @@ module counter(
     end
 
     always_ff @(posedge cnt_clk) begin
-        if (cnt_rst) begin
+        if (rst) begin
             cnt_ms_bin <= 0;
         end else if (cnt_enable_cnt_d2 && cnt_1ms == 49999) begin
             cnt_ms_bin <= cnt_ms_bin + 1;
@@ -87,7 +84,7 @@ module counter(
 
     // Counter->CPU CDC: Gray code allows safe multi-bit crossing.
     always_ff @(posedge cpu_clk) begin
-        if (cpu_rst) begin
+        if (rst) begin
             cnt_gray_cpu_d1 <= 32'd0;
             cnt_gray_cpu_d2 <= 32'd0;
         end else begin

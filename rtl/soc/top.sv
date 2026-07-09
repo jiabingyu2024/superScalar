@@ -32,16 +32,9 @@ module top(
 
     wire w_clk_50Mhz, cpu_clk;
     wire w_clk_rst;
-    (* ASYNC_REG = "TRUE" *) logic rst_50m_meta;
-    (* ASYNC_REG = "TRUE" *) logic rst_50m_sync;
-    wire  rst_50m_n;
 
     wire [7:0] virtual_key;
     wire [63:0] virtual_sw;
-    (* ASYNC_REG = "TRUE" *) logic [31:0] virtual_led_50_d1;
-    (* ASYNC_REG = "TRUE" *) logic [31:0] virtual_led_50_d2;
-    (* ASYNC_REG = "TRUE" *) logic [39:0] virtual_seg_50_d1;
-    (* ASYNC_REG = "TRUE" *) logic [39:0] virtual_seg_50_d2;
 
     wire [7:0] rx_data;
     wire rx_ready;
@@ -57,38 +50,12 @@ module top(
         .locked(w_clk_rst)
     );
 
-    always_ff @(posedge w_clk_50Mhz or negedge w_clk_rst) begin
-        if (!w_clk_rst) begin
-            rst_50m_meta <= 1'b1;
-            rst_50m_sync <= 1'b1;
-        end else begin
-            rst_50m_meta <= 1'b0;
-            rst_50m_sync <= rst_50m_meta;
-        end
-    end
-
-    assign rst_50m_n = ~rst_50m_sync;
-
-    always_ff @(posedge w_clk_50Mhz or negedge w_clk_rst) begin
-        if (!w_clk_rst) begin
-            virtual_led_50_d1 <= '0;
-            virtual_led_50_d2 <= '0;
-            virtual_seg_50_d1 <= '0;
-            virtual_seg_50_d2 <= '0;
-        end else begin
-            virtual_led_50_d1 <= virtual_led;
-            virtual_led_50_d2 <= virtual_led_50_d1;
-            virtual_seg_50_d1 <= virtual_seg;
-            virtual_seg_50_d2 <= virtual_seg_50_d1;
-        end
-    end
-
     uart #(
         .CLK_FREQ(50000000),
         .BAUD_RATE(9600)
     ) uart_inst(
         .clk(w_clk_50Mhz),
-        .rst_n(rst_50m_n),
+        .rst_n(w_clk_rst),
         .rx(i_uart_rx),
         .rx_data(rx_data),
         .rx_ready(rx_ready),
@@ -100,7 +67,7 @@ module top(
 
     twin_controller twin_controller_inst(
         .clk(w_clk_50Mhz),
-        .rst_n(rst_50m_n),
+        .rst_n(w_clk_rst),
         .rx_ready(rx_ready),
         .rx_data(rx_data),
         .tx_start(tx_start),
@@ -108,11 +75,10 @@ module top(
         .tx_busy(tx_busy),
         .sw(virtual_sw),
         .key(virtual_key),
-        .seg(virtual_seg_50_d2),
-        .led(virtual_led_50_d2)
+        .seg(virtual_seg),
+        .led(virtual_led)
     );
 
-    (* keep_hierarchy = "yes", dont_touch = "true" *)
     student_top student_top_inst(
         .w_cpu_clk(cpu_clk),
         .w_clk_50Mhz(w_clk_50Mhz),
@@ -124,3 +90,4 @@ module top(
     );
 
 endmodule
+

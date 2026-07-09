@@ -32,8 +32,7 @@ module dram_driver(
 );
     logic [15:0] dram_addr;
     logic [ 1:0] offset;
-    logic [ 1:0] offset_d1;
-    logic [ 1:0] offset_d2;
+    logic [ 1:0] offset_q;
     logic [31:0] dram_data, dram_rdata_raw, dout;
     logic [ 3:0] dram_we;
 
@@ -51,19 +50,16 @@ module dram_driver(
     );
 
     always_ff @(posedge clk) begin
-        if (dram_ena && !dram_wen) begin
-            offset_d1 <= offset;
+        if (dram_ena) begin
+            offset_q <= offset;
         end
-        offset_d2 <= offset_d1;
     end
 
     always_comb begin
-        dout = dram_rdata_raw >> {offset_d2, 3'b000};
+        dout = dram_rdata_raw >> {offset_q, 3'b000};
     end
 
     always_comb begin
-        // Core provides raw store data/mask. The SoC boundary owns byte-lane
-        // alignment according to the low address bits.
         dram_data = perip_wdata << {offset, 3'b000};
         dram_we   = dram_wen ? (perip_mask << offset) : 4'b0000;
     end
