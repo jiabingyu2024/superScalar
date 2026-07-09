@@ -1,139 +1,61 @@
 {
-  "timestamp": "2026-07-06T18:47:24+08:00",
-  "trigger": "User requested distributed IssueQueue architecture plus rv32 timeout debug",
-  "backup_dir": "backup/20260706_184724",
-  "debug_backup_dir": "backup/20260706_191500",
+  "timestamp": "2026-07-09T12:45:00+08:00",
+  "trigger": "srcWithMext Verilator PASS but board still reports wrong SEG/fail symbol; static SoC CDC review",
+  "backup_dir": "backup/20260709_124500_static_soc_review",
   "files_modified": [
     {
-      "path": "rtl/core/BasicTypes.sv",
-      "change_type": "interface_change",
-      "notes": "Added independent backend issue widths and WB_PORT_NUM."
-    },
-    {
-      "path": "rtl/core/DispatchStage/IssueTypes.sv",
-      "change_type": "interface_change",
-      "notes": "Added distributed queue depths, payload index ranges, free count types, and global age field."
-    },
-    {
-      "path": "rtl/core/DispatchStage/IssueQueueIF.sv",
-      "change_type": "interface_change",
-      "notes": "Split issue pop/free count interfaces into Int/Mem/Mul groups."
-    },
-    {
-      "path": "rtl/core/DispatchStage/IssueQueue.sv",
-      "change_type": "logic_rewrite",
-      "notes": "Replaced unified queue with wrapper plus IntIssueQueue and two strict in-order FIFO queues."
-    },
-    {
-      "path": "rtl/core/DispatchStage/DispatchStage.sv",
+      "path": "rtl/soc/DramBramAdapter.sv",
       "change_type": "logic_fix",
-      "notes": "Dispatch resource check now uses per-queue free counts and no longer waits for IssuePushRes.done before dispatchEn, avoiding a 0-dispatch circular handshake."
+      "notes": "Restored DRAM read response and byte-offset alignment to one cycle after checking the generated Vivado wrapper reports READ_LATENCY=1."
     },
     {
-      "path": "rtl/core/DispatchStage/PayloadIF.sv",
-      "change_type": "interface_change",
-      "notes": "Payload pop ports widened to ISSUE_WIDTH."
+      "path": "fpga/create_vivado_project.tcl",
+      "change_type": "ip_config_and_constraint_fix",
+      "notes": "Set DRAM_0 Register_PortA_Output_of_Memory_Primitives=false and generate a late CDC XDC that groups clk_out1_pll and clk_out2_pll asynchronously."
     },
     {
-      "path": "rtl/core/DispatchStage/Payload.sv",
-      "change_type": "logic_fix",
-      "notes": "Payload depth widened to distributed queue payload space and pop loop widened to ISSUE_WIDTH."
+      "path": "rtl/soc/counter.sv",
+      "change_type": "cdc_fix",
+      "notes": "Split counter reset into cpu_rst and cnt_rst so each clock domain uses a reset synchronized to that domain; marked CDC synchronizer stages with ASYNC_REG."
     },
     {
-      "path": "rtl/core/IssueStage/IssueStageIF.sv",
-      "change_type": "interface_change",
-      "notes": "IS->RR payload widened to ISSUE_WIDTH."
+      "path": "rtl/soc/top.sv",
+      "change_type": "cdc_fix",
+      "notes": "Added a 50 MHz synchronized mirror for slow status signals feeding twin_controller; later static review found the dynamically scanned SEG bus must not be crossed this way."
     },
     {
-      "path": "rtl/core/IssueStage/IssueStage.sv",
-      "change_type": "logic_rewrite",
-      "notes": "IssueStage now merges Int/Mem/Mul pop results into five issue slots."
+      "path": "rtl/soc/student_top.sv",
+      "change_type": "cdc_annotation",
+      "notes": "Marked reset, virtual switch, and key synchronizer stages with ASYNC_REG."
     },
     {
-      "path": "rtl/core/ReadRegStage/ReadRegTypes.sv",
-      "change_type": "interface_change",
-      "notes": "PRF read and WB/bypass port counts now derive from ISSUE_WIDTH/WB_PORT_NUM."
+      "path": "rtl/soc/SocMemBridge.sv",
+      "change_type": "cdc_fix",
+      "notes": "Connected counter CPU-side reset to the CPU domain reset and counter-side reset to the 50 MHz counter domain reset; moved SEG scan generation to the 50 MHz domain after synchronizing the raw seg_wdata register, avoiding bitwise CDC of the dynamic 40-bit scanned SEG bus."
     },
     {
-      "path": "rtl/core/ReadRegStage/ReadRegStageIF.sv",
-      "change_type": "interface_change",
-      "notes": "RR->EX pipe arrays split into Int/Mem/Mul widths."
+      "path": "rtl/soc/perip_bridge.sv",
+      "change_type": "interface_update",
+      "notes": "Updated the legacy counter instantiation to the split-reset interface to avoid future recursive-compile port mismatches."
     },
     {
-      "path": "rtl/core/ReadRegStage/ReadRegStage.sv",
-      "change_type": "logic_rewrite",
-      "notes": "ReadRegStage reads five issue slots and packs them into execution pipe arrays."
-    },
-    {
-      "path": "rtl/core/ExecuteStage/ExecuteStageIF.sv",
-      "change_type": "interface_change",
-      "notes": "EX->WB pipe arrays widened according to execution completion widths."
-    },
-    {
-      "path": "rtl/core/ExecuteStage/ExecuteAluStage.sv",
-      "change_type": "interface_change",
-      "notes": "ALU execution lanes widened to INT_ISSUE_WIDTH."
-    },
-    {
-      "path": "rtl/core/ExecuteStage/ExecuteBrcStage.sv",
-      "change_type": "interface_change",
-      "notes": "BRC execution lanes widened to INT_ISSUE_WIDTH."
-    },
-    {
-      "path": "rtl/core/ExecuteStage/ExecuteSysStage.sv",
-      "change_type": "interface_change",
-      "notes": "SYS execution lanes widened to INT_ISSUE_WIDTH."
-    },
-    {
-      "path": "rtl/core/ExecuteStage/ExecuteMemStage.sv",
-      "change_type": "interface_change",
-      "notes": "MEM issue input narrowed to MEM_ISSUE_WIDTH while preserving MEM_WB_WIDTH completion ports."
-    },
-    {
-      "path": "rtl/core/ExecuteStage/ExecuteMulStage.sv",
-      "change_type": "interface_change",
-      "notes": "MUL/DIV issue and completion path narrowed to one lane."
-    },
-    {
-      "path": "rtl/core/WriteBackStage/WriteBackStage.sv",
-      "change_type": "interface_change",
-      "notes": "WB aggregation now emits WB_PORT_NUM done/wakeup/bypass/write ports."
-    },
-    {
-      "path": "rtl/core/DispatchStage/ROBIF.sv",
-      "change_type": "interface_change",
-      "notes": "ROB done ports now use WB_PORT_NUM."
-    },
-    {
-      "path": "rtl/core/DispatchStage/ROB.sv",
-      "change_type": "interface_change",
-      "notes": "ROB done scan loop now uses WB_PORT_NUM."
-    },
-    {
-      "path": "rtl/core/core.sv",
-      "change_type": "perf_counter_fix",
-      "notes": "Issue width sampling now scans ISSUE_WIDTH slots; w2 remains saturated for width >= 2."
-    },
-    {
-      "path": "docs/design/rtl_core_design.md",
+      "path": "docs/fpga/ip_timing_alignment.md",
       "change_type": "documentation",
-      "notes": "Documented distributed IssueQueue architecture and execution width changes."
+      "notes": "Corrected the DRAM timing contract to one-cycle READ_LATENCY and documented that generated C_READ_LATENCY_A is the source of truth."
     },
     {
-      "path": "docs/archive/2026-07-06/037_distributed_issue_queue.md",
+      "path": "docs/rtl_changes.json",
       "change_type": "documentation",
-      "notes": "Added implementation record, boundaries, and verification recommendations."
+      "notes": "Recorded the second board-debug pass and backup location."
     }
   ],
-  "cascade_scope": "full_reverify",
+  "cascade_scope": "compile_and_lint_and_cdc_check",
   "verification": [
-    "make sim-rv32 TEST=rv32ui-p-simple BUILD=1 BUILD_JOBS=4 BUILD_CXX=g++ OBJCACHE= -> PASS",
-    "make sim-rv32 TEST=rv32ui-p-add NO_BUILD=1 OBJCACHE= -> PASS",
-    "make sim-rv32 TEST=rv32ui-p-jal NO_BUILD=1 OBJCACHE= -> PASS",
-    "make sim-rv32 TEST=rv32ui-p-lw NO_BUILD=1 OBJCACHE= -> PASS",
-    "make sim-rv32 TEST=rv32um-p-mul NO_BUILD=1 OBJCACHE= -> PASS",
-    "make sim-rv32-all NO_BUILD=1 OBJCACHE= -> RV32MI/RV32I/RV32M PASS; rv32uzb* bitmanip tests FAIL",
-    "make sim-src TEST=srcWithMext MAX_CYCLES=2000000 NO_BUILD=1 OBJCACHE= -> TIMEOUT; result reported max_cycles=20000000, rv32i_count=37, mext_count=8, commit_count=10563639, no pass marker"
+    "Static review: generated fpga/build/.../DRAM_0.v reports X_INTERFACE READ_LATENCY 1 and C_READ_LATENCY_A=1.",
+    "Static review: generated IROM_0 also reports READ_LATENCY 1, matching the current fetch-side assumption.",
+    "Static review: existing fpga/build/digital_twin_srcWithMext/pll.xci still shows CLKOUT2_REQUESTED_OUT_FREQ=80.000, so that build is stale or was generated with FPGA_CPU_CLK_MHZ=80 rather than the current Tcl default of 50.",
+    "Static review: existing routed timing report says Timing constraints are not met; clk_out2_pll -> clk_out1_pll has WNS=-0.131ns/TNS=-0.750ns across 9 failing endpoints.",
+    "Static review after srcWithMext Verilator PASS: top-level still crossed the continuously changing 40-bit scanned SEG bus from CPU clock to 50 MHz for twin_controller. This can produce incoherent segment snapshots on FPGA even when the CPU program passes."
   ],
-  "notes": "Initial rv32 timeout was caused by DispatchStage waiting for IssuePushRes.done while IssuePushReq.valid was gated by dispatchEn. The fix removes IssuePushRes.done from the pre-dispatch resourceReady path and relies on per-queue free counts for IQ capacity. RV32MI/RV32I/RV32M now pass; remaining rv32uzb* failures are bitmanip-extension tests outside the distributed IssueQueue acceptance target."
+  "notes": "Current evidence points to four board-only risks: the previous two-cycle DRAM adapter change was not aligned with the actual generated Vivado READ_LATENCY=1, the existing build directory does not reflect the current default CPU clock, the old routed build failed timing on a CPU-to-50MHz crossing, and the 40-bit scanned SEG bus was being sampled across clock domains by twin_controller. If LED/SEG still fail after a clean rebuild, add a temporary hardware-visible heartbeat for pll.locked, CPU reset release, irom_ena, and first MMIO LED write before changing CPU logic."
 }

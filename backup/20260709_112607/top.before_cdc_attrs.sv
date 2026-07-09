@@ -32,16 +32,12 @@ module top(
 
     wire w_clk_50Mhz, cpu_clk;
     wire w_clk_rst;
-    (* ASYNC_REG = "TRUE" *) logic rst_50m_meta;
-    (* ASYNC_REG = "TRUE" *) logic rst_50m_sync;
+    logic rst_50m_meta;
+    logic rst_50m_sync;
     wire  rst_50m_n;
 
     wire [7:0] virtual_key;
     wire [63:0] virtual_sw;
-    (* ASYNC_REG = "TRUE" *) logic [31:0] virtual_led_50_d1;
-    (* ASYNC_REG = "TRUE" *) logic [31:0] virtual_led_50_d2;
-    (* ASYNC_REG = "TRUE" *) logic [39:0] virtual_seg_50_d1;
-    (* ASYNC_REG = "TRUE" *) logic [39:0] virtual_seg_50_d2;
 
     wire [7:0] rx_data;
     wire rx_ready;
@@ -69,20 +65,6 @@ module top(
 
     assign rst_50m_n = ~rst_50m_sync;
 
-    always_ff @(posedge w_clk_50Mhz or negedge w_clk_rst) begin
-        if (!w_clk_rst) begin
-            virtual_led_50_d1 <= '0;
-            virtual_led_50_d2 <= '0;
-            virtual_seg_50_d1 <= '0;
-            virtual_seg_50_d2 <= '0;
-        end else begin
-            virtual_led_50_d1 <= virtual_led;
-            virtual_led_50_d2 <= virtual_led_50_d1;
-            virtual_seg_50_d1 <= virtual_seg;
-            virtual_seg_50_d2 <= virtual_seg_50_d1;
-        end
-    end
-
     uart #(
         .CLK_FREQ(50000000),
         .BAUD_RATE(9600)
@@ -108,8 +90,8 @@ module top(
         .tx_busy(tx_busy),
         .sw(virtual_sw),
         .key(virtual_key),
-        .seg(virtual_seg_50_d2),
-        .led(virtual_led_50_d2)
+        .seg(virtual_seg),
+        .led(virtual_led)
     );
 
     (* keep_hierarchy = "yes", dont_touch = "true" *)

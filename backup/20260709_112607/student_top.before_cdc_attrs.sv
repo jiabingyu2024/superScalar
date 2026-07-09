@@ -50,15 +50,15 @@ module student_top #(
     logic        dmem_req_uncached;
     logic        dmem_resp_valid;
     logic [31:0] dmem_resp_rdata;
-    (* ASYNC_REG = "TRUE" *) logic        cpu_rst_meta;
-    (* ASYNC_REG = "TRUE" *) logic        cpu_rst_sync;
-    (* ASYNC_REG = "TRUE" *) logic        cnt_rst_meta;
-    (* ASYNC_REG = "TRUE" *) logic        cnt_rst_sync;
+    logic        cpu_rst_meta;
+    logic        cpu_rst_sync;
+    logic        cnt_rst_meta;
+    logic        cnt_rst_sync;
 
-    (* ASYNC_REG = "TRUE" *) logic [P_SW_CNT-1:0]  virtual_sw_cpu_d1;
-    (* ASYNC_REG = "TRUE" *) logic [P_SW_CNT-1:0]  virtual_sw_cpu_d2;
-    (* ASYNC_REG = "TRUE" *) logic [P_KEY_CNT-1:0] virtual_key_cpu_d1;
-    (* ASYNC_REG = "TRUE" *) logic [P_KEY_CNT-1:0] virtual_key_cpu_d2;
+    logic [P_SW_CNT-1:0]  virtual_sw_cpu_d1;
+    logic [P_SW_CNT-1:0]  virtual_sw_cpu_d2;
+    logic [P_KEY_CNT-1:0] virtual_key_cpu_d1;
+    logic [P_KEY_CNT-1:0] virtual_key_cpu_d2;
 
     always_ff @(posedge w_cpu_clk or posedge w_clk_rst) begin
         if (w_clk_rst) begin

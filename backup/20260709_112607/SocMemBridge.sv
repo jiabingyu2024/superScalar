@@ -45,8 +45,6 @@ module SocMemBridge #(
     logic [31:0] mmio_resp_rdata_q;
     logic [31:0] led_q;
     logic [31:0] seg_wdata_q;
-    (* ASYNC_REG = "TRUE" *) logic [31:0] seg_wdata_cnt_d1;
-    (* ASYNC_REG = "TRUE" *) logic [31:0] seg_wdata_cnt_d2;
     logic [39:0] seg_output;
     logic cnt_enable_cfg_q;
     logic [31:0] cnt_rdata;
@@ -112,20 +110,10 @@ module SocMemBridge #(
         end
     end
 
-    always_ff @(posedge cnt_clk) begin
-        if (cnt_rst) begin
-            seg_wdata_cnt_d1 <= 32'd0;
-            seg_wdata_cnt_d2 <= 32'd0;
-        end else begin
-            seg_wdata_cnt_d1 <= seg_wdata_q;
-            seg_wdata_cnt_d2 <= seg_wdata_cnt_d1;
-        end
-    end
-
     display_seg seg_driver (
-        .clk (cnt_clk),
-        .rst (cnt_rst),
-        .s   (seg_wdata_cnt_d2),
+        .clk (clk),
+        .rst (rst),
+        .s   (seg_wdata_q),
         .seg1(seg_output[6:0]),
         .seg2(seg_output[16:10]),
         .seg3(seg_output[26:20]),
@@ -141,8 +129,7 @@ module SocMemBridge #(
     counter counter_inst (
         .cpu_clk      (clk),
         .cnt_clk      (cnt_clk),
-        .cpu_rst      (rst),
-        .cnt_rst      (cnt_rst),
+        .rst          (cnt_rst),
         .cnt_enable_cpu(cnt_enable_cfg_q),
         .perip_rdata  (cnt_rdata)
     );

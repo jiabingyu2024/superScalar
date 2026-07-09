@@ -1,5 +1,7 @@
 # Vivado 工程与 IP 生成约定
 
+IP 行为模型、Vivado Tcl 参数和 SoC adapter 的拍数合同见 [ip_timing_alignment.md](ip_timing_alignment.md)。修改 `rtl/ip/` 或 Tcl IP latency 前必须先同步检查该文档。
+
 本文记录当前 `fpga/create_vivado_project.tcl` 的设计事实。Tcl 应适配仓库结构，不反向要求移动 `rtl/`、`data/` 或 `fpga/` 文件。
 
 ## 工程入口

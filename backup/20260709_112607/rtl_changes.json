@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-07-09T10:46:04+08:00",
+  "trigger": "Board debug: srcWithMext passes Verilator but LED/SEG stay zero on FPGA",
+  "backup_dir": "backup/20260709_104604",
+  "files_modified": [
+    {
+      "path": "rtl/soc/DramBramAdapter.sv",
+      "change_type": "logic_fix",
+      "lines_changed": "internal DRAM read response pipeline",
+      "notes": "Delayed DRAM read resp_valid and byte-offset alignment to match the registered Vivado blk_mem_gen DRAM output used on FPGA."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the board-only SoC timing fix and backup location."
+    }
+  ],
+  "cascade_scope": "compile_and_lint",
+  "verification": [
+    "Static review: fpga/create_vivado_project.tcl configures DRAM_0 Register_PortA_Output_of_Memory_Primitives=true.",
+    "Static review: Verilator rtl/ip/DRAM_0.sv returns read data one cycle after ena, while the generated FPGA DRAM has an extra registered output stage.",
+    "Static review: srcWithMext.dump uses zicsr/ecall/mret through mtvec/mscratch/mepc/mcause/mstatus; current CPU implements those CSR paths."
+  ],
+  "notes": "The observed all-zero LED/SEG is consistent with the FPGA design reading stale DRAM data before the program reaches MMIO writes. Verilator did not expose it because the behavioral DRAM model has shorter read latency than the Vivado IP generated for the board."
+}

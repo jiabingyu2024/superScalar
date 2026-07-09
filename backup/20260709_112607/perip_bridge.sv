@@ -162,8 +162,7 @@ module perip_bridge#(
     counter counter_inst (
         .cpu_clk            (clk),
         .cnt_clk            (cnt_clk),
-        .cpu_rst            (rst),
-        .cnt_rst            (rst),
+        .rst                (rst),
         .cnt_enable_cpu     (cnt_enable_cfg),
         .perip_rdata		(cnt_rdata)
     );
