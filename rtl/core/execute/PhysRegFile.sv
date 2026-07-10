@@ -19,11 +19,6 @@ module CorePhysRegFile #(
     always_comb begin
         for (int r = 0; r < READ_PORTS; r = r + 1) begin
             rdata_o[r] = (raddr_i[r] == '0) ? '0 : regs_q[raddr_i[r]];
-            for (int w = 0; w < WRITE_PORTS; w = w + 1) begin
-                if (we_i[w] && (waddr_i[w] == raddr_i[r]) && (raddr_i[r] != '0)) begin
-                    rdata_o[r] = wdata_i[w];
-                end
-            end
         end
     end
 

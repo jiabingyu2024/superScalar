@@ -9,6 +9,21 @@ module core(
     DramAccessIF      dromAccess,
     DebugIF.core      debug,
     PerfIF.core       perf
+`ifdef VERILATOR_TB
+    ,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_valid,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_pc,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_inst,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_wen,
+    output logic [RETIRE_WIDTH-1:0][4:0]  dbg_commit_rd,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_wdata,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_load,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_store,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_mmio,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_trap,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_cause,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_next_pc
+`endif
 );
     PcPath fetch_pc;
     logic pc_hold;
@@ -30,10 +45,37 @@ module core(
     logic [RETIRE_WIDTH-1:0] commit_valid;
     CoreRobEntry [RETIRE_WIDTH-1:0] commit_entry;
 
+`ifdef VERILATOR_TB
+    logic [RETIRE_WIDTH-1:0] trace_valid;
+    PcPath [RETIRE_WIDTH-1:0] trace_next_pc;
+`endif
+
     logic [2:0] commit_inc;
     logic [2:0] branch_inc;
     logic [2:0] branch_miss_inc;
+    logic [2:0] cond_branch_inc;
+    logic [2:0] cond_branch_miss_inc;
+    logic [2:0] jal_inc;
+    logic [2:0] jal_miss_inc;
+    logic [2:0] jalr_inc;
+    logic [2:0] jalr_miss_inc;
     logic [2:0] issue_inc;
+    logic bpu_pred_valid;
+    logic bpu_pred_taken;
+    PcPath bpu_pred_target;
+    logic bpu_update_valid;
+    PcPath bpu_update_pc;
+    logic bpu_update_taken;
+    PcPath bpu_update_target;
+    logic bpu_update_is_call;
+    logic bpu_update_is_return;
+    PcPath bpu_update_return_pc;
+
+    function automatic logic is_link_reg(input logic [4:0] reg_idx);
+        begin
+            is_link_reg = (reg_idx == 5'd1) || (reg_idx == 5'd5);
+        end
+    endfunction
 
     assign fetch_req_valid = (&fetch_push_ready) && !debug.halt && !backend_recover_valid;
     assign pc_hold = !(fetch_req_valid && fetch_req_ready);
@@ -46,9 +88,25 @@ module core(
         .hold_i          (pc_hold),
         .recovery_valid_i(backend_recover_valid),
         .recovery_pc_i   (backend_recover_pc),
-        .pred_valid_i    (1'b0),
-        .pred_pc_i       ('0),
+        .pred_valid_i    (bpu_pred_valid),
+        .pred_pc_i       (bpu_pred_target),
         .pc_o            (fetch_pc)
+    );
+
+    CoreBranchPredictor u_bpu (
+        .clk            (clk),
+        .rst            (rst),
+        .pc_i           (fetch_pc),
+        .pred_valid_o   (bpu_pred_valid),
+        .pred_taken_o   (bpu_pred_taken),
+        .pred_target_o  (bpu_pred_target),
+        .update_valid_i (bpu_update_valid),
+        .update_pc_i    (bpu_update_pc),
+        .update_taken_i (bpu_update_taken),
+        .update_target_i(bpu_update_target),
+        .update_is_call_i(bpu_update_is_call),
+        .update_is_return_i(bpu_update_is_return),
+        .update_return_pc_i(bpu_update_return_pc)
     );
 
     CoreIromFetch2 u_fetch (
@@ -58,6 +116,8 @@ module core(
         .resp_ready_i (&fetch_push_ready),
         .req_valid_i  (fetch_req_valid),
         .req_pc_i     (fetch_pc),
+        .req_pred_taken_i (bpu_pred_taken),
+        .req_pred_target_i(bpu_pred_target),
         .req_ready_o  (fetch_req_ready),
         .irom         (iromAccess),
         .fetch_valid_o(fetch_valid),
@@ -98,11 +158,43 @@ module core(
         .dmem           (dromAccess)
     );
 
+`ifdef VERILATOR_TB
+    always_comb begin
+        for (int i = 0; i < RETIRE_WIDTH; i = i + 1) begin
+            // Exception retirement has no commit_valid pulse, but is still an
+            // architectural event and must be visible to the trace consumer.
+            trace_valid[i] = commit_valid[i] || (commit_entry[i].valid &&
+                                                 commit_entry[i].exception);
+            trace_next_pc[i] = commit_entry[i].uop.pc + 32'd4;
+            if (commit_entry[i].exception || commit_entry[i].uop.is_mret) begin
+                trace_next_pc[i] = backend_recover_pc;
+            end else if (commit_entry[i].uop.is_branch ||
+                         commit_entry[i].uop.is_jal ||
+                         commit_entry[i].uop.is_jalr) begin
+                trace_next_pc[i] = commit_entry[i].redirect_pc;
+            end
+        end
+    end
+`endif
+
     always_comb begin
         commit_inc = '0;
         branch_inc = '0;
         branch_miss_inc = '0;
+        cond_branch_inc = '0;
+        cond_branch_miss_inc = '0;
+        jal_inc = '0;
+        jal_miss_inc = '0;
+        jalr_inc = '0;
+        jalr_miss_inc = '0;
         issue_inc = '0;
+        bpu_update_valid = 1'b0;
+        bpu_update_pc = '0;
+        bpu_update_taken = 1'b0;
+        bpu_update_target = '0;
+        bpu_update_is_call = 1'b0;
+        bpu_update_is_return = 1'b0;
+        bpu_update_return_pc = '0;
         for (int i = 0; i < RETIRE_WIDTH; i = i + 1) begin
             if (commit_valid[i]) begin
                 commit_inc = commit_inc + 3'd1;
@@ -110,8 +202,39 @@ module core(
                     commit_entry[i].uop.is_jal ||
                     commit_entry[i].uop.is_jalr) begin
                     branch_inc = branch_inc + 3'd1;
+                    if (commit_entry[i].uop.is_jalr) begin
+                        jalr_inc = jalr_inc + 3'd1;
+                    end else if (commit_entry[i].uop.is_jal) begin
+                        jal_inc = jal_inc + 3'd1;
+                    end else begin
+                        cond_branch_inc = cond_branch_inc + 3'd1;
+                    end
+                    if (!bpu_update_valid) begin
+                        bpu_update_valid = 1'b1;
+                        bpu_update_pc = commit_entry[i].uop.pc;
+                        bpu_update_taken = commit_entry[i].branch_miss ?
+                                           (commit_entry[i].redirect_pc != (commit_entry[i].uop.pc + 32'd4)) :
+                                           commit_entry[i].uop.pred_taken;
+                        bpu_update_target = commit_entry[i].branch_miss ?
+                                            commit_entry[i].redirect_pc :
+                                            commit_entry[i].uop.pred_target;
+                        bpu_update_is_call = (commit_entry[i].uop.is_jal ||
+                                              commit_entry[i].uop.is_jalr) &&
+                                             is_link_reg(commit_entry[i].uop.rd);
+                        bpu_update_is_return = commit_entry[i].uop.is_jalr &&
+                                               is_link_reg(commit_entry[i].uop.rs1) &&
+                                               !is_link_reg(commit_entry[i].uop.rd);
+                        bpu_update_return_pc = commit_entry[i].uop.pc + 32'd4;
+                    end
                     if (commit_entry[i].branch_miss) begin
                         branch_miss_inc = branch_miss_inc + 3'd1;
+                        if (commit_entry[i].uop.is_jalr) begin
+                            jalr_miss_inc = jalr_miss_inc + 3'd1;
+                        end else if (commit_entry[i].uop.is_jal) begin
+                            jal_miss_inc = jal_miss_inc + 3'd1;
+                        end else begin
+                            cond_branch_miss_inc = cond_branch_miss_inc + 3'd1;
+                        end
                     end
                 end
             end
@@ -125,6 +248,20 @@ module core(
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
+`ifdef VERILATOR_TB
+            dbg_commit_valid <= '0;
+            dbg_commit_pc <= '0;
+            dbg_commit_inst <= '0;
+            dbg_commit_wen <= '0;
+            dbg_commit_rd <= '0;
+            dbg_commit_wdata <= '0;
+            dbg_commit_is_load <= '0;
+            dbg_commit_is_store <= '0;
+            dbg_commit_is_mmio <= '0;
+            dbg_commit_is_trap <= '0;
+            dbg_commit_cause <= '0;
+            dbg_commit_next_pc <= '0;
+`endif
             perf.cycle <= 64'b0;
             perf.commitCnt <= 64'b0;
             perf.branchCnt <= 64'b0;
@@ -174,12 +311,35 @@ module core(
             perf.memIssueCount <= 64'b0;
             perf.mulIssueCount <= 64'b0;
         end else begin
+`ifdef VERILATOR_TB
+            for (int i = 0; i < RETIRE_WIDTH; i = i + 1) begin
+                dbg_commit_valid[i] <= trace_valid[i];
+                dbg_commit_pc[i] <= commit_entry[i].uop.pc;
+                dbg_commit_inst[i] <= commit_entry[i].uop.inst;
+                dbg_commit_wen[i] <= commit_valid[i] && commit_entry[i].alloc_prd &&
+                                     (commit_entry[i].uop.rd != '0);
+                dbg_commit_rd[i] <= commit_entry[i].uop.rd;
+                dbg_commit_wdata[i] <= commit_entry[i].result;
+                dbg_commit_is_load[i] <= commit_entry[i].uop.is_load;
+                dbg_commit_is_store[i] <= commit_entry[i].uop.is_store;
+                dbg_commit_is_mmio[i] <= (commit_entry[i].uop.is_load ||
+                                          commit_entry[i].uop.is_store) &&
+                                         (commit_entry[i].result[31:12] == 20'h80200);
+                dbg_commit_is_trap[i] <= commit_entry[i].exception;
+                dbg_commit_cause[i] <= commit_entry[i].exception_cause;
+                dbg_commit_next_pc[i] <= trace_next_pc[i];
+            end
+`endif
             perf.cycle <= perf.cycle + 64'd1;
             perf.commitCnt <= perf.commitCnt + 64'(commit_inc);
             perf.branchCnt <= perf.branchCnt + 64'(branch_inc);
             perf.branchMissCnt <= perf.branchMissCnt + 64'(branch_miss_inc);
-            perf.condBranchCnt <= perf.condBranchCnt + 64'(branch_inc);
-            perf.condBranchMissCnt <= perf.condBranchMissCnt + 64'(branch_miss_inc);
+            perf.condBranchCnt <= perf.condBranchCnt + 64'(cond_branch_inc);
+            perf.condBranchMissCnt <= perf.condBranchMissCnt + 64'(cond_branch_miss_inc);
+            perf.jalCnt <= perf.jalCnt + 64'(jal_inc);
+            perf.jalMissCnt <= perf.jalMissCnt + 64'(jal_miss_inc);
+            perf.jalrCnt <= perf.jalrCnt + 64'(jalr_inc);
+            perf.jalrMissCnt <= perf.jalrMissCnt + 64'(jalr_miss_inc);
             perf.recoveryCycles <= perf.recoveryCycles + (backend_recover_valid ? 64'd1 : 64'd0);
             perf.issueWidth0Cycles <= perf.issueWidth0Cycles + ((issue_inc == 3'd0) ? 64'd1 : 64'd0);
             perf.issueWidth1Cycles <= perf.issueWidth1Cycles + ((issue_inc == 3'd1) ? 64'd1 : 64'd0);

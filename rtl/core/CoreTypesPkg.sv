@@ -92,6 +92,8 @@ package CoreTypesPkg;
     } CoreSystemOp;
 
     localparam logic [31:0] EXC_CAUSE_INST_MISALIGNED = 32'd0;
+    localparam logic [31:0] EXC_CAUSE_LOAD_MISALIGNED = 32'd4;
+    localparam logic [31:0] EXC_CAUSE_STORE_MISALIGNED = 32'd6;
     localparam logic [31:0] EXC_CAUSE_ILLEGAL_INST    = 32'd2;
     localparam logic [31:0] EXC_CAUSE_BREAKPOINT      = 32'd3;
     localparam logic [31:0] EXC_CAUSE_ECALL_U         = 32'd8;

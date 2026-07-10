@@ -7,6 +7,9 @@ set_property PACKAGE_PIN AD12 [get_ports { i_sys_clk_p }]
 set_property IOSTANDARD DIFF_HSTL_II_18 [get_ports { i_sys_clk_p }]
 set_property PACKAGE_PIN AD11 [get_ports { i_sys_clk_n }]
 set_property IOSTANDARD DIFF_HSTL_II_18 [get_ports { i_sys_clk_n }]
+
+# Board oscillator is 200 MHz; clk_wiz derives the system and CPU clocks.
+create_clock -name sys_clk_p -period 5.000 [get_ports { i_sys_clk_p }]
 set_property PACKAGE_PIN B27 [get_ports { virtual_led[31] }]
 set_property IOSTANDARD LVCMOS18 [get_ports { virtual_led[31] }]
 set_property PACKAGE_PIN A27 [get_ports { virtual_led[30] }]

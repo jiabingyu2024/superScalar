@@ -158,6 +158,13 @@ struct SimResult {
     uint32_t last_src_test_lamps = 0;
     uint32_t last_rv32i_count = 0;
     uint32_t last_mext_count = 0;
+
+    bool has_difftest = false;
+    bool difftest_reference_enabled = false;
+    std::string difftest_mode;
+    uint64_t difftest_commit_count = 0;
+    uint64_t difftest_mmio_skip_count = 0;
+    uint32_t difftest_last_commit_pc = 0;
 };
 
 std::string hex32(uint32_t value);

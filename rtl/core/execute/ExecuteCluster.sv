@@ -42,6 +42,12 @@ module CoreExecuteCluster (
     input  logic store_push_ready_i,
     input  logic store_buffer_empty_i,
 
+    output logic load_query_valid_o,
+    output AddrPath load_query_addr_o,
+    output logic [3:0] load_query_mask_o,
+    input  logic load_forward_full_i,
+    input  DataPath load_forward_data_i,
+
     DramAccessIF.ExecuteMemStage dmem
 );
     localparam int READ_PORTS = ISSUE_WIDTH * 2;
@@ -56,6 +62,7 @@ module CoreExecuteCluster (
     PcPath branch_target [ISSUE_WIDTH-1:0];
     logic csr_do_write [ISSUE_WIDTH-1:0];
     logic csr_fault [ISSUE_WIDTH-1:0];
+    logic mem_align_fault [ISSUE_WIDTH-1:0];
     logic dynamic_exception [ISSUE_WIDTH-1:0];
     DataPath dynamic_exception_cause [ISSUE_WIDTH-1:0];
     DataPath csr_operand [ISSUE_WIDTH-1:0];
@@ -150,6 +157,21 @@ module CoreExecuteCluster (
         end
     endfunction
 
+    function automatic logic [3:0] load_mask(
+        input CoreDecodeUop uop,
+        input AddrPath addr
+    );
+        logic [3:0] base_mask;
+        begin
+            unique case (uop.mem_size)
+                2'd0: base_mask = 4'b0001;
+                2'd1: base_mask = 4'b0011;
+                default: base_mask = 4'b1111;
+            endcase
+            load_mask = (base_mask << addr[1:0]) & 4'hf;
+        end
+    endfunction
+
     function automatic DataPath load_extend(
         input CoreDecodeUop uop,
         input DataPath raw
@@ -167,6 +189,19 @@ module CoreExecuteCluster (
                 default: begin
                     load_extend = raw;
                 end
+            endcase
+        end
+    endfunction
+
+    function automatic logic mem_misaligned(
+        input CoreDecodeUop uop,
+        input AddrPath addr
+    );
+        begin
+            unique case (uop.mem_size)
+                2'd0: mem_misaligned = 1'b0;
+                2'd1: mem_misaligned = addr[0];
+                default: mem_misaligned = |addr[1:0];
             endcase
         end
     endfunction
@@ -200,11 +235,66 @@ module CoreExecuteCluster (
         end
     endfunction
 
+    // Arbitration is kept separate from result generation.  The readiness
+    // outputs only depend on registered resource state and StoreBuffer state.
     always_comb begin
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
             issue_valid[i] = 1'b0;
             issue_uop[i] = '0;
         end
+
+        for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
+            int_issue_ready_o[i] = !clear_i && !mem_load_pending_q;
+            issue_valid[i] = int_issue_valid_i[i] && int_issue_ready_o[i];
+            issue_uop[i] = int_issue_uop_i[i];
+        end
+        for (int m = 0; m < MEM_ISSUE_WIDTH; m = m + 1) begin
+            issue_uop[INT_ISSUE_WIDTH + m] = mem_issue_uop_i[m];
+            mem_issue_ready_o[m] = !clear_i && !mem_load_pending_q &&
+                                   (!mem_issue_valid_i[m] ||
+                                    (mem_issue_uop_i[m].uop.is_store && store_push_ready_i) ||
+                                    (mem_issue_uop_i[m].uop.is_load &&
+                                     (load_forward_full_i ||
+                                      (store_buffer_empty_i && !store_drain_pending_q))));
+            issue_valid[INT_ISSUE_WIDTH + m] = mem_issue_valid_i[m] && mem_issue_ready_o[m];
+        end
+        for (int u = 0; u < MULDIV_ISSUE_WIDTH; u = u + 1) begin
+            mul_issue_ready_o[u] = !clear_i && (u == 0) && muldiv_ready;
+            issue_valid[INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + u] = mul_issue_valid_i[u] && mul_issue_ready_o[u];
+            issue_uop[INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + u] = mul_issue_uop_i[u];
+        end
+    end
+
+    always_comb begin
+        for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
+            prf_raddr[2*i] = issue_uop[i].prs1;
+            prf_raddr[2*i + 1] = issue_uop[i].prs2;
+        end
+    end
+
+    always_comb begin
+        for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
+            csr_read_addr_o[i] = issue_uop[i].uop.csr_addr;
+        end
+    end
+
+    // Store forwarding must be visible before the load is admitted.  Generate
+    // the query from the selected load and its PRF read address, independently
+    // of the result/writeback combinational block below.
+    always_comb begin
+        load_query_valid_o = 1'b0;
+        load_query_addr_o = '0;
+        load_query_mask_o = '0;
+        if (mem_issue_valid_i[0] && mem_issue_uop_i[0].uop.is_load) begin
+            load_query_addr_o = prf_rdata[2 * INT_ISSUE_WIDTH] +
+                                mem_issue_uop_i[0].uop.imm_i;
+            load_query_mask_o = load_mask(mem_issue_uop_i[0].uop, load_query_addr_o);
+            load_query_valid_o = !mem_misaligned(mem_issue_uop_i[0].uop,
+                                                  load_query_addr_o);
+        end
+    end
+
+    always_comb begin
         dmem.exReadEn = 1'b0;
         dmem.exReadAddr = mem_load_addr_q;
         store_push_valid_o = 1'b0;
@@ -212,31 +302,7 @@ module CoreExecuteCluster (
         store_push_addr_o = '0;
         store_push_data_o = '0;
         store_push_mask_o = '0;
-
-        for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
-            // v1 correctness gate: full same-cycle 2-wide INT bypass is not
-            // implemented yet, so keep INT issue single-wide for now.
-            int_issue_ready_o[i] = !clear_i && !mem_load_pending_q && (i == 0);
-            issue_valid[i] = int_issue_valid_i[i] && int_issue_ready_o[i];
-            issue_uop[i] = int_issue_uop_i[i];
-        end
-        for (int m = 0; m < MEM_ISSUE_WIDTH; m = m + 1) begin
-            mem_issue_ready_o[m] = !clear_i && !mem_load_pending_q &&
-                                   (!mem_issue_valid_i[m] ||
-                                    (mem_issue_uop_i[m].uop.is_store && store_push_ready_i) ||
-                                    (mem_issue_uop_i[m].uop.is_load && store_buffer_empty_i && !store_drain_pending_q));
-            issue_valid[INT_ISSUE_WIDTH + m] = mem_issue_valid_i[m] && mem_issue_ready_o[m];
-            issue_uop[INT_ISSUE_WIDTH + m] = mem_issue_uop_i[m];
-        end
-        for (int u = 0; u < MULDIV_ISSUE_WIDTH; u = u + 1) begin
-            mul_issue_ready_o[u] = !clear_i && (u == 0) && muldiv_ready;
-            issue_valid[INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + u] = mul_issue_valid_i[u] && mul_issue_ready_o[u];
-            issue_uop[INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + u] = mul_issue_uop_i[u];
-        end
-
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-            prf_raddr[2*i] = issue_uop[i].prs1;
-            prf_raddr[2*i + 1] = issue_uop[i].prs2;
             src0[i] = prf_rdata[2*i];
             src1[i] = prf_rdata[2*i + 1];
 
@@ -244,11 +310,11 @@ module CoreExecuteCluster (
             branch_target[i] = issue_uop[i].uop.pc + 32'd4;
             csr_do_write[i] = 1'b0;
             csr_fault[i] = 1'b0;
+            mem_align_fault[i] = 1'b0;
             dynamic_exception[i] = 1'b0;
             dynamic_exception_cause[i] = 32'b0;
             csr_operand[i] = issue_uop[i].uop.csr_imm ? {27'b0, issue_uop[i].uop.csr_zimm} : src0[i];
             csr_new_value[i] = csr_read_data_i[i];
-            csr_read_addr_o[i] = issue_uop[i].uop.csr_addr;
             result[i] = 32'b0;
 
             case (issue_uop[i].uop.tube)
@@ -314,6 +380,15 @@ module CoreExecuteCluster (
                 end
             end
 
+            if ((issue_uop[i].uop.is_load || issue_uop[i].uop.is_store) &&
+                mem_misaligned(issue_uop[i].uop, result[i])) begin
+                mem_align_fault[i] = 1'b1;
+                dynamic_exception[i] = 1'b1;
+                dynamic_exception_cause[i] = issue_uop[i].uop.is_load ?
+                                             EXC_CAUSE_LOAD_MISALIGNED :
+                                             EXC_CAUSE_STORE_MISALIGNED;
+            end
+
             if (issue_uop[i].uop.is_mret && (csr_priv_mode_i != PRIV_M)) begin
                 dynamic_exception[i] = 1'b1;
                 dynamic_exception_cause[i] = EXC_CAUSE_ILLEGAL_INST;
@@ -351,7 +426,9 @@ module CoreExecuteCluster (
             prf_wdata[i] = result[i];
         end
 
-        if (issue_valid[INT_ISSUE_WIDTH] && issue_uop[INT_ISSUE_WIDTH].uop.is_store) begin
+        if (issue_valid[INT_ISSUE_WIDTH] &&
+            issue_uop[INT_ISSUE_WIDTH].uop.is_store &&
+            !mem_align_fault[INT_ISSUE_WIDTH]) begin
             store_push_valid_o = 1'b1;
             store_push_rob_idx_o = issue_uop[INT_ISSUE_WIDTH].rob_idx;
             store_push_addr_o = result[INT_ISSUE_WIDTH];
@@ -359,14 +436,26 @@ module CoreExecuteCluster (
             store_push_mask_o = store_mask(issue_uop[INT_ISSUE_WIDTH].uop);
         end
 
-        if (issue_valid[INT_ISSUE_WIDTH] && issue_uop[INT_ISSUE_WIDTH].uop.is_load) begin
-            dmem.exReadEn = 1'b1;
-            dmem.exReadAddr = result[INT_ISSUE_WIDTH];
-            complete_valid_o[INT_ISSUE_WIDTH] = 1'b0;
-            prf_we[INT_ISSUE_WIDTH] = 1'b0;
+        if (issue_valid[INT_ISSUE_WIDTH] &&
+            issue_uop[INT_ISSUE_WIDTH].uop.is_load &&
+            !mem_align_fault[INT_ISSUE_WIDTH]) begin
+            if (load_forward_full_i) begin
+                complete_result_o[INT_ISSUE_WIDTH] = load_extend(issue_uop[INT_ISSUE_WIDTH].uop,
+                                                                 load_forward_data_i);
+                prf_we[INT_ISSUE_WIDTH] = issue_uop[INT_ISSUE_WIDTH].alloc_prd &&
+                                          !issue_uop[INT_ISSUE_WIDTH].uop.exception;
+                prf_waddr[INT_ISSUE_WIDTH] = issue_uop[INT_ISSUE_WIDTH].prd;
+                prf_wdata[INT_ISSUE_WIDTH] = load_extend(issue_uop[INT_ISSUE_WIDTH].uop,
+                                                         load_forward_data_i);
+            end else begin
+                dmem.exReadEn = 1'b1;
+                dmem.exReadAddr = result[INT_ISSUE_WIDTH];
+                complete_valid_o[INT_ISSUE_WIDTH] = 1'b0;
+                prf_we[INT_ISSUE_WIDTH] = 1'b0;
+            end
         end
 
-        if (mem_load_pending_q && dmem.exReadReady) begin
+        if (!clear_i && mem_load_pending_q && dmem.exReadReady) begin
             complete_valid_o[INT_ISSUE_WIDTH] = 1'b1;
             complete_rob_idx_o[INT_ISSUE_WIDTH] = mem_load_uop_q.rob_idx;
             complete_prd_o[INT_ISSUE_WIDTH] = mem_load_uop_q.prd;
@@ -383,7 +472,7 @@ module CoreExecuteCluster (
             prf_wdata[INT_ISSUE_WIDTH] = load_extend(mem_load_uop_q.uop, dmem.exReadData);
         end
 
-        complete_valid_o[MULDIV_SLOT] = muldiv_complete_valid;
+        complete_valid_o[MULDIV_SLOT] = !clear_i && muldiv_complete_valid;
         complete_rob_idx_o[MULDIV_SLOT] = muldiv_complete_uop.rob_idx;
         complete_prd_o[MULDIV_SLOT] = muldiv_complete_uop.prd;
         complete_result_o[MULDIV_SLOT] = muldiv_complete_result;
@@ -394,7 +483,8 @@ module CoreExecuteCluster (
         complete_csr_write_o[MULDIV_SLOT] = 1'b0;
         complete_csr_addr_o[MULDIV_SLOT] = '0;
         complete_csr_wdata_o[MULDIV_SLOT] = '0;
-        prf_we[MULDIV_SLOT] = muldiv_complete_valid &&
+        prf_we[MULDIV_SLOT] = !clear_i &&
+                              muldiv_complete_valid &&
                               muldiv_complete_uop.alloc_prd &&
                               !muldiv_complete_uop.uop.exception;
         prf_waddr[MULDIV_SLOT] = muldiv_complete_uop.prd;
@@ -446,7 +536,10 @@ module CoreExecuteCluster (
                 store_drain_pending_q <= 1'b0;
             end else if (mem_load_pending_q && dmem.exReadReady) begin
                 mem_load_pending_q <= 1'b0;
-            end else if (issue_valid[INT_ISSUE_WIDTH] && issue_uop[INT_ISSUE_WIDTH].uop.is_load) begin
+            end else if (issue_valid[INT_ISSUE_WIDTH] &&
+                         issue_uop[INT_ISSUE_WIDTH].uop.is_load &&
+                         !mem_align_fault[INT_ISSUE_WIDTH] &&
+                         !load_forward_full_i) begin
                 mem_load_pending_q <= 1'b1;
                 mem_load_uop_q <= issue_uop[INT_ISSUE_WIDTH];
                 mem_load_addr_q <= result[INT_ISSUE_WIDTH];

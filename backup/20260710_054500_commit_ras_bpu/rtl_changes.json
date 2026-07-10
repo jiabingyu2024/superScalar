@@ -1,0 +1,409 @@
+[
+{
+  "timestamp": "2026-07-09T13:35:33+08:00",
+  "trigger": "Board srcWithMext shows SEG high digits 0x374 instead of 0x378 while Verilator passes, indicating four M-extension subtests fail only on FPGA.",
+  "backup_dir": "backup/20260709_133533_div_packing_fix",
+  "files_modified": [
+    {
+      "path": "rtl/core/execute/MulDivUnit.sv",
+      "change_type": "logic_fix",
+      "notes": "Changed DIV_0 result unpacking to match Vivado 2023.2 div_gen remainder-mode output: quotient is m_axis_dout_tdata[63:32], remainder is [31:0]."
+    },
+    {
+      "path": "rtl/ip/DIV_0.sv",
+      "change_type": "simulation_model_fix",
+      "notes": "Changed the Verilator behavior model to emit m_axis_dout_tdata as {quotient, remainder}, matching generated Vivado DIV_0 demo testbench behavior."
+    },
+    {
+      "path": "docs/fpga/ip_timing_alignment.md",
+      "change_type": "documentation",
+      "notes": "Documented the DIV_0 output packing contract, the Vivado demo testbench evidence, and the board symptom where srcWithMext reaches 0x374xxxxx instead of 0x378xxxxx."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the DIV_0 packing alignment fix and verification evidence."
+    }
+  ],
+  "cascade_scope": "recompile_and_regenerate_vivado_ip_project",
+  "verification": [
+    "Generated a temporary Vivado 2023.2 DIV_0 div_gen IP with the current Tcl parameters. Its demo_tb/tb_DIV_0.vhd assigns remainder <= m_axis_dout_tdata(31 downto 0) and quotient <= m_axis_dout_tdata(63 downto 32).",
+    "make sim-rv32 SUITE=rv32um BUILD_JOBS=4 OBJCACHE= passed all 8 rv32um tests: div, divu, mul, mulh, mulhsu, mulhu, rem, remu.",
+    "make sim-src TEST=srcWithMext MAX_CYCLES=500000000 BUILD_JOBS=4 OBJCACHE= reached SEG last_nonzero_raw=0x37800000 with mext_count_from_seg=8; it timed out before the final pass marker because the 500M-cycle cap was below this build's full runtime."
+  ],
+  "notes": "Root cause: the previous RTL and Verilator DIV_0 model were self-consistently wrong, both treating [31:0] as quotient and [63:32] as remainder. Verilator therefore passed, while FPGA used the real Vivado div_gen packing and caused DIV/DIVU/REM/REMU subtests to fail. Rebuild the Vivado project or regenerate DIV_0 before producing a new bitstream."
+},
+{
+  "timestamp": "2026-07-09T22:46:52+08:00",
+  "trigger": "srcSmoke failed with SEG=0 after branch recovery; VCD showed x8 was renamed to p0 after a JAL redirect although the frame-pointer addi had committed.",
+  "backup_dir": "backup/20260709_224652_arat_commit_fix",
+  "files_modified": [
+    {
+      "path": "rtl/core/commit/CommitUnit.sv",
+      "change_type": "logic_fix",
+      "notes": "Only retirement entries that allocated a destination physical register now drive commit_arch_o/commit_prd_o to RenameUnit. Non-writing uops keep commit_valid_o for retire/perf/store-buffer purposes but no longer update aRAT with pseudo rd bits."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the aRAT commit-map corruption fix and the intended verification cascade."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_srcSmoke_then_rv32_regression",
+  "verification": [
+    "CCACHE_DISABLE=1 make verilator-build BUILD_JOBS=2 completed successfully after the CommitUnit aRAT fix.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --no-build --max-cycles 200000 --trace reached rv32i_pass_counter_last=37, rv32i_fail_counter_last=0, seg.last_nonzero_raw=0x37000000, then timed out due to the short cycle cap.",
+    "python3 scripts/run_verilator.py src --test srcWithMext --no-build --max-cycles 2000000000 failed at 681736299 cycles with final fail lamp marker. Result archived at docs/archive/2026-07-10/052_srcWithMext_full_result.md. Key fields: SEG=0x37613634, expected high=0x37800000, rv32i_pass_counter=37, rv32i_fail_counter=0, mext_count_from_seg=6/8."
+  ],
+  "notes": "Root cause: store and branch instructions still carry instruction bits in the decoded rd field. CommitUnit previously forwarded that field to RenameUnit whenever commit_valid_o was high, so a store such as fe042423 could update aRAT[x8] to p0. A later branch/JAL recovery restored sRAT from the corrupted aRAT, causing loads using x8 as a base to address 0xffffffdc instead of the stack frame."
+},
+{
+  "timestamp": "2026-07-10T00:02:46+08:00",
+  "trigger": "Vivado/Tcl IP integration review found IROM_0 Dual_Port_ROM B-port clock mismatch and stale DIV_0 packing documentation.",
+  "backup_dir": "backup/20260710_000246_irom_clkb_doc_fix",
+  "files_modified": [
+    {
+      "path": "fpga/create_vivado_project.tcl",
+      "change_type": "ip_config_fix",
+      "notes": "Set IROM_0 CONFIG.Assume_Synchronous_Clk to true for the same-clock dual-port ROM contract."
+    },
+    {
+      "path": "rtl/soc/student_top.sv",
+      "change_type": "port_connection_fix",
+      "notes": "Connected IROM_0.clkb to w_cpu_clk so the top-level instance matches Vivado blk_mem_gen Dual_Port_ROM wrapper ports."
+    },
+    {
+      "path": "rtl/ip/IROM_0.sv",
+      "change_type": "ip_model_interface_fix",
+      "notes": "Added clkb to the Verilator dual-port ROM model and clocked B-port address capture from clkb."
+    },
+    {
+      "path": "docs/fpga/vivado_project.md",
+      "change_type": "documentation",
+      "notes": "Documented IROM A/B clocking and corrected DIV_0 quotient/remainder packing."
+    },
+    {
+      "path": "docs/fpga/ip_timing_alignment.md",
+      "change_type": "documentation",
+      "notes": "Updated IROM timing contract to include clka/clkb and same-clock top-level wiring."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the Vivado IP integration fix."
+    }
+  ],
+  "cascade_scope": "recompile_and_check_student_top_then_vivado_project_generation",
+  "verification": [
+    "python3 -m json.tool docs/rtl_changes.json passed after converting the manifest to a JSON array.",
+    "git diff --check passed for the current IROM/Vivado documentation changes.",
+    "Static reference scan found no stale single-port IROM signal names in docs/fpga/ip_timing_alignment.md, docs/fpga/vivado_project.md, rtl/soc/student_top.sv, rtl/ip/IROM_0.sv, or fpga/create_vivado_project.tcl.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 rebuilt the src/student_top Verilator target after the IROM clkb change, then timed out as expected at the short cap with rv32i_pass_counter=37, rv32i_fail_counter=0, and SEG=0x37000000."
+  ],
+  "notes": "Vivado 2023.2 blk_mem_gen_v8_4 component metadata enables clkb for non-single-port native memories including Dual_Port_ROM. Its changelog states common_clock internally connects clkb to clka but preserves the interface, so both clocks must be wired to the same source."
+}
+,
+{
+  "timestamp": "2026-07-10T01:27:31+08:00",
+  "trigger": "srcWithMext full run failed with mext_count_from_seg=6/8 while rv32um still passed, pointing to a long-run recovery/writeback interaction rather than base M arithmetic semantics.",
+  "backup_dir": "backup/20260710_013000_clear_prf_write_gate",
+  "files_modified": [
+    {
+      "path": "rtl/core/execute/ExecuteCluster.sv",
+      "change_type": "logic_fix",
+      "notes": "Suppressed pending load completion and MULDIV completion/PRF writeback when clear_i is asserted, so flushed younger operations cannot write physical registers during recovery."
+    },
+    {
+      "path": "rtl/core/execute/MulDivPipe.sv",
+      "change_type": "logic_fix",
+      "notes": "Gated CoreMulDivPipe complete_valid_o with !clear_i for MUL wait, DIV wait, and special DIV/REM fast path completions."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the recovery-time PRF write suppression fix."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32um_plus_src_short_window",
+  "verification": [
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 30000 passed all 8 rv32um tests after the clear-time PRF write gating change.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 rebuilt the src/student_top target and timed out at the short cap with rv32i_pass_counter=37, rv32i_fail_counter=0, and SEG=0x37000000."
+  ],
+  "notes": "Before this change, CoreBackend cleared its registered completion buses on recovery, but ExecuteCluster's local physical register file write ports could still be driven by mem_load_pending_q && dmem.exReadReady or muldiv_complete_valid in the same clear cycle. That can corrupt physical registers for flushed younger operations after branch/trap recovery. The srcWithMext failure pattern passed mul/mulh/mulhsu/mulhu/div/divu and failed before reaching rem/remu completion count, while standalone rv32um tests passed."
+},
+{
+  "timestamp": "2026-07-10T01:48:01+08:00",
+  "trigger": "M-only srcWithMext localization showed DIVU and REM fail in both student_top and direct myCPU harness. Waveform proved a flushed divider operation later asserted div_valid and was consumed by a newer DIVU/REM uop.",
+  "backup_dir": "backup/20260710_014900_muldiv_div_drain",
+  "files_modified": [
+    {
+      "path": "rtl/core/execute/MulDivPipe.sv",
+      "change_type": "logic_fix",
+      "notes": "Added div_drain_q. If clear_i flushes an in-flight MD_DIV_WAIT operation, CoreMulDivPipe now blocks ready_o until the stale DIV_0 valid pulse is observed and discarded."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the divider stale-response drain fix and the targeted M-only debug evidence."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32um_plus_src_monly_short_window",
+  "verification": [
+    "python3 -m json.tool docs/rtl_changes.json passed after adding the div_drain_q manifest entry.",
+    "git diff --check passed after the MulDivPipe drain fix.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 30000 passed all 8 RV32UM tests.",
+    "Direct myCPU M-only srcWithMext observe run reached pass counter writes 1..8, no fail-counter write, and SEG=0x37800000; it then timed out at the intentional 20000-cycle observe window.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 rebuilt student_top and timed out as expected with rv32i_pass_counter=37, rv32i_fail_counter=0, SEG=0x37000000.",
+    "student_top M-only srcWithMext observe run reached pass counter writes 1..8, no fail-counter write, and SEG=0x37800000; it then timed out at the intentional 20000-cycle observe window."
+  ],
+  "notes": "Root cause: DIV_0 has a fixed-latency output pipeline and no clear input. On branch/JAL/JALR recovery, CoreMulDivPipe could abandon an in-flight divider uop, return to idle, accept a new divider uop, then treat the stale div_valid/div_data pulse from the abandoned operation as the new uop's result. In the M-only trace, DIVU -1/2 completed with the previous 7/3 quotient 2, and REM failed in the same pattern."
+},
+{
+  "timestamp": "2026-07-10T01:58:34+08:00",
+  "trigger": "implementation_freeze.md requires a 2-way 32-byte-line write-back/write-allocate DCache, while myCPU still forced dmem_req_uncached=1 and directly forwarded every access to SocMemBridge.",
+  "backup_dir": "backup/20260710_021000_dcache_v1",
+  "files_modified": [
+    {
+      "path": "rtl/core/memory/DCache.sv",
+      "change_type": "new_module",
+      "notes": "Added CoreDCache: 2-way set-associative, 32-byte line, write-back/write-allocate, single outstanding writeback/refill, and uncached passthrough for non-DRAM/MMIO addresses."
+    },
+    {
+      "path": "rtl/core/myCPU.sv",
+      "change_type": "integration",
+      "notes": "Inserted CoreDCache between DramAccessIF and the external dmem_req/dmem_resp SoC boundary. dmem_req_uncached is now generated by DCache instead of being forced high."
+    },
+    {
+      "path": "scripts/filelists/core.f",
+      "change_type": "filelist_update",
+      "notes": "Added rtl/core/memory/DCache.sv before myCPU.sv so both myCPU and student_top Verilator builds compile the cache."
+    },
+    {
+      "path": "docs/fpga/ip_timing_alignment.md",
+      "change_type": "documentation",
+      "notes": "Updated the DCache refill contract from stale 16-byte/4-word wording to the frozen 32-byte/8-word line size."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the DCache v1 integration and intended verification cascade."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32ui_rv32um_rv32mi_plus_src_short_window",
+  "verification": [
+    "python3 -m json.tool docs/rtl_changes.json passed after DCache integration.",
+    "git diff --check passed after DCache integration.",
+    "python3 scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --max-cycles 50000 passed.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32ui --build --max-cycles 80000 passed all RV32UI tests before the byte-lane follow-up fix.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 80000 passed all RV32UM tests before the byte-lane follow-up fix.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32mi --build --max-cycles 80000 passed all RV32MI tests before the byte-lane follow-up fix.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 timed out at the short cap but initially regressed to SEG=0x32000000, so a byte-lane follow-up fix was required."
+  ],
+  "notes": "This is the first real DCache integration step toward the frozen memory hierarchy. The cache still uses the existing single-request DramAccessIF contract and does not introduce multiple outstanding requests or burst assumptions."
+},
+{
+  "timestamp": "2026-07-10T03:05:00+08:00",
+  "trigger": "DCache v1 caused srcSmoke 200k-cycle progress to regress from SEG=0x37000000 to SEG=0x32000000. Static review found cacheable hit/refill paths ignored the existing DramBramAdapter byte-lane contract.",
+  "backup_dir": "backup/20260710_030500_dcache_byte_lane",
+  "files_modified": [
+    {
+      "path": "rtl/core/memory/DCache.sv",
+      "change_type": "logic_fix",
+      "notes": "Added cacheable-path load right-shift and store data/mask left-shift by addr[1:0], matching the documented core-to-DRAM contract previously implemented by DramBramAdapter for uncached/direct accesses."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the DCache byte-lane fix and verification evidence."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32ui_rv32um_rv32mi_plus_src_short_window",
+  "verification": [
+    "python3 -m json.tool docs/rtl_changes.json passed before recording this manifest entry.",
+    "git diff --check passed before recording this manifest entry.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32ui --build --max-cycles 80000 passed all RV32UI tests, including lb/lbu/lh/lhu/sb/sh/st_ld.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 80000 passed all 8 RV32UM tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32mi --build --max-cycles 80000 passed csr/sbreak/scall/zicntr.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 timed out at the intended short cap with SEG=0x37000000, rv32i_count_from_seg=37, rv32i_fail_counter=0, dcache_access=6975, dcache_miss=6."
+  ],
+  "notes": "The documented SoC contract is that core-side SB/SH data and masks are low-bit aligned and the memory bridge shifts by req_addr[1:0]; reads are shifted back before ExecuteCluster load_extend. Once DCache serves cacheable hits internally, it must preserve the same contract on hit and refill-finish paths. Without this, cached byte/half operations update or read the wrong byte lane while uncached MMIO still appears correct. The archived full srcWithMext result remains at docs/archive/2026-07-10/052_srcWithMext_full_result.md with raw json/log under docs/archive/2026-07-10/srcWithMext_20260710_0121/."
+},
+{
+  "timestamp": "2026-07-10T03:25:00+08:00",
+  "trigger": "rtl_core_adaptation_audit.md and superScalar_target_architecture.md require 2-way fetch to carry a valid mask and avoid crossing the natural 8-byte fetch group. Static review found CoreIromFetch2 still marked both lanes valid for any PC and CorePcGen always advanced by 8.",
+  "backup_dir": "backup/20260710_032500_fetch_valid_mask",
+  "files_modified": [
+    {
+      "path": "rtl/core/frontend/PcGen.sv",
+      "change_type": "logic_fix",
+      "notes": "Changed sequential PC advance so a fetch starting at pc[2]=1 advances by 4 instead of 8, preventing the next natural 8-byte group head from being skipped."
+    },
+    {
+      "path": "rtl/core/frontend/IromFetch2.sv",
+      "change_type": "logic_fix",
+      "notes": "Added a registered fetch valid mask. Requests with req_pc_i[2]=1 now produce only lane0 valid on the following IROM response cycle; aligned requests still produce both lanes valid."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the front-end valid-mask adaptation and intended verification cascade."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32ui_rv32um_rv32mi_plus_src_short_window",
+  "verification": [
+    "python3 -m json.tool docs/rtl_changes.json passed after adding the fetch valid-mask entry.",
+    "git diff --check passed after the fetch valid-mask fix.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32ui --build --max-cycles 80000 passed all RV32UI tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 80000 passed all 8 RV32UM tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32mi --build --max-cycles 80000 passed csr/sbreak/scall/zicntr.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 timed out at the intended short cap with SEG=0x37000000, rv32i_count_from_seg=37, rv32i_fail_counter=0, dcache_access=6975, dcache_miss=6."
+  ],
+  "notes": "This is a correctness-oriented front-end contract fix, not the full tournament BPU integration. The branch predictor remains a later implementation item from implementation_freeze.md."
+},
+{
+  "timestamp": "2026-07-10T03:45:00+08:00",
+  "trigger": "LSU/DCache adaptation review found misaligned halfword/word loads and stores were not trapped before reaching DCache/StoreBuffer. DCache only supports single aligned 32-bit word accesses and cannot implement cross-word RV32 misaligned memory semantics.",
+  "backup_dir": "backup/20260710_034500_lsu_misaligned_exception",
+  "files_modified": [
+    {
+      "path": "rtl/core/CoreTypesPkg.sv",
+      "change_type": "interface_constant_update",
+      "notes": "Added RV32 load/store address-misaligned exception cause constants."
+    },
+    {
+      "path": "rtl/core/execute/ExecuteCluster.sv",
+      "change_type": "logic_fix",
+      "notes": "Added LSU alignment checks. Misaligned LH/LHU/SH and LW/SW now complete as ROB exceptions and suppress DCache reads or StoreBuffer pushes."
+    },
+    {
+      "path": "rtl/core/commit/CommitUnit.sv",
+      "change_type": "logic_fix",
+      "notes": "For load/store misaligned traps, mtval now records the faulting effective address from the ROB result."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the LSU misaligned access trap fix and intended verification cascade."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32ui_rv32um_rv32mi_plus_src_short_window",
+  "verification": [
+    "python3 -m json.tool docs/rtl_changes.json passed after adding the LSU misaligned trap entry.",
+    "git diff --check passed after the LSU misaligned trap fix.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32ui --build --max-cycles 80000 passed all RV32UI tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 80000 passed all 8 RV32UM tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32mi --build --max-cycles 80000 passed csr/sbreak/scall/zicntr.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 timed out at the intended short cap with SEG=0x37000000, rv32i_count_from_seg=37, rv32i_fail_counter=0, dcache_access=6975, dcache_miss=6."
+  ],
+  "notes": "This preserves precise exception behavior and prevents illegal unaligned memory operations from mutating cache or MMIO state. Full load-store ordering and StoreBuffer forwarding remain separate future work items from the freeze plan."
+},
+{
+  "timestamp": "2026-07-10T04:15:00+08:00",
+  "trigger": "implementation_freeze.md requires a parameterized tournament branch predictor, while core.sv still tied pred_valid_i to 1'b0 and BranchPredictor.sv was a static not-taken placeholder. This step replaces the placeholder with a real GShare+BTB predictor and connects it to fetch PC selection and fetch packet prediction metadata.",
+  "backup_dir": "backup/20260710_041500_gshare_btb_bpu",
+  "files_modified": [
+    {
+      "path": "rtl/core/frontend/BranchPredictor.sv",
+      "change_type": "new_logic",
+      "notes": "Implemented a synthesizable 5-bit global-history GShare BHT with 512 2-bit counters and a 256-entry direct-mapped BTB. The module now predicts taken only on BHT-taken plus BTB-hit and trains on committed branch/jump outcomes."
+    },
+    {
+      "path": "rtl/core/core.sv",
+      "change_type": "integration",
+      "notes": "Instantiated CoreBranchPredictor, connected predicted target to CorePcGen, forwarded prediction metadata into IromFetch2, and updates the predictor from the oldest committed branch/jump each cycle."
+    },
+    {
+      "path": "rtl/core/frontend/IromFetch2.sv",
+      "change_type": "logic_fix",
+      "notes": "Latched prediction metadata into fetch packets and masked lane1 when lane0 is predicted taken, preventing same-fetch wrong-path lane1 from entering decode."
+    },
+    {
+      "path": "scripts/filelists/core.f",
+      "change_type": "filelist_update",
+      "notes": "Added rtl/core/frontend/BranchPredictor.sv before IromFetch2/core top users."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the GShare+BTB BPU integration, the intermediate lane1 mask bug, and the verification evidence."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32ui_rv32um_rv32mi_plus_src_short_window",
+  "verification": [
+    "python3 -m json.tool docs/rtl_changes.json passed before adding this manifest entry.",
+    "git diff --check passed before adding this manifest entry.",
+    "python3 scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --max-cycles 50000 passed after the BPU port/filelist integration.",
+    "Initial BPU integration without predicted-taken lane1 masking regressed srcSmoke 200k from SEG=0x37000000 to SEG=0x07000000; this was fixed by making req_valid_mask lane0-only when req_pred_taken_i is asserted.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 timed out at the intended short cap with SEG=0x37000000, rv32i_count_from_seg=37, rv32i_fail_counter=0, dcache_access=7506, dcache_miss=6, IPC=0.539565, branch_hit_rate=0.606243.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32ui --build --max-cycles 80000 passed all RV32UI tests after the lane1 mask fix.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 80000 passed all 8 RV32UM tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32mi --build --max-cycles 80000 passed csr/sbreak/scall/zicntr."
+  ],
+  "notes": "This is not yet the full frozen tournament predictor: local history, choice PHT, RAS, speculative GHR checkpoint/recovery, and per-lane/lane1 prediction remain future work. It does remove the static not-taken placeholder and creates a real trained predictor path with safe fetch metadata and redirect recovery through the existing backend recover signal."
+},
+{
+  "timestamp": "2026-07-10T04:35:00+08:00",
+  "trigger": "implementation_freeze.md requires a tournament branch predictor with 512-entry global/GShare PHT, 512-entry local PHT plus local history, and 512-entry choice PHT. The previous BPU step had only global/GShare plus BTB, so local and choice paths were still missing.",
+  "backup_dir": "backup/20260710_043500_tournament_bpu",
+  "files_modified": [
+    {
+      "path": "rtl/core/frontend/BranchPredictor.sv",
+      "change_type": "logic_enhancement",
+      "notes": "Extended CoreBranchPredictor from GShare-only direction prediction to a global/local/choice hybrid: 512-entry global PHT, 512-entry local history table, 512-entry local PHT, and 512-entry choice PHT. BTB-hit still gates taken prediction for target safety."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the local/choice tournament BPU extension and verification evidence."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32ui_rv32um_rv32mi_plus_src_short_window",
+  "verification": [
+    "python3 -m json.tool docs/rtl_changes.json passed before adding this manifest entry.",
+    "git diff --check passed before adding this manifest entry.",
+    "python3 scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --max-cycles 50000 passed after the hybrid BPU edit.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 timed out at the intended short cap with SEG=0x37000000, rv32i_count_from_seg=37, rv32i_fail_counter=0, dcache_access=7685, dcache_miss=6, IPC=0.554260, branch_hit_rate=0.630898.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32ui --build --max-cycles 80000 passed all RV32UI tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 80000 passed all 8 RV32UM tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32mi --build --max-cycles 80000 passed csr/sbreak/scall/zicntr."
+  ],
+  "notes": "This closes the global/local/choice PHT portion of the frozen tournament predictor. Remaining BPU work is RAS integration, speculative GHR/checkpoint recovery, richer prediction metadata, and per-lane/lane1 prediction."
+},
+{
+  "timestamp": "2026-07-10T05:25:00+08:00",
+  "trigger": "implementation_freeze.md requires StoreBuffer load forwarding. The previous LSU gate forced loads to wait for the whole StoreBuffer to drain, and misaligned load completion could still arm mem_load_pending_q even though no DCache request was issued.",
+  "backup_dir": "backup/20260710_052500_store_forwarding",
+  "files_modified": [
+    {
+      "path": "rtl/core/execute/StoreBuffer.sv",
+      "change_type": "interface_and_logic_enhancement",
+      "notes": "Added a load query/forwarding path. Stores are aligned to byte lanes by their address offset, older entries are merged in queue order, and forwarding is only reported full when the merged mask covers every queried load byte."
+    },
+    {
+      "path": "rtl/core/execute/ExecuteCluster.sv",
+      "change_type": "logic_fix",
+      "notes": "Added load query generation and same-cycle completion from full StoreBuffer forwarding. Non-forwarded loads keep the old conservative empty/drain gate. Misaligned loads no longer set mem_load_pending_q without a DCache request."
+    },
+    {
+      "path": "rtl/core/backend/CoreBackend.sv",
+      "change_type": "integration",
+      "notes": "Connected ExecuteCluster load query outputs to CoreStoreBuffer forwarding outputs."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "documentation",
+      "notes": "Recorded the StoreBuffer forwarding step and verification evidence."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_rv32ui_rv32um_rv32mi_plus_src_short_window",
+  "verification": [
+    "git diff --check passed before adding this manifest entry.",
+    "python3 scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --max-cycles 50000 passed after the StoreBuffer forwarding interface change.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32ui --build --max-cycles 80000 passed all RV32UI tests.",
+    "python3 scripts/run_verilator.py src --test srcSmoke --build --max-cycles 200000 timed out at the intended short cap with SEG=0x37000000, rv32i_count_from_seg=37, rv32i_fail_counter=0, dcache_access=7077, dcache_miss=6, IPC=0.558140, branch_hit_rate=0.630836.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32um --build --max-cycles 80000 passed all 8 RV32UM tests.",
+    "python3 scripts/run_verilator.py rv32 --suite rv32mi --build --max-cycles 80000 passed csr/sbreak/scall/zicntr."
+  ],
+  "notes": "This implements the safe subset of StoreBuffer forwarding: a load can complete from fully covered older stores. Loads with no matching store still use the previous conservative empty/drain gate because DramAccessIF has no read-request accepted handshake while DCache/store drain may be busy. A fuller performance pass should add an explicit DCache request-accept contract before allowing arbitrary loads to pass pending retired stores."
+}
+]

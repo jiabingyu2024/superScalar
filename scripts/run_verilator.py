@@ -163,7 +163,13 @@ def build_verilator(target: BuildTarget, force: bool, jobs: int, cxx: str | None
     if not force and not source_newer_than_bin(target):
         return
     target.out_dir.mkdir(parents=True, exist_ok=True)
+    # The installed Verilator make rules wrap CXX with ccache.  In the
+    # workspace sandbox its default cache location can be read-only, turning
+    # an otherwise valid RTL build into a host-environment failure.  Disable
+    # only the cache; BUILD_CXX still selects the actual compiler.
     cmd = [
+        "env",
+        "CCACHE_DISABLE=1",
         "verilator",
         "-sv",
         "--cc",

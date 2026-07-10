@@ -31,6 +31,7 @@ module CoreFreeList #(
     logic [ALLOC_WIDTH-1:0] alloc_fire;
     logic [ALLOC_WIDTH-1:0] alloc_found;
     PhyRegNumPath [ALLOC_WIDTH-1:0] alloc_candidate;
+    logic [FREE_WIDTH-1:0] free_pre_fire;
     logic [FREE_WIDTH-1:0] free_fire;
     logic [PHY_REG_NUM-1:0] free_q;
     logic [PHY_REG_NUM-1:0] live_mask;
@@ -48,13 +49,18 @@ module CoreFreeList #(
             recover_live_mask[recover_map_i[r]] = 1'b1;
         end
 
+    end
+
+    // Candidate generation deliberately has no dependency on alloc_accept_i.
+    // Rename can therefore determine the current-cycle resources without a
+    // ready/valid feedback path through the FreeList.
+    always_comb begin
         alloc_taken_mask = '0;
         for (int i = 0; i < ALLOC_WIDTH; i = i + 1) begin
             alloc_found[i] = 1'b0;
             alloc_candidate[i] = '0;
             alloc_valid_o[i] = 1'b0;
             alloc_phy_o[i] = '0;
-            alloc_fire[i] = 1'b0;
         end
 
         for (int i = 0; i < ALLOC_WIDTH; i = i + 1) begin
@@ -67,37 +73,47 @@ module CoreFreeList #(
                     alloc_candidate[i] = PhyRegNumPath'(p);
                 end
             end
-            alloc_valid_o[i] = alloc_req_i[i] && alloc_found[i];
+            // Availability is independent of the requesting stage's ready path.
+            // This prevents an allocation request/response combinational loop.
+            alloc_valid_o[i] = alloc_found[i];
             alloc_phy_o[i] = alloc_candidate[i];
-            alloc_fire[i] = alloc_valid_o[i] && alloc_accept_i[i];
-            if (alloc_fire[i]) begin
+            if (alloc_req_i[i] && alloc_valid_o[i]) begin
                 alloc_taken_mask[alloc_candidate[i]] = 1'b1;
             end
         end
+    end
 
+    always_comb begin
+        for (int i = 0; i < ALLOC_WIDTH; i = i + 1) begin
+            alloc_fire[i] = alloc_req_i[i] && alloc_valid_o[i] && alloc_accept_i[i];
+        end
+
+        free_pre_fire = '0;
         for (int j = 0; j < FREE_WIDTH; j = j + 1) begin
-            logic duplicate_free;
             logic allocated_same_cycle;
 
-            duplicate_free = 1'b0;
             allocated_same_cycle = 1'b0;
-            for (int k = 0; k < j; k = k + 1) begin
-                if (free_fire[k] && (free_phy_i[k] == free_phy_i[j])) begin
-                    duplicate_free = 1'b1;
-                end
-            end
             for (int a = 0; a < ALLOC_WIDTH; a = a + 1) begin
-                if (alloc_fire[a] && (alloc_candidate[a] == free_phy_i[j])) begin
+                if (alloc_req_i[a] && alloc_valid_o[a] &&
+                    (alloc_candidate[a] == free_phy_i[j])) begin
                     allocated_same_cycle = 1'b1;
                 end
             end
 
             free_ready_o[j] = 1'b1;
-            free_fire[j] = free_valid_i[j] &&
-                           (free_phy_i[j] != '0) &&
-                           !live_mask[free_phy_i[j]] &&
-                           !duplicate_free &&
-                           !allocated_same_cycle;
+            free_pre_fire[j] = free_valid_i[j] &&
+                               (free_phy_i[j] != '0) &&
+                               !live_mask[free_phy_i[j]] &&
+                               !allocated_same_cycle;
+        end
+        free_fire = free_pre_fire;
+
+        for (int j = 0; j < FREE_WIDTH; j = j + 1) begin
+            for (int k = 0; k < j; k = k + 1) begin
+                if (free_pre_fire[k] && (free_phy_i[k] == free_phy_i[j])) begin
+                    free_fire[j] = 1'b0;
+                end
+            end
         end
 
         free_count = '0;

@@ -1,5 +1,7 @@
 `timescale 1ns / 1ps
 
+import CoreConfigPkg::*;
+
 module student_top #(
     parameter int unsigned              P_SW_CNT          = 64,
     parameter int unsigned              P_LED_CNT         = 32,
@@ -33,7 +35,19 @@ module student_top #(
     output logic [63:0]                  dbg_perf_stall_front,
     output logic [63:0]                  dbg_perf_stall_mem,
     output logic [63:0]                  dbg_perf_stall_muldiv,
-    output logic [63:0]                  dbg_perf_stall_load_use
+    output logic [63:0]                  dbg_perf_stall_load_use,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_valid,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_pc,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_inst,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_wen,
+    output logic [RETIRE_WIDTH-1:0][4:0]  dbg_commit_rd,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_wdata,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_load,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_store,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_mmio,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_trap,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_cause,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_next_pc
 `endif
 );
     logic [31:0] irom_addrA;
@@ -176,7 +190,19 @@ module student_top #(
         .dbg_perf_commit_width2_cycles(),
         .dbg_perf_int_issue_count(),
         .dbg_perf_mem_issue_count(),
-        .dbg_perf_mul_issue_count()
+        .dbg_perf_mul_issue_count(),
+        .dbg_commit_valid    (dbg_commit_valid),
+        .dbg_commit_pc       (dbg_commit_pc),
+        .dbg_commit_inst     (dbg_commit_inst),
+        .dbg_commit_wen      (dbg_commit_wen),
+        .dbg_commit_rd       (dbg_commit_rd),
+        .dbg_commit_wdata    (dbg_commit_wdata),
+        .dbg_commit_is_load  (dbg_commit_is_load),
+        .dbg_commit_is_store (dbg_commit_is_store),
+        .dbg_commit_is_mmio  (dbg_commit_is_mmio),
+        .dbg_commit_is_trap  (dbg_commit_is_trap),
+        .dbg_commit_cause    (dbg_commit_cause),
+        .dbg_commit_next_pc  (dbg_commit_next_pc)
 `endif
     );
 

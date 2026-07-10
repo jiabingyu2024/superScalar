@@ -1,0 +1,36 @@
+{
+  "cpu": "superScalarRV32",
+  "numCores": 1,
+  "cmdConfigs": [],
+  "bundles": [
+    {
+      "className": "difftest.DiffArchEvent",
+      "classArgs": {},
+      "delay": 0
+    },
+    {
+      "className": "difftest.DiffInstrCommit",
+      "classArgs": {
+        "nPhyRegs": 32
+      },
+      "delay": 0
+    },
+    {
+      "className": "difftest.DiffTrapEvent",
+      "classArgs": {},
+      "delay": 0
+    },
+    {
+      "className": "difftest.DiffCSRState",
+      "classArgs": {},
+      "delay": 0
+    },
+    {
+      "className": "difftest.DiffPhyIntRegState",
+      "classArgs": {
+        "numPhyRegs": 32
+      },
+      "delay": 0
+    }
+  ]
+}

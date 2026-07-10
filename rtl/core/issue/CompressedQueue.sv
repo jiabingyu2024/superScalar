@@ -39,7 +39,6 @@ module CoreCompressedQueue #(
 
     logic [COUNT_WIDTH-1:0] count_q;
     logic [COUNT_WIDTH-1:0] issue_count;
-    logic [COUNT_WIDTH-1:0] push_count;
     logic [COUNT_WIDTH-1:0] next_count;
     logic [DISPATCH_WIDTH-1:0] push_fire;
     logic [ISSUE_PORTS-1:0] issue_fire;
@@ -60,6 +59,9 @@ module CoreCompressedQueue #(
         end
     endfunction
 
+    // Wakeup and age-based selection are independent of the consumer ready
+    // signals.  Keeping the valid side of the interface independent avoids a
+    // ready-to-valid feedback path through the execution cluster.
     always_comb begin
         for (int e = 0; e < DEPTH; e = e + 1) begin
             ready_entry[e] = entry_q[e];
@@ -69,8 +71,6 @@ module CoreCompressedQueue #(
 
         selected_mask = '0;
         port_selected_mask = '0;
-        issue_remove = '0;
-        issue_count = '0;
         for (int p = 0; p < ISSUE_PORTS; p = p + 1) begin
             issue_valid_o[p] = 1'b0;
             issue_uop_o[p] = '0;
@@ -95,12 +95,12 @@ module CoreCompressedQueue #(
                     end
                 end
             end
+        end
+    end
 
-            if ((p != 0) && !issue_fire[p-1]) begin
-                issue_valid_o[p] = 1'b0;
-                issue_uop_o[p] = '0;
-                port_selected_mask[p] = '0;
-            end
+    always_comb begin
+        issue_count = '0;
+        for (int p = 0; p < ISSUE_PORTS; p = p + 1) begin
             issue_fire[p] = issue_valid_o[p] && issue_ready_i[p];
             if (issue_fire[p]) begin
                 issue_count = issue_count + 1'b1;
@@ -115,16 +115,16 @@ module CoreCompressedQueue #(
                 end
             end
         end
+    end
 
-        push_count = '0;
+    always_comb begin
         for (int i = 0; i < DISPATCH_WIDTH; i = i + 1) begin
-            push_ready_o[i] = ((count_q - issue_count + push_count) < DEPTH_COUNT);
+            push_ready_o[i] = ((count_q - issue_count + COUNT_WIDTH'(i)) < DEPTH_COUNT);
             push_fire[i] = push_valid_i[i] && push_ready_o[i];
-            if (push_fire[i]) begin
-                push_count = push_count + 1'b1;
-            end
         end
+    end
 
+    always_comb begin
         next_valid = '0;
         for (int n = 0; n < DEPTH; n = n + 1) begin
             next_entry[n] = '0;

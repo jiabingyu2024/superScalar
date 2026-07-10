@@ -41,7 +41,7 @@ module CoreRenameUnit (
 
     logic [RENAME_WIDTH-1:0] needs_prd;
     logic [RENAME_WIDTH-1:0] lane_fire;
-    PhyRegNumPath current_map [RENAME_WIDTH-1:0];
+    CoreRenamedUop mapped_uop [RENAME_WIDTH-1:0];
 
     function automatic PhyRegNumPath map_with_older_lane(
         input LgcRegNumPath arch,
@@ -53,10 +53,10 @@ module CoreRenameUnit (
             for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
                 if ((i < lane) &&
                     lane_fire[i] &&
-                    out_uop_o[i].alloc_prd &&
-                    (out_uop_o[i].uop.rd == arch) &&
+                    mapped_uop[i].alloc_prd &&
+                    (mapped_uop[i].uop.rd == arch) &&
                     (arch != '0)) begin
-                    mapped = out_uop_o[i].prd;
+                    mapped = mapped_uop[i].prd;
                 end
             end
             map_with_older_lane = mapped;
@@ -69,14 +69,10 @@ module CoreRenameUnit (
                            in_uop_i[i].writes_rd &&
                            (in_uop_i[i].rd != '0);
             free_alloc_req_o[i] = needs_prd[i];
-            free_alloc_accept_o[i] = 1'b0;
-            rob_alloc_valid_o[i] = 1'b0;
-            in_ready_o[i] = 1'b0;
-            out_valid_o[i] = 1'b0;
-            out_uop_o[i] = '0;
-            lane_fire[i] = 1'b0;
-            current_map[i] = srat_q[in_uop_i[i].rd];
         end
+    end
+
+    always_comb begin
         for (int r = 0; r < LOGIC_REG_NUM; r = r + 1) begin
             srat_map_o[r] = srat_q[r];
             arat_map_o[r] = arat_q[r];
@@ -86,21 +82,51 @@ module CoreRenameUnit (
                 end
             end
         end
+    end
+
+    // Register mapping and busy-table queries are independent of the dispatch
+    // ready handshake.  Only same-cycle older-lane allocation is forwarded.
+    always_comb begin
+        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
+            mapped_uop[i] = '0;
+            mapped_uop[i].valid = in_valid_i[i];
+            mapped_uop[i].uop = in_uop_i[i];
+            mapped_uop[i].rob_idx = rob_alloc_idx_i[i];
+            mapped_uop[i].prs1 = map_with_older_lane(in_uop_i[i].rs1, i);
+            mapped_uop[i].prs2 = map_with_older_lane(in_uop_i[i].rs2, i);
+            mapped_uop[i].old_prd = map_with_older_lane(in_uop_i[i].rd, i);
+            mapped_uop[i].prd = needs_prd[i] ? free_alloc_phy_i[i] : '0;
+            mapped_uop[i].alloc_prd = needs_prd[i];
+        end
+    end
+
+    always_comb begin
+        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
+            busy_query_src1_o[i] = mapped_uop[i].prs1;
+            busy_query_src2_o[i] = mapped_uop[i].prs2;
+        end
+    end
+
+    always_comb begin
+        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
+            out_uop_o[i] = mapped_uop[i];
+            out_uop_o[i].src1_ready = busy_query_src1_ready_i[i] || (mapped_uop[i].prs1 == '0);
+            out_uop_o[i].src2_ready = busy_query_src2_ready_i[i] || (mapped_uop[i].prs2 == '0);
+        end
+    end
+
+    // Allocation is committed only when the matching dispatch lane accepts it.
+    // The prefix rule keeps two-wide rename and ROB allocation in program order.
+    always_comb begin
+        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
+            free_alloc_accept_o[i] = 1'b0;
+            rob_alloc_valid_o[i] = 1'b0;
+            in_ready_o[i] = 1'b0;
+            out_valid_o[i] = 1'b0;
+            lane_fire[i] = 1'b0;
+        end
 
         for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
-            out_uop_o[i].valid = in_valid_i[i];
-            out_uop_o[i].uop = in_uop_i[i];
-            out_uop_o[i].rob_idx = rob_alloc_idx_i[i];
-            out_uop_o[i].prs1 = map_with_older_lane(in_uop_i[i].rs1, i);
-            out_uop_o[i].prs2 = map_with_older_lane(in_uop_i[i].rs2, i);
-            busy_query_src1_o[i] = out_uop_o[i].prs1;
-            busy_query_src2_o[i] = out_uop_o[i].prs2;
-            out_uop_o[i].old_prd = map_with_older_lane(in_uop_i[i].rd, i);
-            out_uop_o[i].prd = needs_prd[i] ? free_alloc_phy_i[i] : '0;
-            out_uop_o[i].alloc_prd = needs_prd[i];
-            out_uop_o[i].src1_ready = busy_query_src1_ready_i[i] || (out_uop_o[i].prs1 == '0);
-            out_uop_o[i].src2_ready = busy_query_src2_ready_i[i] || (out_uop_o[i].prs2 == '0);
-
             out_valid_o[i] = in_valid_i[i] &&
                              rob_alloc_ready_i[i] &&
                              (!needs_prd[i] || free_alloc_valid_i[i]);

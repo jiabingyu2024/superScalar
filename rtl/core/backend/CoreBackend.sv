@@ -47,6 +47,7 @@ module CoreBackend (
     CoreRenamedUop [DISPATCH_WIDTH-1:0] int_push_uop;
     CoreRenamedUop [DISPATCH_WIDTH-1:0] mem_push_uop;
     CoreRenamedUop [DISPATCH_WIDTH-1:0] mul_push_uop;
+    TubeTypePath [DISPATCH_WIDTH-1:0] dispatch_tube;
 
     logic [INT_ISSUE_WIDTH-1:0] int_issue_ready;
     logic [INT_ISSUE_WIDTH-1:0] int_issue_valid;
@@ -99,6 +100,13 @@ module CoreBackend (
     logic [3:0] store_push_mask;
     logic store_push_ready;
     logic store_buffer_empty;
+    logic load_query_valid;
+    AddrPath load_query_addr;
+    logic [3:0] load_query_mask;
+    logic load_forward_hit;
+    logic unused_load_forward_hit;
+    logic load_forward_full;
+    DataPath load_forward_data;
     logic rob_empty;
     logic serial_inflight_q;
     logic serial_alloc;
@@ -117,6 +125,7 @@ module CoreBackend (
         decode_ready_o = decode_ready_from_rename;
 
         for (int i = 0; i < DECODE_WIDTH; i = i + 1) begin
+            dispatch_tube[i] = decode_uop_i[i].tube;
             if (serial_block) begin
                 decode_valid_to_rename[i] = 1'b0;
                 decode_ready_o[i] = 1'b0;
@@ -236,6 +245,7 @@ module CoreBackend (
     CoreDispatchUnit u_dispatch (
         .in_valid_i(rename_valid),
         .in_uop_i(rename_uop),
+        .in_tube_i(dispatch_tube),
         .in_ready_o(rename_ready),
         .int_valid_o(int_push_valid),
         .mem_valid_o(mem_push_valid),
@@ -324,6 +334,11 @@ module CoreBackend (
         .store_push_mask_o(store_push_mask),
         .store_push_ready_i(store_push_ready),
         .store_buffer_empty_i(store_buffer_empty),
+        .load_query_valid_o(load_query_valid),
+        .load_query_addr_o(load_query_addr),
+        .load_query_mask_o(load_query_mask),
+        .load_forward_full_i(load_forward_full),
+        .load_forward_data_i(load_forward_data),
         .dmem(dmem)
     );
 
@@ -339,6 +354,12 @@ module CoreBackend (
         .push_ready_o(store_push_ready),
         .commit_valid_i(commit_valid),
         .commit_rob_idx_i(commit_rob_idx),
+        .load_query_valid_i(load_query_valid),
+        .load_query_addr_i(load_query_addr),
+        .load_query_mask_i(load_query_mask),
+        .load_forward_hit_o(load_forward_hit),
+        .load_forward_full_o(load_forward_full),
+        .load_forward_data_o(load_forward_data),
         .empty_o(store_buffer_empty),
         .dmem(dmem)
     );
@@ -405,4 +426,5 @@ module CoreBackend (
 
     assign commit_valid_o = commit_valid;
     assign commit_entry_o = retire_entry;
+    assign unused_load_forward_hit = load_forward_hit;
 endmodule : CoreBackend

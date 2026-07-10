@@ -217,6 +217,18 @@ void write_result_json(const Options& opt, const SimResult& result,
     }
     out << "  },\n";
     perf.write_json_fields(out);
+    if (result.has_difftest) {
+        out << ",\n";
+        out << "  \"difftest\": {\n";
+        out << "    \"mode\": \"" << json_escape(result.difftest_mode) << "\",\n";
+        out << "    \"reference_enabled\": ";
+        write_bool(out, result.difftest_reference_enabled);
+        out << ",\n";
+        out << "    \"commit_count\": " << result.difftest_commit_count << ",\n";
+        out << "    \"mmio_skip_count\": " << result.difftest_mmio_skip_count << ",\n";
+        out << "    \"last_commit_pc\": \"" << hex32(result.difftest_last_commit_pc) << "\"\n";
+        out << "  }\n";
+    }
     out << "}\n";
 }
 

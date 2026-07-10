@@ -23,6 +23,8 @@ module CoreMultiPushFifo #(
     logic [PTR_WIDTH:0] push_count;
     logic [PTR_WIDTH:0] pop_count;
     logic [PTR_WIDTH:0] push_offset [PUSH_WIDTH-1:0];
+    logic [POP_WIDTH-1:0] pop_fire;
+    logic pop_prefix_fire;
     integer i;
 
     function automatic logic [PTR_WIDTH-1:0] wrap_add(
@@ -53,15 +55,15 @@ module CoreMultiPushFifo #(
         end
 
         pop_count = '0;
+        pop_prefix_fire = 1'b1;
         for (i = 0; i < POP_WIDTH; i = i + 1) begin
-            pop_valid_o[i] = (count_q > pop_count);
-            if ((i != 0) && !pop_ready_i[i-1]) begin
-                pop_valid_o[i] = 1'b0;
-            end
-            pop_data_o[i] = mem_q[wrap_add(rd_ptr_q, pop_count)];
-            if (pop_ready_i[i] && pop_valid_o[i]) begin
+            pop_valid_o[i] = (count_q > (PTR_WIDTH+1)'(i));
+            pop_data_o[i] = mem_q[wrap_add(rd_ptr_q, (PTR_WIDTH+1)'(i))];
+            pop_fire[i] = pop_prefix_fire && pop_ready_i[i] && pop_valid_o[i];
+            if (pop_fire[i]) begin
                 pop_count = pop_count + 1'b1;
             end
+            pop_prefix_fire = pop_prefix_fire && pop_fire[i];
         end
     end
 

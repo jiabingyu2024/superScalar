@@ -22,6 +22,8 @@ module CorePcGen (
         end else if (!hold_i) begin
             if (pred_valid_i) begin
                 pc_q <= pred_pc_i;
+            end else if (pc_q[2]) begin
+                pc_q <= pc_q + 32'd4;
             end else begin
                 pc_q <= pc_q + 32'd8;
             end

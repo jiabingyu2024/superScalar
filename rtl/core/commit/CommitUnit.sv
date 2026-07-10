@@ -118,8 +118,14 @@ module CoreCommitUnit (
                     trap_take[i] = 1'b1;
                     trap_cause[i] = rob_entry_i[i].exception_cause;
                     trap_epc[i] = rob_entry_i[i].uop.pc;
-                    trap_tval[i] = (rob_entry_i[i].exception_cause == EXC_CAUSE_ILLEGAL_INST) ?
-                                   rob_entry_i[i].uop.inst : 32'b0;
+                    if (rob_entry_i[i].exception_cause == EXC_CAUSE_ILLEGAL_INST) begin
+                        trap_tval[i] = rob_entry_i[i].uop.inst;
+                    end else if ((rob_entry_i[i].exception_cause == EXC_CAUSE_LOAD_MISALIGNED) ||
+                                 (rob_entry_i[i].exception_cause == EXC_CAUSE_STORE_MISALIGNED)) begin
+                        trap_tval[i] = rob_entry_i[i].result;
+                    end else begin
+                        trap_tval[i] = 32'b0;
+                    end
                     recover_valid_o = 1'b1;
                     recover_pc_o = {mtvec_q[31:2], 2'b00};
                     stop_retire = 1'b1;

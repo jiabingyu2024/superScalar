@@ -292,6 +292,7 @@ set_property -dict [list \
     CONFIG.Write_Depth_A {4096} \
     CONFIG.Read_Width_A {32} \
     CONFIG.Read_Width_B {32} \
+    CONFIG.Assume_Synchronous_Clk {true} \
     CONFIG.Enable_A {Use_ENA_Pin} \
     CONFIG.Enable_B {Use_ENB_Pin} \
     CONFIG.Register_PortA_Output_of_Memory_Primitives {false} \

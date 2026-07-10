@@ -31,7 +31,7 @@ top.sv
 | 合同项 | 当前事实 | 修改 core 时的适配点 |
 | --- | --- | --- |
 | reset | `cpu_rst_sync` 是 CPU 域同步释放、高有效 reset，传给 `myCPU.cpu_rst`。 | 新 core 若需要低有效或异步 reset，必须在 `student_top.sv` 加 wrapper，不要直接把 `pll.locked` 接进 core。 |
-| 指令端口 | `irom_addr[31:0]` 由 core 给出，SoC 用 `irom_addr[13:2]` 作为 4 KiB word ROM 地址；`irom_ena` 控制 ROM 读；`irom_data` 返回 32 位指令。 | 改成 AXI/AHB/ready-valid 取指、改 reset PC、改 IROM 深度或改 fetch latency 时，必须同步改 `student_top.sv`、`IROM_0` Tcl 和行为模型。 |
+| 指令端口 | `irom_addrA/B[31:0]` 由 core 给出，SoC 用 `irom_addrA/B[13:2]` 作为 4 KiB word ROM 地址；`irom_enaA/B` 控制双口 ROM 读；`irom_dataA/B` 返回两路 32 位指令。 | 改成 AXI/AHB/ready-valid 取指、改 reset PC、改 IROM 深度或改 fetch latency 时，必须同步改 `student_top.sv`、`IROM_0` Tcl 和行为模型。 |
 | 数据端口 | `dmem_req_*`/`dmem_resp_*` 是单请求方向的 ready-valid 接口，当前 SoC 不支持多个 outstanding transaction。 | 新 core/DCache 若允许多个 outstanding、burst、id、乱序返回，需要重写 `SocMemBridge` 和 `DramBramAdapter`，不能只加信号。 |
 | 地址空间 | DRAM: `0x8010_0000` 到 `0x8013_ffff`；MMIO: SW/KEY/SEG/LED/CNT 在 `0x8020_xxxx`。 | 改 linker、reset PC、cacheable 区间或 MMIO 地址时，必须同时改 core/DCache 参数、`SocMemBridge` 常量、测试程序和文档。 |
 | 时钟域 | `myCPU`、IROM、DRAM、LED/SEG 寄存器在 `cpu_clk`；UART/twin/counter tick 在 50 MHz。 | 新增任何跨域读写都必须加同步或异步 FIFO，并检查 `digital_twin_cdc.xdc`。 |
@@ -61,7 +61,7 @@ SoC 侧的假设如下：
 - 写请求没有单独写响应。core/DCache 在 `req_valid && req_ready && req_write` 后就认为写已被接受。
 - 读请求通过 `resp_valid` 返回数据。当前 DRAM 读返回 1 拍；MMIO 读也由 `mmio_resp_valid_q` 打 1 拍返回。
 - `SocMemBridge` 只根据地址选择 DRAM 或 MMIO，当前没有 error response。未命中地址读返回 0，写被忽略。
-- `DCache` miss refill 会顺序发 4 个 32-bit 读请求填一条 16-byte cache line；`SocMemBridge` 不支持 burst，只看到 4 次普通单拍读。
+- `DCache` miss refill 会顺序发 8 个 32-bit 读请求填一条 32-byte cache line；`SocMemBridge` 不支持 burst，只看到 8 次普通单拍读。
 
 如果后续替换或大改 `myCPU`，必须先回答这几个问题：
 
@@ -77,7 +77,7 @@ SoC 侧的假设如下：
 
 | IP | Verilator 行为模型 | Vivado Tcl 当前参数 | RTL 消费方合同 | 修改时必须同步检查 |
 | --- | --- | --- | --- | --- |
-| `IROM_0` | `rtl/ip/IROM_0.sv` 在 `ena/enb` 时分别用 `clka/clkb` 锁存 `addra/addrb`，`douta/doutb = mem[addr*_q]`。取指侧按 1 拍 ROM 读延迟使用。 | `Dual_Port_ROM`，A/B 端口同接 CPU 时钟，均使用 enable pin，A/B 端口输出寄存器均关闭。 | `rtl/soc/student_top.sv` 连接 CPU `irom_addrA/B`、`irom_dataA/B`、`irom_enaA/B`，并把 `clka/clkb` 都接到 `w_cpu_clk`。CPU 取指状态机默认下一拍可用。 | 若打开 ROM 输出寄存器、改成更深 pipeline 或让 A/B 口异步时钟，必须调整 CPU fetch/PC 对齐逻辑，并同步改 `rtl/ip/IROM_0.sv`。 |
+| `IROM_0` | `rtl/ip/IROM_0.sv` 在 `ena/enb` 时分别用 `clka/clkb` 锁存 `addra/addrb`，`douta/doutb = mem[addr*_q]`。取指侧按 1 拍 ROM 读延迟使用。 | `Dual_Port_ROM`，`Assume_Synchronous_Clk=true`，A/B 端口同接 CPU 时钟，均使用 enable pin，A/B 端口输出寄存器均关闭。 | `rtl/soc/student_top.sv` 连接 CPU `irom_addrA/B`、`irom_dataA/B`、`irom_enaA/B`，并把 `clka/clkb` 都接到 `w_cpu_clk`。CPU 取指状态机默认下一拍可用。 | 若打开 ROM 输出寄存器、改成更深 pipeline 或让 A/B 口异步时钟，必须调整 CPU fetch/PC 对齐逻辑，并同步改 `rtl/ip/IROM_0.sv`。 |
 | `DRAM_0` | `rtl/ip/DRAM_0.sv` 读请求后两拍更新 `douta`，行为模型是 2 拍读返回。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=true`，`Register_PortA_Output_of_Memory_Core=false`。FPGA DRAM 目标 `READ_LATENCY=2`。 | `rtl/soc/DramBramAdapter.sv` 当前把读响应和 byte offset 延后 2 拍。 | 若打开任意输出寄存器或增加 pipeline，必须先确认生成 wrapper 的 `C_READ_LATENCY_A`，再同步调整 adapter 和 `rtl/ip/DRAM_0.sv`。 |
 | `MUL_0` | `rtl/ip/MUL_0.sv` 是 33x33 signed multiplier，`pipe0/pipe1/P` 共 3 级寄存输出。 | `mult_gen`，`PipeStages=3`，33 位 signed 输入，自定义 66 位输出。 | `rtl/core/execute/MulDivUnit.sv` 用 `mul_count_q` 等待固定乘法结果拍数。 | 若 Tcl `PipeStages` 改变，必须同步改 `MUL_0.sv` pipeline 深度和 `MulDivUnit.sv` 的等待计数。 |
 | `DIV_0` | `rtl/ip/DIV_0.sv` 固定 `DIV_LATENCY=34`，AXI-stream valid 管线后输出 `{quotient, remainder}`。 | `div_gen`，`Latency_Configuration=Manual`，`Latency=34`，`FlowControl=Blocking`，unsigned radix-2 divider，remainder mode。 | `rtl/core/execute/MulDivUnit.sv` 等待 `m_axis_dout_tvalid`，并按 Vivado 2023.2 生成 demo TB 的约定解包：`div_data[63:32]=quotient`、`div_data[31:0]=remainder`。 | 若 Tcl `Latency`、`FlowControl` 或 output packing 改变，必须同步改 `DIV_0.sv`，并检查 `MulDivUnit.sv` 是否还满足握手和选位协议。 |
@@ -141,14 +141,14 @@ DRAM byte lane 合同也不能改错：
 当前取指路径是“裸 ROM + core 自己控制 PC”的合同：
 
 ```text
-cycle N:   core 拉高 irom_ena，并给出 irom_addr
-cycle N+1: IROM_0 输出 cycle N 地址对应的 irom_data
+cycle N:   core 拉高 irom_enaA/B，并给出 irom_addrA/B
+cycle N+1: IROM_0 输出 cycle N 地址对应的 irom_dataA/B
 ```
 
-当前 `riscv_cpu.sv` 直接在 `ST_EXEC` 使用 `irom_data` 作为 `exec_inst_c`，并在等待 load/muldiv 时继续预取 `pred_next_pc_c`。这意味着 IROM latency、PC 更新和分支重定向是绑在一起的。修改时必须注意：
+当前 core 取指侧把 `irom_dataA/B` 当作固定 1 拍 ROM 返回来消费，PC 更新、双发对齐和分支重定向都依赖这个 latency 合同。修改时必须注意：
 
 - 如果 IROM 仍是 1 拍，`student_top.sv` 只需要保持 `irom_word_addrA/B = irom_addrA/B[13:2]` 和 `IROM_0.ena/enb=irom_enaA/B`。
-- 如果 IROM 改成 2 拍或更多，core fetch 状态机必须显式增加等待/valid 对齐；不能只在 `student_top` 里给 `irom_data` 再打一拍。
+- 如果 IROM 改成 2 拍或更多，core fetch 状态机必须显式增加等待/valid 对齐；不能只在 `student_top` 里给 `irom_dataA/B` 再打一拍。
 - 如果新 core 需要 `irom_resp_valid`、`irom_req_ready` 或 instruction bus stall，SoC 必须给 IROM 包一层 adapter；当前 `myCPU` 端口没有这些信号。
 - 如果 IROM depth 改变，必须同步改三处：Tcl `Write_Depth_A`、`rtl/ip/IROM_0.sv ADDR_WIDTH` 或加载文件大小、`student_top.sv irom_word_addr` 位宽/截位。
 - 如果 reset PC 改到 IROM 以外，必须同步修改 COE 生成、linker/测试程序地址、`DCache` cacheable 区间和 SoC 地址译码。

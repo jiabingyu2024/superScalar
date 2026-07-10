@@ -25,14 +25,20 @@ module CoreMulDivPipe #(
         MD_SPECIAL
     } MdState;
 
-    localparam int MUL_COUNT_WIDTH = (MUL_LATENCY <= 1) ? 1 : $clog2(MUL_LATENCY);
+    localparam int MUL_COUNT_WIDTH = (MUL_LATENCY <= 1) ? 1 : $clog2(MUL_LATENCY + 1);
 
     MdState state_q;
     CoreRenamedUop active_uop_q;
     CoreMulDivOp active_op_q;
     logic [MUL_COUNT_WIDTH-1:0] mul_count_q;
+    logic signed [32:0] active_mul_a_q;
+    logic signed [32:0] active_mul_b_q;
+    DataPath div_abs_a_q;
+    DataPath div_abs_b_q;
+    logic div_start_q;
     logic div_quot_neg_q;
     logic div_rem_neg_q;
+    logic div_drain_q;
     DataPath special_result_q;
 
     logic start;
@@ -99,8 +105,9 @@ module CoreMulDivPipe #(
         end
     endfunction
 
+    assign ready_o = (state_q == MD_IDLE) && !clear_i && !div_drain_q;
+
     always_comb begin
-        ready_o = (state_q == MD_IDLE) && !clear_i;
         start = valid_i && ready_o;
         start_mul = start && is_mul_op(uop_i.uop.muldiv_op);
         start_div = start && is_div_op(uop_i.uop.muldiv_op);
@@ -149,7 +156,7 @@ module CoreMulDivPipe #(
         complete_uop_o = active_uop_q;
         complete_result_o = 32'b0;
 
-        if (state_q == MD_MUL_WAIT && mul_count_q == '0) begin
+        if (!clear_i && state_q == MD_MUL_WAIT && mul_count_q == '0) begin
             complete_valid_o = 1'b1;
             unique case (active_op_q)
                 MULDIV_OP_MUL:    complete_result_o = mul_product[31:0];
@@ -158,10 +165,10 @@ module CoreMulDivPipe #(
                 MULDIV_OP_MULHU:  complete_result_o = mul_product[63:32];
                 default:          complete_result_o = 32'b0;
             endcase
-        end else if (state_q == MD_DIV_WAIT && div_valid) begin
+        end else if (!clear_i && state_q == MD_DIV_WAIT && div_valid) begin
             complete_valid_o = 1'b1;
             complete_result_o = div_result;
-        end else if (state_q == MD_SPECIAL) begin
+        end else if (!clear_i && state_q == MD_SPECIAL) begin
             complete_valid_o = 1'b1;
             complete_result_o = special_result_q;
         end
@@ -169,19 +176,19 @@ module CoreMulDivPipe #(
 
     MUL_0 u_mul (
         .CLK(clk),
-        .A(mul_a),
-        .B(mul_b),
+        .A(active_mul_a_q),
+        .B(active_mul_b_q),
         .P(mul_product)
     );
 
     DIV_0 u_div (
         .aclk(clk),
-        .s_axis_dividend_tvalid(div_start),
+        .s_axis_dividend_tvalid(div_start_q),
         .s_axis_dividend_tready(),
-        .s_axis_dividend_tdata(div_abs_a),
-        .s_axis_divisor_tvalid(div_start),
+        .s_axis_dividend_tdata(div_abs_a_q),
+        .s_axis_divisor_tvalid(div_start_q),
         .s_axis_divisor_tready(),
-        .s_axis_divisor_tdata(div_abs_b),
+        .s_axis_divisor_tdata(div_abs_b_q),
         .m_axis_dout_tvalid(div_valid),
         .m_axis_dout_tdata(div_data)
     );
@@ -192,25 +199,43 @@ module CoreMulDivPipe #(
             active_uop_q <= '0;
             active_op_q <= MULDIV_OP_NONE;
             mul_count_q <= '0;
+            active_mul_a_q <= '0;
+            active_mul_b_q <= '0;
+            div_abs_a_q <= '0;
+            div_abs_b_q <= '0;
+            div_start_q <= 1'b0;
             div_quot_neg_q <= 1'b0;
             div_rem_neg_q <= 1'b0;
+            div_drain_q <= 1'b0;
             special_result_q <= 32'b0;
         end else if (clear_i) begin
             state_q <= MD_IDLE;
             active_uop_q <= '0;
             active_op_q <= MULDIV_OP_NONE;
             mul_count_q <= '0;
+            active_mul_a_q <= '0;
+            active_mul_b_q <= '0;
+            div_abs_a_q <= '0;
+            div_abs_b_q <= '0;
+            div_start_q <= 1'b0;
             div_quot_neg_q <= 1'b0;
             div_rem_neg_q <= 1'b0;
+            div_drain_q <= ((div_drain_q || (state_q == MD_DIV_WAIT)) && !div_valid);
             special_result_q <= 32'b0;
         end else begin
+            div_start_q <= 1'b0;
+            if (div_drain_q && div_valid) begin
+                div_drain_q <= 1'b0;
+            end
             unique case (state_q)
                 MD_IDLE: begin
                     if (start_mul) begin
                         state_q <= MD_MUL_WAIT;
                         active_uop_q <= uop_i;
                         active_op_q <= uop_i.uop.muldiv_op;
-                        mul_count_q <= MUL_COUNT_WIDTH'(MUL_LATENCY - 1);
+                        active_mul_a_q <= mul_a;
+                        active_mul_b_q <= mul_b;
+                        mul_count_q <= MUL_COUNT_WIDTH'(MUL_LATENCY);
                     end else if (start_div) begin
                         active_uop_q <= uop_i;
                         active_op_q <= uop_i.uop.muldiv_op;
@@ -223,6 +248,9 @@ module CoreMulDivPipe #(
                             special_result_q <= div_special_result;
                         end else begin
                             state_q <= MD_DIV_WAIT;
+                            div_abs_a_q <= div_abs_a;
+                            div_abs_b_q <= div_abs_b;
+                            div_start_q <= div_start;
                         end
                     end
                 end

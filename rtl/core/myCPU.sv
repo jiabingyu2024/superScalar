@@ -83,7 +83,19 @@ module myCPU (
     output logic [63:0] dbg_perf_commit_width2_cycles,
     output logic [63:0] dbg_perf_int_issue_count,
     output logic [63:0] dbg_perf_mem_issue_count,
-    output logic [63:0] dbg_perf_mul_issue_count
+    output logic [63:0] dbg_perf_mul_issue_count,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_valid,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_pc,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_inst,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_wen,
+    output logic [RETIRE_WIDTH-1:0][4:0]  dbg_commit_rd,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_wdata,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_load,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_store,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_mmio,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_trap,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_cause,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_next_pc
 `endif
 );
 
@@ -91,6 +103,17 @@ module myCPU (
     DramAccessIF dromAccess(cpu_clk, cpu_rst);
     DebugIF      debugIF(cpu_clk, cpu_rst);
     PerfIF       perfIF(cpu_clk, cpu_rst);
+    logic        cache_cpu_req_valid;
+    logic        cache_cpu_req_ready;
+    logic        cache_cpu_req_write;
+    AddrPath     cache_cpu_req_addr;
+    DataPath     cache_cpu_req_wdata;
+    logic [3:0]  cache_cpu_req_wstrb;
+    logic        cache_cpu_resp_valid;
+    DataPath     cache_cpu_resp_rdata;
+    logic [63:0] dcache_access;
+    logic [63:0] dcache_miss;
+    logic [63:0] dcache_stall;
 
     assign debugIF.halt = 1'b0;
 
@@ -104,16 +127,42 @@ module myCPU (
         iromAccess.inst[1] = irom_dataB;
     end
 
-    always_comb begin
-        dmem_req_valid = dromAccess.readEn || dromAccess.writeEn;
-        dmem_req_write = dromAccess.writeEn;
-        dmem_req_addr = dmem_req_valid ? dromAccess.accessAddr : '0;
-        dmem_req_wdata = dromAccess.writeData;
-        dmem_req_wstrb = dromAccess.writeEn ? dromAccess.writeMask : '0;
-        dmem_req_uncached = 1'b1;
+    assign cache_cpu_req_valid = dromAccess.readEn || dromAccess.writeEn;
+    assign cache_cpu_req_write = dromAccess.writeEn;
+    assign cache_cpu_req_addr = cache_cpu_req_valid ? dromAccess.accessAddr : '0;
+    assign cache_cpu_req_wdata = dromAccess.writeData;
+    assign cache_cpu_req_wstrb = dromAccess.writeEn ? dromAccess.writeMask : '0;
 
-        dromAccess.readData = dmem_resp_rdata;
-        dromAccess.accessReady = dromAccess.writeEn ? dmem_req_ready : dmem_resp_valid;
+    CoreDCache u_dcache (
+        .clk             (cpu_clk),
+        .rst             (cpu_rst),
+        .cpu_req_valid   (cache_cpu_req_valid),
+        .cpu_req_ready   (cache_cpu_req_ready),
+        .cpu_req_write   (cache_cpu_req_write),
+        .cpu_req_addr    (cache_cpu_req_addr),
+        .cpu_req_wdata   (cache_cpu_req_wdata),
+        .cpu_req_wstrb   (cache_cpu_req_wstrb),
+        .cpu_req_uncached(1'b0),
+        .cpu_resp_valid  (cache_cpu_resp_valid),
+        .cpu_resp_rdata  (cache_cpu_resp_rdata),
+        .mem_req_valid   (dmem_req_valid),
+        .mem_req_ready   (dmem_req_ready),
+        .mem_req_write   (dmem_req_write),
+        .mem_req_addr    (dmem_req_addr),
+        .mem_req_wdata   (dmem_req_wdata),
+        .mem_req_wstrb   (dmem_req_wstrb),
+        .mem_req_uncached(dmem_req_uncached),
+        .mem_resp_valid  (dmem_resp_valid),
+        .mem_resp_rdata  (dmem_resp_rdata),
+        .perf_access_o   (dcache_access),
+        .perf_miss_o     (dcache_miss),
+        .perf_stall_o    (dcache_stall)
+    );
+
+    always_comb begin
+        dromAccess.readData = cache_cpu_resp_rdata;
+        dromAccess.accessReady = dromAccess.writeEn ? cache_cpu_req_ready :
+                                 cache_cpu_resp_valid;
     end
 
 `ifdef VERILATOR_TB
@@ -123,10 +172,12 @@ module myCPU (
     assign dbg_perf_branch_miss = perfIF.branchMissCnt;
     assign dbg_perf_load = 64'd0;
     assign dbg_perf_store = 64'd0;
-    assign dbg_perf_dcache_access = 64'd0;
-    assign dbg_perf_dcache_miss = 64'd0;
+    assign dbg_perf_dcache_access = dcache_access;
+    assign dbg_perf_dcache_miss = dcache_miss;
     assign dbg_perf_stall_front = perfIF.frontendStallCycles;
-    assign dbg_perf_stall_mem = perfIF.memLoadAccessBlockCycles + perfIF.memLoadReturnBlockCycles;
+    assign dbg_perf_stall_mem = perfIF.memLoadAccessBlockCycles +
+                                perfIF.memLoadReturnBlockCycles +
+                                dcache_stall;
     assign dbg_perf_stall_muldiv = 64'd0;
     assign dbg_perf_stall_load_use = 64'd0;
     assign dbg_perf_cond_branch = perfIF.condBranchCnt;
@@ -182,6 +233,21 @@ module myCPU (
         .dromAccess (dromAccess),
         .debug      (debugIF),
         .perf       (perfIF)
+`ifdef VERILATOR_TB
+        ,
+        .dbg_commit_valid  (dbg_commit_valid),
+        .dbg_commit_pc     (dbg_commit_pc),
+        .dbg_commit_inst   (dbg_commit_inst),
+        .dbg_commit_wen    (dbg_commit_wen),
+        .dbg_commit_rd     (dbg_commit_rd),
+        .dbg_commit_wdata  (dbg_commit_wdata),
+        .dbg_commit_is_load(dbg_commit_is_load),
+        .dbg_commit_is_store(dbg_commit_is_store),
+        .dbg_commit_is_mmio(dbg_commit_is_mmio),
+        .dbg_commit_is_trap(dbg_commit_is_trap),
+        .dbg_commit_cause  (dbg_commit_cause),
+        .dbg_commit_next_pc(dbg_commit_next_pc)
+`endif
     );
 
 endmodule

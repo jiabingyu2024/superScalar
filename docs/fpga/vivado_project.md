@@ -329,7 +329,7 @@ Tcl 只收集：
 | IP module | Vivado IP | 作用 | 关键参数 |
 | --- | --- | --- | --- |
 | `pll` | `clk_wiz` | 生成系统时钟和 CPU 时钟 | 默认输入 200 MHz，输出 `FPGA_SYS_CLK_MHZ/FPGA_CPU_CLK_MHZ`，可由环境变量覆盖。 |
-| `IROM_0` | `blk_mem_gen` | 16 KiB 双口 ROM | 32 bit 宽，4096 深度，A/B 口同接 CPU 时钟，加载当前 profile 的 `irom.coe`，查找路径见上节。 |
+| `IROM_0` | `blk_mem_gen` | 16 KiB 双口 ROM | 32 bit 宽，4096 深度，`Assume_Synchronous_Clk=true`，A/B 口同接 CPU 时钟，加载当前 profile 的 `irom.coe`，查找路径见上节。 |
 | `DRAM_0` | `blk_mem_gen` | 256 KiB 单口 RAM | 32 bit 宽，65536 深度，byte write enable，加载当前 profile 的 `dram.coe`，查找路径见上节。 |
 | `MUL_0` | `mult_gen` | core 内唯一硬件乘法器 | signed 33x33，parallel multiplier，speed 优先，3 级 pipeline，66 bit 输出。 |
 | `DIV_0` | `div_gen` | core 内唯一硬件除法器 | unsigned 32/32，Radix-2，remainder 输出，1 clock/division，34 级 pipeline。 |

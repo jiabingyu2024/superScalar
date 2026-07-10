@@ -34,10 +34,14 @@ module uart #(
     input wire tx_start,
     output reg tx_busy
 );
-    localparam BAUD_DIV = CLK_FREQ / BAUD_RATE;
+    localparam integer BAUD_DIV = CLK_FREQ / BAUD_RATE;
+    localparam integer BAUD_CNT_WIDTH =
+        (BAUD_DIV <= 1) ? 1 : $clog2(BAUD_DIV);
+    localparam logic [BAUD_CNT_WIDTH-1:0] BAUD_DIV_LAST = BAUD_CNT_WIDTH'(BAUD_DIV - 1);
+    localparam logic [BAUD_CNT_WIDTH-1:0] BAUD_DIV_MID  = BAUD_CNT_WIDTH'(BAUD_DIV >> 1);
 
     reg [1:0] rx_state;
-    reg [12:0] rx_cnt;
+    reg [BAUD_CNT_WIDTH-1:0] rx_cnt;
     reg [7:0] rx_shift;
     reg rx_d0, rx_d1, rx_d2;
 
@@ -57,7 +61,7 @@ module uart #(
 
     reg [3:0] rx_bit_cnt;
     reg rx_ready_pulse;
-    reg [15:0] rx_ready_cnt;
+    reg [BAUD_CNT_WIDTH-1:0] rx_ready_cnt;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -73,19 +77,19 @@ module uart #(
                 0: begin
                     if(rx_negedge) begin
                         rx_state <= 1;
-                        rx_cnt <= BAUD_DIV >> 1;
+                        rx_cnt <= BAUD_DIV_MID;
                         rx_bit_cnt <= 0;
                     end
                 end
                 1: begin
-                    if(rx_cnt == BAUD_DIV-1) begin
+                    if(rx_cnt == BAUD_DIV_LAST) begin
                         rx_cnt <= 0;
                         rx_state <= 2;
                     end else
                         rx_cnt <= rx_cnt + 1;
                 end
                 2: begin
-                    if(rx_cnt == BAUD_DIV-1) begin
+                    if(rx_cnt == BAUD_DIV_LAST) begin
                         rx_cnt <= 0;
                         rx_shift <= {rx_d2, rx_shift[7:1]};
                         if(rx_bit_cnt == 7)
@@ -96,7 +100,7 @@ module uart #(
                         rx_cnt <= rx_cnt + 1;
                 end
                 3: begin
-                    if(rx_cnt == BAUD_DIV-1) begin
+                    if(rx_cnt == BAUD_DIV_LAST) begin
                         rx_cnt <= 0;
                         rx_state <= 0;
                         rx_data <= rx_shift;
@@ -120,7 +124,7 @@ module uart #(
                 rx_ready <= 1'b1;
                 rx_ready_cnt <= 0;
             end else if (rx_ready) begin
-                if (rx_ready_cnt < BAUD_DIV - 1) begin
+                if (rx_ready_cnt < BAUD_DIV_LAST) begin
                     rx_ready_cnt <= rx_ready_cnt + 1;
                 end else begin
                     rx_ready <= 1'b0;
@@ -131,7 +135,7 @@ module uart #(
 
     // tx state machine
     reg [3:0] tx_state;
-    reg [12:0] tx_cnt;
+    reg [BAUD_CNT_WIDTH-1:0] tx_cnt;
     reg [3:0] tx_bit_cnt;
     reg [9:0] tx_shift;
 
@@ -156,7 +160,7 @@ module uart #(
                     end
                 end
                 1: begin
-                    if(tx_cnt == BAUD_DIV-1) begin
+                    if(tx_cnt == BAUD_DIV_LAST) begin
                         tx_cnt <= 0;
                         tx <= tx_shift[0];
                         tx_shift <= {1'b1, tx_shift[9:1]};
