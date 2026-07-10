@@ -18,10 +18,12 @@ module CoreSkidBuffer #(
     assign out_valid_o = full_q ? 1'b1 : in_valid_i;
     assign out_data_o  = full_q ? data_q : in_data_i;
 
+    // data_q is selected only while full_q is set; reset only the state bit.
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
             full_q <= 1'b0;
-            data_q <= '0;
+        end else if (clear_i) begin
+            full_q <= 1'b0;
         end else begin
             if (in_valid_i && in_ready_o && !out_ready_i) begin
                 full_q <= 1'b1;

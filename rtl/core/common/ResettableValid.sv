@@ -9,7 +9,9 @@ module CoreResettableValid #(
     output logic [ENTRIES-1:0] valid_o
 );
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
+            valid_o <= '0;
+        end else if (clear_i) begin
             valid_o <= '0;
         end else begin
             valid_o <= (valid_o | set_i) & ~clr_i;

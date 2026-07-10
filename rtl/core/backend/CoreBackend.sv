@@ -364,19 +364,14 @@ module CoreBackend (
         .dmem(dmem)
     );
 
+    // Only valid carries reset/flush state. Completion payload is ignored while
+    // valid is low and is overwritten on the next active cycle. Keeping the
+    // wide payload off reset reduces FPGA control-set and reset-fanout cost.
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i || recover_i) begin
+        if (rst) begin
             complete_valid <= '0;
-            complete_rob_idx <= '0;
-            complete_prd <= '0;
-            complete_result <= '0;
-            complete_exception <= '0;
-            complete_exception_cause <= '0;
-            complete_branch_miss <= '0;
-            complete_redirect_pc <= '0;
-            complete_csr_write <= '0;
-            complete_csr_addr <= '0;
-            complete_csr_wdata <= '0;
+        end else if (clear_i || recover_i) begin
+            complete_valid <= '0;
         end else begin
             complete_valid <= exec_complete_valid;
             complete_rob_idx <= exec_complete_rob_idx;
@@ -411,7 +406,9 @@ module CoreBackend (
     );
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i || recover_i) begin
+        if (rst) begin
+            serial_inflight_q <= 1'b0;
+        end else if (clear_i || recover_i) begin
             serial_inflight_q <= 1'b0;
         end else begin
             serial_inflight_q <= (serial_inflight_q || serial_alloc) && !serial_retire;

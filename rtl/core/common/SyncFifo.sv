@@ -25,7 +25,11 @@ module CoreSyncFifo #(
     assign pop_data_o = mem_q[rd_ptr_q];
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
+            rd_ptr_q <= '0;
+            wr_ptr_q <= '0;
+            count_q  <= '0;
+        end else if (clear_i) begin
             rd_ptr_q <= '0;
             wr_ptr_q <= '0;
             count_q  <= '0;

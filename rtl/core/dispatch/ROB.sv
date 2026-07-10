@@ -141,14 +141,18 @@ module CoreROB #(
     assign empty_o = (count_q == '0);
     assign full_o = (count_q == ROB_DEPTH_COUNT);
 
+    // head/tail/count define ownership of entry_q. Empty entries are never
+    // offered for retirement, and allocation overwrites every payload field,
+    // so resetting the wide ROB array only adds a large FPGA reset network.
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
             head_q <= '0;
             tail_q <= '0;
             count_q <= '0;
-            for (int i = 0; i < ROB_DEPTH; i = i + 1) begin
-                entry_q[i] <= '0;
-            end
+        end else if (clear_i) begin
+            head_q <= '0;
+            tail_q <= '0;
+            count_q <= '0;
         end else begin
             for (int a = 0; a < ALLOC_WIDTH; a = a + 1) begin
                 if (alloc_fire[a]) begin

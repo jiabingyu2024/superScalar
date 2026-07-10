@@ -20,7 +20,9 @@ module CoreReturnStack #(
     assign top_pc_o = stack_q[(count_q == '0) ? '0 : count_q[PTR_WIDTH-1:0] - 1'b1];
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
+            count_q <= '0;
+        end else if (clear_i) begin
             count_q <= '0;
         end else begin
             if (push_i && (count_q < DEPTH[PTR_WIDTH:0])) begin

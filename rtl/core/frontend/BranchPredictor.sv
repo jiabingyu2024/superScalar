@@ -116,14 +116,9 @@ module CoreBranchPredictor (
             end
             for (int b = 0; b < BTB_ENTRIES; b = b + 1) begin
                 btb_valid_q[b] <= 1'b0;
-                btb_uncond_q[b] <= 1'b0;
-                btb_return_q[b] <= 1'b0;
-                btb_tag_q[b] <= '0;
-                btb_target_q[b] <= '0;
             end
-            for (int r = 0; r < RAS_DEPTH; r = r + 1) begin
-                ras_q[r] <= '0;
-            end
+            // BTB payload is protected by btb_valid_q, and RAS payload by
+            // ras_count_q. Avoid resetting those wide arrays on FPGA.
         end else if (update_valid_i) begin
             if (update_taken_i) begin
                 btb_valid_q[update_btb_idx] <= 1'b1;

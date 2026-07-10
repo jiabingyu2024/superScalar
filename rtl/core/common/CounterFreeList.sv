@@ -36,7 +36,14 @@ module CoreCounterFreeList #(
     assign do_free = free_i && (count_q != DEPTH[PTR_WIDTH:0]);
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
+            rd_ptr_q <= '0;
+            wr_ptr_q <= '0;
+            count_q <= DEPTH[PTR_WIDTH:0];
+            for (int i = 0; i < DEPTH; i = i + 1) begin
+                mem_q[i] <= WIDTH'(FIRST_FREE + i);
+            end
+        end else if (clear_i) begin
             rd_ptr_q <= '0;
             wr_ptr_q <= '0;
             count_q <= DEPTH[PTR_WIDTH:0];

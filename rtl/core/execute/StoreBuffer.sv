@@ -173,8 +173,12 @@ module CoreStoreBuffer (
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             count_q <= '0;
+            // Only validity is observed after reset. Payload is overwritten by
+            // next_entry before an entry becomes visible, avoiding a wide
+            // asynchronous reset network on the store buffer.
             for (int i = 0; i < STORE_BUF_DEPTH; i = i + 1) begin
-                entry_q[i] <= '0;
+                entry_q[i].valid <= 1'b0;
+                entry_q[i].retired <= 1'b0;
             end
         end else begin
             for (int i = 0; i < STORE_BUF_DEPTH; i = i + 1) begin

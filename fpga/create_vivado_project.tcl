@@ -14,17 +14,25 @@
 #   FPGA_FLATTEN_HIERARCHY=none
 #   FPGA_KEEP_EQUIVALENT_REGISTERS=true
 #   FPGA_ENABLE_POWER_OPT=false
+#   FPGA_BUILD_TAG=implfix_p0
 
 set script_dir [file normalize [file dirname [info script]]]
 set repo_dir   [file normalize [file join $script_dir ..]]
 
 set project_name digital_twin
 set mem_profile src0
+set build_tag ""
 if {[info exists ::env(FPGA_MEM_PROFILE)]} {
     set mem_profile $::env(FPGA_MEM_PROFILE)
 }
 if {[info exists argv] && [llength $argv] >= 1} {
     set mem_profile [lindex $argv 0]
+}
+if {[info exists ::env(FPGA_BUILD_TAG)]} {
+    set build_tag $::env(FPGA_BUILD_TAG)
+}
+if {$build_tag ne "" && ![regexp {^[A-Za-z0-9_.-]+$} $build_tag]} {
+    error "FPGA_BUILD_TAG may contain only letters, digits, dot, underscore, and dash"
 }
 
 set part xc7k325tffg900-2
@@ -55,6 +63,13 @@ if {[info exists ::env(FPGA_KEEP_EQUIVALENT_REGISTERS)]} {
 }
 if {[info exists ::env(FPGA_ENABLE_POWER_OPT)]} {
     set enable_power_opt $::env(FPGA_ENABLE_POWER_OPT)
+}
+foreach {setting_name setting_value} [list \
+    FPGA_KEEP_EQUIVALENT_REGISTERS $keep_equivalent_registers \
+    FPGA_ENABLE_POWER_OPT $enable_power_opt] {
+    if {![string is boolean -strict $setting_value]} {
+        error "$setting_name must be a Tcl boolean, got: $setting_value"
+    }
 }
 
 proc first_existing_dir {candidates description} {
@@ -170,7 +185,11 @@ foreach required_file [list $irom_coe $dram_coe $xdc_file] {
     }
 }
 
-set project_dir [file normalize [file join $script_dir build ${project_name}_${mem_profile}]]
+set project_suffix $mem_profile
+if {$build_tag ne ""} {
+    append project_suffix _ $build_tag
+}
+set project_dir [file normalize [file join $script_dir build ${project_name}_${project_suffix}]]
 create_project -force $project_name $project_dir -part $part
 
 set_property target_language Verilog [current_project]
@@ -347,6 +366,8 @@ file mkdir $cdc_constraint_dir
 set cdc_xdc_file [file join $cdc_constraint_dir digital_twin_cdc.xdc]
 write_cdc_constraint_file $cdc_xdc_file
 add_files -fileset constrs_1 $cdc_xdc_file
+set_property USED_IN_SYNTHESIS false [get_files $cdc_xdc_file]
+set_property USED_IN_IMPLEMENTATION true [get_files $cdc_xdc_file]
 set_property PROCESSING_ORDER LATE [get_files $cdc_xdc_file]
 
 generate_target all [get_ips]
@@ -356,6 +377,13 @@ update_compile_order -fileset sim_1
 
 puts "Created Vivado project: [file join $project_dir ${project_name}.xpr]"
 puts "Memory profile: $mem_profile ($coe_dir)"
+puts "Build tag: [expr {$build_tag eq "" ? "<none>" : $build_tag}]"
 puts "Synthesis flatten hierarchy: $flatten_hierarchy"
+puts "Keep equivalent registers: [get_property STEPS.SYNTH_DESIGN.ARGS.KEEP_EQUIVALENT_REGISTERS [get_runs synth_1]]"
+puts "Power optimization enabled: [get_property STEPS.POWER_OPT_DESIGN.IS_ENABLED [get_runs impl_1]]"
+puts "Post-place power optimization enabled: [get_property STEPS.POST_PLACE_POWER_OPT_DESIGN.IS_ENABLED [get_runs impl_1]]"
+puts "CDC used in synthesis: [get_property USED_IN_SYNTHESIS [get_files $cdc_xdc_file]]"
+puts "CDC used in implementation: [get_property USED_IN_IMPLEMENTATION [get_files $cdc_xdc_file]]"
+puts "CDC processing order: [get_property PROCESSING_ORDER [get_files $cdc_xdc_file]]"
 puts "Sanity reports will be written under: [file join $project_dir reports]"
 puts "Open the .xpr in Vivado, then run synthesis and implementation from the GUI."

@@ -19,7 +19,11 @@ module CoreRat (
     assign rdata1_o = map_q[raddr1_i];
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
+            for (int i = 0; i < LOGIC_REG_NUM; i = i + 1) begin
+                map_q[i] <= PhyRegNumPath'(i);
+            end
+        end else if (clear_i) begin
             for (int i = 0; i < LOGIC_REG_NUM; i = i + 1) begin
                 map_q[i] <= PhyRegNumPath'(i);
             end

@@ -70,7 +70,11 @@ module CoreMultiPushFifo #(
     assign count_o = count_q;
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
+            rd_ptr_q <= '0;
+            wr_ptr_q <= '0;
+            count_q  <= '0;
+        end else if (clear_i) begin
             rd_ptr_q <= '0;
             wr_ptr_q <= '0;
             count_q  <= '0;

@@ -51,7 +51,11 @@ module CoreBusyTable #(
     end
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
+            for (int i = 0; i < PHY_REG_NUM; i = i + 1) begin
+                ready_q[i] <= (i < LOGIC_REG_NUM);
+            end
+        end else if (clear_i) begin
             for (int i = 0; i < PHY_REG_NUM; i = i + 1) begin
                 ready_q[i] <= (i < LOGIC_REG_NUM);
             end

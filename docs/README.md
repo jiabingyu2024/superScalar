@@ -64,6 +64,10 @@
 | `archive/2026-07-05/036_srcWithMext_post_phase12_ipc_root_cause.md` | 基于阶段 1/2 后 100M 长窗口重新定位 IPC 仍低原因，确认新主瓶颈为 IssueQueue 满且缺少 ready 项。 |
 | `archive/2026-07-08/049_srcWithMext_current_result_optimization_space.md` | 基于当前单发射阻塞核的完整 `srcWithMext` PASS 结果，重新归因 memory/MulDiv stall 并给出优化优先级。 |
 | `archive/2026-07-08/050_fpga_board_all_zero_bringup_review.md` | 审查 Tcl 建工程上板后 SEG/LED 全 0 的原因，修复 FPGA source 边界和 reset 同步释放，并记录官方模板对比。 |
+| `archive/2026-07-10/053_vivado_implementation_and_fpga_optimization_plan.md` | 针对混合 reset 控制、重复时钟、CDC 加载和 FPGA 资源热点制定分阶段综合上板优化计划。 |
+| `archive/2026-07-10/054_vivado_implfix_phase1_4_execution.md` | 执行计划 Phase 1-4：修复 reset/clear 结构与时钟/CDC 约束，整理 GUI Tcl Console 流程并完成分层 Verilator 回归。 |
+| `archive/2026-07-10/055_fpga_reset_fanout_cleanup.md` | 删除额外 Vivado 启动 Tcl，整理 GUI 文档，并清理 valid/count 已门控 payload 的大范围 reset fanout。 |
+| `archive/2026-07-10/056_dcache_distributed_ram_qor.md` | 将 DCache data/tag 重构为每 way 的 distributed RAM 模板，保持 hit latency 并完成分层回归。 |
 
 ## 后续维护规则
 

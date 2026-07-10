@@ -154,13 +154,15 @@ module CoreCompressedQueue #(
     assign empty_o = (count_q == '0);
     assign full_o = (count_q == DEPTH_COUNT);
 
+    // valid_q/count_q gate every read of entry_q. A push overwrites the full
+    // uop, so clearing the payload array is unnecessary reset fanout on FPGA.
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
             valid_q <= '0;
             count_q <= '0;
-            for (int i = 0; i < DEPTH; i = i + 1) begin
-                entry_q[i] <= '0;
-            end
+        end else if (clear_i) begin
+            valid_q <= '0;
+            count_q <= '0;
         end else begin
             valid_q <= next_valid;
             count_q <= next_count;

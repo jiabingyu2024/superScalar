@@ -128,7 +128,11 @@ module CoreFreeList #(
     assign full_o = (free_count == FREE_DEPTH_COUNT);
 
     always_ff @(posedge clk or posedge rst) begin
-        if (rst || clear_i) begin
+        if (rst) begin
+            for (int p = 0; p < PHY_REG_NUM; p = p + 1) begin
+                free_q[p] <= (p >= LOGIC_REG_NUM);
+            end
+        end else if (clear_i) begin
             for (int p = 0; p < PHY_REG_NUM; p = p + 1) begin
                 free_q[p] <= (p >= LOGIC_REG_NUM);
             end
