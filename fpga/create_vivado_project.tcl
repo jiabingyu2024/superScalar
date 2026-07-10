@@ -262,6 +262,11 @@ add_files -norecurse -fileset sources_1 $ordered_rtl
 foreach src $ordered_rtl {
     set_property file_type SystemVerilog [get_files $src]
 }
+set rtl_include_dir [file normalize [file join $repo_dir rtl include]]
+set_property include_dirs [list $rtl_include_dir] [get_filesets sources_1]
+if {[llength [get_filesets -quiet sim_1]] > 0} {
+    set_property include_dirs [list $rtl_include_dir] [get_filesets sim_1]
+}
 
 add_files -fileset constrs_1 $xdc_file
 set_property top top [get_filesets sources_1]

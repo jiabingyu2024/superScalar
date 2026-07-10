@@ -1,6 +1,37 @@
 `timescale 1ns / 1ps
 
 //------------------------------------------------------------------------------
+// One byte lane of one cache-line word bank.
+//
+// Keep this as a conventional simple-dual-port distributed-RAM template:
+// - asynchronous read preserves the existing same-cycle DCache hit lookup;
+// - synchronous write matches store-hit and refill updates;
+// - there is deliberately no reset on the memory contents.  valid_q in DCache
+//   is the architectural reset state and masks uninitialized data.
+//------------------------------------------------------------------------------
+module DCacheDataByteBank #(
+    parameter int unsigned LINE_COUNT = 512,
+    parameter int unsigned INDEX_W    = $clog2(LINE_COUNT)
+) (
+    input  logic               clk,
+    input  logic [INDEX_W-1:0] read_addr,
+    output logic [7:0]         read_data,
+    input  logic               write_en,
+    input  logic [INDEX_W-1:0] write_addr,
+    input  logic [7:0]         write_data
+);
+    (* ram_style = "distributed" *) logic [7:0] mem_q [0:LINE_COUNT-1];
+
+    assign read_data = mem_q[read_addr];
+
+    always_ff @(posedge clk) begin
+        if (write_en) begin
+            mem_q[write_addr] <= write_data;
+        end
+    end
+endmodule
+
+//------------------------------------------------------------------------------
 // Blocking, direct-mapped D-cache for the current five-stage in-order core.
 //
 // Timing contract:
@@ -62,8 +93,17 @@ module DCache #(
     state_e state_q;
 
     logic [LINE_COUNT-1:0] valid_q;
-    logic [31:TAG_LSB] tag_q   [0:LINE_COUNT-1];
-    logic [31:0]       data_q  [0:LINE_COUNT-1][0:WORDS_PER_LINE-1];
+    logic [31:TAG_LSB] tag_q [0:LINE_COUNT-1];
+
+    // Four word banks, each split into four byte-lane LUTRAMs.  Keeping every
+    // physical memory as a one-dimensional 512x8 array avoids the previous
+    // three-dimensional data_q array being expanded into 65,536 flip-flops.
+    logic [31:0] data_word_read_c [0:WORDS_PER_LINE-1];
+    logic        data_write_en_c;
+    logic [INDEX_W-1:0] data_write_index_c;
+    logic [1:0]  data_write_word_c;
+    logic [31:0] data_write_data_c;
+    logic [3:0]  data_write_mask_c;
 
     logic [31:0] miss_addr_q;
     logic [1:0]  miss_target_word_q;
@@ -83,6 +123,28 @@ module DCache #(
     logic [31:TAG_LSB]  miss_tag_c;
     logic [1:0]         next_fill_word_c;
     logic [31:0]        fill_resp_shifted_c;
+    logic [31:0]        store_shifted_data_c;
+    logic [3:0]         store_shifted_mask_c;
+
+    generate
+        for (genvar word_idx = 0; word_idx < WORDS_PER_LINE; word_idx++) begin : gen_data_word
+            for (genvar byte_idx = 0; byte_idx < 4; byte_idx++) begin : gen_data_byte
+                DCacheDataByteBank #(
+                    .LINE_COUNT(LINE_COUNT),
+                    .INDEX_W   (INDEX_W)
+                ) u_data_byte_bank (
+                    .clk       (clk),
+                    .read_addr (req_index_c),
+                    .read_data (data_word_read_c[word_idx][byte_idx*8 +: 8]),
+                    .write_en  (data_write_en_c &&
+                                (data_write_word_c == 2'(word_idx)) &&
+                                data_write_mask_c[byte_idx]),
+                    .write_addr(data_write_index_c),
+                    .write_data(data_write_data_c[byte_idx*8 +: 8])
+                );
+            end
+        end
+    endgenerate
 
     assign req_cacheable_c = !cpu_req_uncached &&
                              (cpu_req_addr >= CACHE_ADDR_START) &&
@@ -93,34 +155,43 @@ module DCache #(
     assign req_hit_c   = req_cacheable_c &&
                          valid_q[req_index_c] &&
                          (tag_q[req_index_c] == req_tag_c);
-    assign cache_word_c = data_q[req_index_c][req_word_c];
+    assign cache_word_c = data_word_read_c[req_word_c];
 
     assign miss_index_c = miss_addr_q[TAG_LSB-1:4];
     assign miss_tag_c   = miss_addr_q[31:TAG_LSB];
     assign next_fill_word_c = fill_word_q + 2'd1;
     assign fill_resp_shifted_c = mem_resp_rdata >> {miss_addr_q[1:0], 3'b000};
+    assign store_shifted_data_c = cpu_req_wdata << {cpu_req_addr[1:0], 3'b000};
+    assign store_shifted_mask_c = (cpu_req_wstrb << cpu_req_addr[1:0]) & 4'hf;
 
-    function automatic logic [31:0] merge_store_word(
-        input logic [31:0] old_word,
-        input logic [31:0] store_data,
-        input logic [3:0]  store_mask,
-        input logic [1:0]  byte_offset
-    );
-        logic [31:0] shifted_data;
-        logic [3:0]  shifted_mask;
-        logic [31:0] merged;
-        begin
-            shifted_data = store_data << {byte_offset, 3'b000};
-            shifted_mask = (store_mask << byte_offset) & 4'hf;
-            merged = old_word;
-            for (int lane = 0; lane < 4; lane++) begin
-                if (shifted_mask[lane]) begin
-                    merged[lane*8 +: 8] = shifted_data[lane*8 +: 8];
-                end
+    // Present exactly one logical write port to all byte banks.  Store hits and
+    // refill responses occur in mutually exclusive states.  Store data remains
+    // low-bit aligned at the CPU/SoC interface; only the cached copy is shifted
+    // into its addressed byte lanes here, matching DramBramAdapter semantics.
+    always_comb begin
+        data_write_en_c    = 1'b0;
+        data_write_index_c = '0;
+        data_write_word_c  = 2'd0;
+        data_write_data_c  = 32'd0;
+        data_write_mask_c  = 4'b0000;
+
+        if (!rst) begin
+            if ((state_q == DC_IDLE) && cpu_req_valid && cpu_req_write &&
+                mem_req_ready && req_cacheable_c && req_hit_c) begin
+                data_write_en_c    = 1'b1;
+                data_write_index_c = req_index_c;
+                data_write_word_c  = req_word_c;
+                data_write_data_c  = store_shifted_data_c;
+                data_write_mask_c  = store_shifted_mask_c;
+            end else if ((state_q == DC_MISS_WAIT) && mem_resp_valid) begin
+                data_write_en_c    = 1'b1;
+                data_write_index_c = miss_index_c;
+                data_write_word_c  = fill_word_q;
+                data_write_data_c  = mem_resp_rdata;
+                data_write_mask_c  = 4'b1111;
             end
-            merge_store_word = merged;
         end
-    endfunction
+    end
 
     always_comb begin
         cpu_req_ready   = 1'b0;
@@ -204,13 +275,7 @@ module DCache #(
                             if (mem_req_ready) begin
                                 if (req_cacheable_c) begin
                                     perf_dcache_access <= perf_dcache_access + 64'd1;
-                                    if (req_hit_c) begin
-                                        data_q[req_index_c][req_word_c] <=
-                                            merge_store_word(cache_word_c,
-                                                             cpu_req_wdata,
-                                                             cpu_req_wstrb,
-                                                             cpu_req_addr[1:0]);
-                                    end else begin
+                                    if (!req_hit_c) begin
                                         perf_dcache_miss <= perf_dcache_miss + 64'd1;
                                     end
                                 end
@@ -256,8 +321,6 @@ module DCache #(
 
                 DC_MISS_WAIT: begin
                     if (mem_resp_valid) begin
-                        data_q[miss_index_c][fill_word_q] <= mem_resp_rdata;
-
                         if (fill_word_q == miss_target_word_q) begin
                             resp_rdata_q <= fill_resp_shifted_c;
                         end
