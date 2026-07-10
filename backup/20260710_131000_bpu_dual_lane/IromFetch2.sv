@@ -8,8 +8,8 @@ module CoreIromFetch2 (
     input  logic resp_ready_i,
     input  logic req_valid_i,
     input  PcPath req_pc_i,
-    input  logic [FETCH_WIDTH-1:0] req_pred_taken_i,
-    input  PcPath [FETCH_WIDTH-1:0] req_pred_target_i,
+    input  logic req_pred_taken_i,
+    input  PcPath req_pred_target_i,
     output logic req_ready_o,
     IromAccessIF.core irom,
     output logic [FETCH_WIDTH-1:0] fetch_valid_o,
@@ -19,11 +19,11 @@ module CoreIromFetch2 (
     logic valid_q;
     logic [FETCH_WIDTH-1:0] valid_mask_q;
     logic [FETCH_WIDTH-1:0] req_valid_mask;
-    logic [FETCH_WIDTH-1:0] pred_taken_q;
-    PcPath [FETCH_WIDTH-1:0] pred_target_q;
+    logic pred_taken_q;
+    PcPath pred_target_q;
 
     assign req_ready_o = !valid_q || resp_ready_i;
-    assign req_valid_mask = (req_pc_i[2] || req_pred_taken_i[0]) ?
+    assign req_valid_mask = (req_pc_i[2] || req_pred_taken_i) ?
                             {{(FETCH_WIDTH-1){1'b0}}, 1'b1} :
                             {FETCH_WIDTH{1'b1}};
 
@@ -35,9 +35,9 @@ module CoreIromFetch2 (
             fetch_pkt_o[i].valid = valid_q && valid_mask_q[i];
             fetch_pkt_o[i].pc = pc_q + (i * 32'd4);
             fetch_pkt_o[i].inst = irom.inst[i];
-            fetch_pkt_o[i].pred_taken = pred_taken_q[i];
-            fetch_pkt_o[i].pred_target = pred_taken_q[i] ? pred_target_q[i] :
-                                                           fetch_pkt_o[i].pc + 32'd4;
+            fetch_pkt_o[i].pred_taken = (i == 0) && pred_taken_q;
+            fetch_pkt_o[i].pred_target = ((i == 0) && pred_taken_q) ? pred_target_q :
+                                                                 (pc_q[2] ? pc_q + 32'd4 : pc_q + 32'd8);
         end
     end
 
@@ -45,13 +45,13 @@ module CoreIromFetch2 (
         if (rst) begin
             valid_q <= 1'b0;
             valid_mask_q <= '0;
-            pred_taken_q <= '0;
+            pred_taken_q <= 1'b0;
             pred_target_q <= '0;
             pc_q <= '0;
         end else if (clear_i) begin
             valid_q <= 1'b0;
             valid_mask_q <= '0;
-            pred_taken_q <= '0;
+            pred_taken_q <= 1'b0;
             pred_target_q <= '0;
             pc_q <= '0;
         end else if (valid_q && !resp_ready_i) begin
@@ -69,7 +69,7 @@ module CoreIromFetch2 (
                 pred_target_q <= req_pred_target_i;
             end else begin
                 valid_mask_q <= '0;
-                pred_taken_q <= '0;
+                pred_taken_q <= 1'b0;
                 pred_target_q <= '0;
             end
         end

@@ -60,17 +60,13 @@ module core(
     logic [2:0] jalr_inc;
     logic [2:0] jalr_miss_inc;
     logic [2:0] issue_inc;
-    PcPath [FETCH_WIDTH-1:0] bpu_lookup_pc;
-    logic [FETCH_WIDTH-1:0] bpu_pred_valid;
-    logic [FETCH_WIDTH-1:0] bpu_pred_taken;
-    PcPath [FETCH_WIDTH-1:0] bpu_pred_target;
-    logic fetch_pred_taken;
-    PcPath fetch_pred_target;
+    logic bpu_pred_valid;
+    logic bpu_pred_taken;
+    PcPath bpu_pred_target;
     logic bpu_update_valid;
     PcPath bpu_update_pc;
     logic bpu_update_taken;
     PcPath bpu_update_target;
-    logic bpu_update_uncond;
     logic bpu_update_is_call;
     logic bpu_update_is_return;
     PcPath bpu_update_return_pc;
@@ -85,21 +81,6 @@ module core(
     assign pc_hold = !(fetch_req_valid && fetch_req_ready);
     assign fetch_pop_ready = decode_ready;
     assign decode_valid = fetch_pop_valid;
-    for (genvar lane = 0; lane < FETCH_WIDTH; lane = lane + 1) begin : gen_bpu_lookup_pc
-        assign bpu_lookup_pc[lane] = fetch_pc + (lane * 32'd4);
-    end
-
-    always_comb begin
-        fetch_pred_taken = 1'b0;
-        fetch_pred_target = fetch_pc[2] ? fetch_pc + 32'd4 : fetch_pc + 32'd8;
-        if (bpu_pred_valid[0] && bpu_pred_taken[0]) begin
-            fetch_pred_taken = 1'b1;
-            fetch_pred_target = bpu_pred_target[0];
-        end else if (!fetch_pc[2] && bpu_pred_valid[1] && bpu_pred_taken[1]) begin
-            fetch_pred_taken = 1'b1;
-            fetch_pred_target = bpu_pred_target[1];
-        end
-    end
 
     CorePcGen u_pc_gen (
         .clk             (clk),
@@ -107,15 +88,15 @@ module core(
         .hold_i          (pc_hold),
         .recovery_valid_i(backend_recover_valid),
         .recovery_pc_i   (backend_recover_pc),
-        .pred_valid_i    (fetch_pred_taken),
-        .pred_pc_i       (fetch_pred_target),
+        .pred_valid_i    (bpu_pred_valid),
+        .pred_pc_i       (bpu_pred_target),
         .pc_o            (fetch_pc)
     );
 
     CoreBranchPredictor u_bpu (
         .clk            (clk),
         .rst            (rst),
-        .pc_i           (bpu_lookup_pc),
+        .pc_i           (fetch_pc),
         .pred_valid_o   (bpu_pred_valid),
         .pred_taken_o   (bpu_pred_taken),
         .pred_target_o  (bpu_pred_target),
@@ -123,7 +104,6 @@ module core(
         .update_pc_i    (bpu_update_pc),
         .update_taken_i (bpu_update_taken),
         .update_target_i(bpu_update_target),
-        .update_uncond_i(bpu_update_uncond),
         .update_is_call_i(bpu_update_is_call),
         .update_is_return_i(bpu_update_is_return),
         .update_return_pc_i(bpu_update_return_pc)
@@ -212,7 +192,6 @@ module core(
         bpu_update_pc = '0;
         bpu_update_taken = 1'b0;
         bpu_update_target = '0;
-        bpu_update_uncond = 1'b0;
         bpu_update_is_call = 1'b0;
         bpu_update_is_return = 1'b0;
         bpu_update_return_pc = '0;
@@ -239,8 +218,6 @@ module core(
                         bpu_update_target = commit_entry[i].branch_miss ?
                                             commit_entry[i].redirect_pc :
                                             commit_entry[i].uop.pred_target;
-                        bpu_update_uncond = commit_entry[i].uop.is_jal ||
-                                            commit_entry[i].uop.is_jalr;
                         bpu_update_is_call = (commit_entry[i].uop.is_jal ||
                                               commit_entry[i].uop.is_jalr) &&
                                              is_link_reg(commit_entry[i].uop.rd);
