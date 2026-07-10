@@ -125,12 +125,10 @@ module core(
     logic [3:0]       mem_mask_m2;
     logic             load_unsigned_m2;
     logic [`DATA_BUS] mem_data_m2;
+    logic [`DATA_BUS] wb_data_m2;
     logic [`DATA_BUS] m1_m2_data;
 
-    logic [`DATA_BUS] alu_res_w;
     logic [`RF_BUS]   rd_addr_w;
-    logic [`DATA_BUS] mem_data_w;
-    logic             wb_src_w;
     logic             reg_write_w;
     logic [`DATA_BUS] wb_data_w;
 
@@ -445,6 +443,16 @@ module core(
         .o_mem_rdata     (mem_data_m2)
     );
 
+    // Select the architectural result before the M2/WB register.  The WB
+    // forwarding path therefore starts at a register Q instead of traversing
+    // the write-back select mux in the EX cycle.
+    stage_wb u_stage_wb (
+        .i_alu_res       (alu_res_m2),
+        .i_mem_data      (mem_data_m2),
+        .i_wb_src        (wb_src_m2),
+        .o_wb_data       (wb_data_m2)
+    );
+
     assign m1_m2_data = alu_res_m2;
 
     reg_m2_wb u_reg_m2_wb (
@@ -453,22 +461,11 @@ module core(
         .i_flush         (1'b0),
         .i_stall         (stall_m_w),
         .i_reg_write     (reg_write_m2),
-        .i_wb_src        (wb_src_m2),
-        .i_alu_res       (alu_res_m2),
         .i_rd_addr       (rd_addr_m2),
-        .i_mem_data      (mem_data_m2),
-        .o_alu_res       (alu_res_w),
+        .i_wb_data       (wb_data_m2),
         .o_rd_addr       (rd_addr_w),
-        .o_mem_data      (mem_data_w),
-        .o_wb_src        (wb_src_w),
+        .o_wb_data       (wb_data_w),
         .o_reg_write     (reg_write_w)
-    );
-
-    stage_wb u_stage_wb (
-        .i_alu_res       (alu_res_w),
-        .i_mem_data      (mem_data_w),
-        .i_wb_src        (wb_src_w),
-        .o_wb_data       (wb_data_w)
     );
 
 endmodule
