@@ -617,5 +617,50 @@
     "ALWCOMBORDER reports for FreeList, ROB, and CompressedQueue no longer appear in build/log/build_mycpu.log. The decode_ready UNOPTFLAT path is also gone. Remaining UNOPTFLAT reports are concentrated in Rename/FreeList/ROB and issue/execute ready paths."
   ],
   "notes": "An attempted CoreBackend rename-dispatch buffer was backed up but not retained because it caused RV32UM DIV/REM tests to timeout. The committed changes are narrower structural cleanups that preserved functional tests."
+},
+{
+  "timestamp": "2026-07-10T20:10:00+08:00",
+  "trigger": "The first completed srcWithMext bitstream after DCache LUTRAM and reset-fanout optimization showed SEG=0x33800000: RV32I count 33/37 while M count was 8/8. Current RTL simulation reached 37+8, and Vivado synthesis reported 100 Synth 8-7137 simulation-mismatch warnings in ROB/BPU/MultiPushFifo.",
+  "backup_dir": "none; changes are narrow and preserved in git diff",
+  "files_modified": [
+    {
+      "path": "rtl/core/frontend/BranchPredictor.sv",
+      "change_type": "fpga_semantics_fix",
+      "notes": "Separated resettable BTB/RAS ownership state from reset-free payload writes and blocked payload writes during reset."
+    },
+    {
+      "path": "rtl/core/dispatch/ROB.sv",
+      "change_type": "fpga_semantics_fix",
+      "notes": "Separated head/tail/count asynchronous reset from ROB entry payload writes while preserving allocate-complete-retire write priority."
+    },
+    {
+      "path": "rtl/core/common/MultiPushFifo.sv",
+      "change_type": "fpga_semantics_fix",
+      "notes": "Moved FIFO payload writes to a reset-free clocked process and blocked writes during reset/clear."
+    },
+    {
+      "path": "rtl/core/memory/DCache.sv",
+      "change_type": "memory_semantics_fix",
+      "notes": "Added explicit previous-write forwarding for distributed RAM read-after-write behavior and reset guards on data/tag RAM writes."
+    },
+    {
+      "path": "docs/archive/2026-07-10/057_srcWithMext_33_fpga_regression_fix.md",
+      "change_type": "documentation",
+      "notes": "Recorded diagnosis, evidence, fix, verification limits, and fresh-bitstream acceptance criteria."
+    },
+    {
+      "path": "docs/archive/2026-07-10/058_fpga_timing_improvement_plan.md",
+      "change_type": "documentation",
+      "notes": "Recorded the routed timing baseline and staged structural improvement plan."
+    }
+  ],
+  "cascade_scope": "rebuild_verilator_then_create_fresh_vivado_project_and_board-test_srcWithMext",
+  "verification": [
+    "Rebuilt final RTL and passed RV32UI 40/40, RV32UM 8/8, and RV32MI 4/4 after the reset-write guards.",
+    "srcWithMext at 200000 cycles reached SEG=0x37800000 with RV32I pass/fail=37/0 and M count=8, then timed out as expected.",
+    "The failing routed design met 50 MHz timing with setup WNS=+0.923 ns, hold WHS=+0.026 ns, and zero TNS/THS.",
+    "Routed-netlist XSim was stopped at user request before the observation point; no gate-level or board-level pass is claimed."
+  ],
+  "notes": "A fresh Vivado build tagged implfix_p1 must remove the targeted Synth 8-7137 warnings, preserve DCache LUTRAM inference, meet setup/hold, and pass 37+8 plus the final board lamp protocol."
 }
 ]

@@ -79,14 +79,21 @@ module CoreMultiPushFifo #(
             wr_ptr_q <= '0;
             count_q  <= '0;
         end else begin
+            rd_ptr_q <= wrap_add(rd_ptr_q, pop_count);
+            wr_ptr_q <= wrap_add(wr_ptr_q, push_count);
+            count_q <= count_q + push_count - pop_count;
+        end
+    end
+
+    // FIFO pointers/count own the payload. Keeping mem_q in a reset-free
+    // process prevents the payload from inheriting the async reset control set.
+    always_ff @(posedge clk) begin
+        if (!rst && !clear_i) begin
             for (int p = 0; p < PUSH_WIDTH; p = p + 1) begin
                 if (push_valid_i[p] && push_ready_o[p]) begin
                     mem_q[wrap_add(wr_ptr_q, push_offset[p])] <= push_data_i[p];
                 end
             end
-            rd_ptr_q <= wrap_add(rd_ptr_q, pop_count);
-            wr_ptr_q <= wrap_add(wr_ptr_q, push_count);
-            count_q <= count_q + push_count - pop_count;
         end
     end
 endmodule : CoreMultiPushFifo

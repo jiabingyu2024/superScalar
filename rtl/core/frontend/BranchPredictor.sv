@@ -117,15 +117,9 @@ module CoreBranchPredictor (
             for (int b = 0; b < BTB_ENTRIES; b = b + 1) begin
                 btb_valid_q[b] <= 1'b0;
             end
-            // BTB payload is protected by btb_valid_q, and RAS payload by
-            // ras_count_q. Avoid resetting those wide arrays on FPGA.
         end else if (update_valid_i) begin
             if (update_taken_i) begin
                 btb_valid_q[update_btb_idx] <= 1'b1;
-                btb_uncond_q[update_btb_idx] <= update_uncond_i;
-                btb_return_q[update_btb_idx] <= update_is_return_i;
-                btb_tag_q[update_btb_idx] <= update_btb_tag;
-                btb_target_q[update_btb_idx] <= update_target_i;
             end
 
             // Direct and indirect jumps are always taken once their BTB entry
@@ -166,10 +160,26 @@ module CoreBranchPredictor (
                 ras_count_q <= ras_count_q - 1'b1;
             end else if (update_is_call_i) begin
                 if (ras_count_q < (RAS_PTR_WIDTH+1)'(RAS_DEPTH)) begin
-                    ras_q[ras_count_q[RAS_PTR_WIDTH-1:0]] <= update_return_pc_i;
                     ras_count_q <= ras_count_q + 1'b1;
                 end
             end
+        end
+    end
+
+    // Keep payload arrays out of the asynchronous-reset process. Their
+    // ownership is carried by btb_valid_q and ras_count_q, so invalid payload
+    // is never consumed. This also avoids Vivado Synth 8-7137 ambiguity.
+    always_ff @(posedge clk) begin
+        if (!rst && update_valid_i && update_taken_i) begin
+            btb_uncond_q[update_btb_idx] <= update_uncond_i;
+            btb_return_q[update_btb_idx] <= update_is_return_i;
+            btb_tag_q[update_btb_idx] <= update_btb_tag;
+            btb_target_q[update_btb_idx] <= update_target_i;
+        end
+        if (!rst && update_valid_i && update_is_call_i &&
+            !update_is_return_i &&
+            (ras_count_q < (RAS_PTR_WIDTH+1)'(RAS_DEPTH))) begin
+            ras_q[ras_count_q[RAS_PTR_WIDTH-1:0]] <= update_return_pc_i;
         end
     end
 endmodule : CoreBranchPredictor

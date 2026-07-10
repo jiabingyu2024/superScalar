@@ -154,6 +154,17 @@ module CoreROB #(
             tail_q <= '0;
             count_q <= '0;
         end else begin
+            head_q <= wrap_add(head_q, retire_count);
+            tail_q <= wrap_add(tail_q, alloc_count);
+            count_q <= count_q + alloc_count - retire_count;
+        end
+    end
+
+    // entry_q is owned by head/tail/count and entry valid bits. Isolating
+    // payload writes from the asynchronous-reset process avoids Vivado
+    // Synth 8-7137 simulation-mismatch warnings without resetting wide data.
+    always_ff @(posedge clk) begin
+        if (!rst && !clear_i) begin
             for (int a = 0; a < ALLOC_WIDTH; a = a + 1) begin
                 if (alloc_fire[a]) begin
                     entry_q[wrap_add(tail_q, alloc_offset[a])].valid <= 1'b1;
@@ -194,10 +205,6 @@ module CoreROB #(
                     entry_q[wrap_add(head_q, retire_offset[r])].done <= 1'b0;
                 end
             end
-
-            head_q <= wrap_add(head_q, retire_count);
-            tail_q <= wrap_add(tail_q, alloc_count);
-            count_q <= count_q + alloc_count - retire_count;
         end
     end
 endmodule : CoreROB

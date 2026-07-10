@@ -101,6 +101,12 @@ module CoreDCache #(
     logic data_way1_we;
     logic tag_way0_we;
     logic tag_way1_we;
+    logic data_write_valid_q;
+    logic data_write_way_q;
+    logic [DATA_ADDR_BITS-1:0] data_write_addr_q;
+    DataPath data_write_data_q;
+    DataPath data_way0_effective;
+    DataPath data_way1_effective;
 
     function automatic DataPath align_load_word(
         input DataPath word,
@@ -173,8 +179,14 @@ module CoreDCache #(
 
     assign data_way0_read = data_way0_q[data_read_addr];
     assign data_way1_read = data_way1_q[data_read_addr];
-    assign hit_word = hit_way ? data_way1_read : data_way0_read;
-    assign victim_read_word = victim_way_q ? data_way1_read : data_way0_read;
+    assign data_way0_effective = data_write_valid_q && !data_write_way_q &&
+                                 (data_write_addr_q == data_read_addr) ?
+                                 data_write_data_q : data_way0_read;
+    assign data_way1_effective = data_write_valid_q && data_write_way_q &&
+                                 (data_write_addr_q == data_read_addr) ?
+                                 data_write_data_q : data_way1_read;
+    assign hit_word = hit_way ? data_way1_effective : data_way0_effective;
+    assign victim_read_word = victim_way_q ? data_way1_effective : data_way0_effective;
 
     always_comb begin
         data_way0_we = 1'b0;
@@ -224,14 +236,30 @@ module CoreDCache #(
     end
 
     always_ff @(posedge clk) begin
-        if (data_way0_we) begin
+        if (!rst && data_way0_we) begin
             data_way0_q[data_write_addr] <= data_write_data;
         end
     end
 
     always_ff @(posedge clk) begin
-        if (data_way1_we) begin
+        if (!rst && data_way1_we) begin
             data_way1_q[data_write_addr] <= data_write_data;
+        end
+    end
+
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            data_write_valid_q <= 1'b0;
+            data_write_way_q <= 1'b0;
+            data_write_addr_q <= '0;
+            data_write_data_q <= '0;
+        end else begin
+            data_write_valid_q <= data_way0_we || data_way1_we;
+            if (data_way0_we || data_way1_we) begin
+                data_write_way_q <= data_way1_we;
+                data_write_addr_q <= data_write_addr;
+                data_write_data_q <= data_write_data;
+            end
         end
     end
 
@@ -241,13 +269,13 @@ module CoreDCache #(
                          (burst_word_q == WORD_BITS'(WORDS_PER_LINE - 1)) && victim_way_q;
 
     always_ff @(posedge clk) begin
-        if (tag_way0_we) begin
+        if (!rst && tag_way0_we) begin
             tag_way0_q[req_index_q] <= req_tag_q;
         end
     end
 
     always_ff @(posedge clk) begin
-        if (tag_way1_we) begin
+        if (!rst && tag_way1_we) begin
             tag_way1_q[req_index_q] <= req_tag_q;
         end
     end
