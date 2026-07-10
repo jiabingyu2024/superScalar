@@ -1,0 +1,2 @@
+verilog xil_defaultlib "top_func_impl.v"
+sv xil_defaultlib "post_impl_load_trace_tb.sv"

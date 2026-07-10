@@ -750,35 +750,5 @@
     "git diff --check passed; the rebuilt student_top log contains no LATCH, MULTIDRIVEN, UNOPTFLAT, or Error diagnostic."
   ],
   "notes": "All new event ports and counters are VERILATOR_TB-only. No FPGA functional interface or memory-map behavior changes. The existing internal PerfIF field names are retained as compatibility storage, but unused generic fields are omitted from the result JSON."
-},
-{
-  "timestamp": "2026-07-10T23:30:17+08:00",
-  "trigger": "Post-route functional simulation reproduced board SEG=0x33800000 and paired CoreDCache downstream requests with responses one word late: request 0x80100010 received 0x1234abcd belonging to 0x8010000c.",
-  "backup_dir": "backup/20260710_233017",
-  "files_modified": [
-    {
-      "path": "rtl/soc/DramBramAdapter.sv",
-      "change_type": "memory_timing_contract_fix",
-      "notes": "Added read_valid_d3 and read_offset_d3. resp_valid/resp_rdata now become owned by the request only after the registered Vivado DRAM output has updated, preventing one-word-late DCache refills. Byte-write masking is unchanged."
-    },
-    {
-      "path": "docs/fpga/ip_timing_alignment.md",
-      "change_type": "documentation",
-      "notes": "Recorded the 0x33800000 root cause, dump-directed exclusion of control-flow run-away, request/raw-data/consumer edge contract, and mandatory post-route request-response pairing rule."
-    },
-    {
-      "path": "docs/rtl_changes.json",
-      "change_type": "documentation",
-      "notes": "Recorded the DRAM response ownership-stage fix and its required verification cascade."
-    }
-  ],
-  "cascade_scope": "recompile_soc_then_rebuild_fresh_vivado_project_and_run_post_route_plus_board_regression",
-  "verification": [
-    "Pre-fix post-route simulation reproduced the board MMIO write SEG=0x33800000.",
-    "Pre-fix dump-directed counter trace showed SB/SH/LB pass, LH/LW/LBU/LHU take four explicit fail paths, and subsequent dispatcher tests continue.",
-    "Pre-fix CoreDCache downstream trace showed request 0x8010000c -> 0, 0x80100010 -> 0x1234abcd, and 0x80100014 -> 0x55667788, proving one-word-late data before DCache refill placement.",
-    "Post-fix compile, simulation, synthesis, and board verification are pending; this RTL-development stage does not run EDA verification."
-  ],
-  "notes": "Recommended implementation keeps the primitive BRAM output register for timing and delays response ownership by one stage. Rebuild from a fresh Vivado project before board acceptance."
 }
 ]

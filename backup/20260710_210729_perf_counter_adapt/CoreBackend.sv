@@ -18,31 +18,6 @@ module CoreBackend (
     output CoreRobEntry [RETIRE_WIDTH-1:0] commit_entry_o,
 
     DramAccessIF dmem
-`ifdef VERILATOR_TB
-    ,
-    output logic [2:0] perf_dispatch_count_o,
-    output logic [2:0] perf_issue_count_o,
-    output logic [2:0] perf_int_issue_count_o,
-    output logic [2:0] perf_mem_issue_count_o,
-    output logic [2:0] perf_mul_issue_count_o,
-    output logic perf_dispatch_block_o,
-    output logic perf_issue_block_o,
-    output logic perf_rob_full_o,
-    output logic perf_int_iq_block_o,
-    output logic perf_mem_iq_block_o,
-    output logic perf_mul_iq_block_o,
-    output logic perf_rob_head_not_done_o,
-    output logic perf_rob_head_int_o,
-    output logic perf_rob_head_mem_o,
-    output logic perf_rob_head_mul_o,
-    output logic perf_rob_head_other_o,
-    output logic perf_free_list_empty_o,
-    output logic perf_store_buffer_block_o,
-    output logic perf_serial_block_o,
-    output logic perf_load_pending_o,
-    output logic perf_mem_issue_block_o,
-    output logic perf_int_blocked_by_load_o
-`endif
 );
     logic [RENAME_WIDTH-1:0] free_alloc_req;
     logic [RENAME_WIDTH-1:0] free_alloc_accept;
@@ -133,8 +108,6 @@ module CoreBackend (
     logic load_forward_full;
     DataPath load_forward_data;
     logic rob_empty;
-    logic rob_full;
-    logic free_list_empty;
     logic serial_inflight_q;
     logic serial_alloc;
     logic serial_retire;
@@ -195,7 +168,7 @@ module CoreBackend (
         .free_valid_i(free_old_valid),
         .free_phy_i(free_old_prd),
         .free_ready_o(),
-        .empty_o(free_list_empty),
+        .empty_o(),
         .full_o()
     );
 
@@ -266,7 +239,7 @@ module CoreBackend (
         .retire_valid_o(retire_valid),
         .retire_entry_o(retire_entry),
         .empty_o(rob_empty),
-        .full_o(rob_full)
+        .full_o()
     );
 
     CoreDispatchUnit u_dispatch (
@@ -447,77 +420,6 @@ module CoreBackend (
             commit_rob_idx[i] = retire_entry[i].rob_idx;
         end
     end
-
-`ifdef VERILATOR_TB
-    always_comb begin
-        perf_dispatch_count_o = '0;
-        perf_issue_count_o = '0;
-        perf_int_issue_count_o = '0;
-        perf_mem_issue_count_o = '0;
-        perf_mul_issue_count_o = '0;
-        perf_int_iq_block_o = |(int_push_valid & ~int_push_ready);
-        perf_mem_iq_block_o = |(mem_push_valid & ~mem_push_ready);
-        perf_mul_iq_block_o = |(mul_push_valid & ~mul_push_ready);
-        perf_dispatch_block_o = (|decode_valid_i) &&
-                                (rob_full || free_list_empty || serial_block ||
-                                 perf_int_iq_block_o || perf_mem_iq_block_o ||
-                                 perf_mul_iq_block_o);
-        perf_issue_block_o = |(int_issue_valid & ~int_issue_ready) ||
-                             |(mem_issue_valid & ~mem_issue_ready) ||
-                             |(mul_issue_valid & ~mul_issue_ready);
-        perf_rob_full_o = rob_full;
-        perf_rob_head_not_done_o = !rob_empty && !retire_valid[0];
-        perf_rob_head_int_o = 1'b0;
-        perf_rob_head_mem_o = 1'b0;
-        perf_rob_head_mul_o = 1'b0;
-        perf_rob_head_other_o = 1'b0;
-        perf_free_list_empty_o = free_list_empty;
-        perf_store_buffer_block_o = mem_issue_valid[0] &&
-                                    mem_issue_uop[0].uop.is_store &&
-                                    !store_push_ready;
-        perf_serial_block_o = serial_block;
-        perf_load_pending_o = !clear_i && !recover_i && !int_issue_ready[0];
-        perf_mem_issue_block_o = |(mem_issue_valid & ~mem_issue_ready);
-        perf_int_blocked_by_load_o = perf_load_pending_o && |int_issue_valid;
-
-        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
-            if (rob_alloc_valid[i]) begin
-                perf_dispatch_count_o = perf_dispatch_count_o + 1'b1;
-            end
-        end
-        for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
-            if (int_issue_valid[i] && int_issue_ready[i]) begin
-                perf_int_issue_count_o = perf_int_issue_count_o + 1'b1;
-                perf_issue_count_o = perf_issue_count_o + 1'b1;
-            end
-        end
-        for (int i = 0; i < MEM_ISSUE_WIDTH; i = i + 1) begin
-            if (mem_issue_valid[i] && mem_issue_ready[i]) begin
-                perf_mem_issue_count_o = perf_mem_issue_count_o + 1'b1;
-                perf_issue_count_o = perf_issue_count_o + 1'b1;
-            end
-        end
-        for (int i = 0; i < MULDIV_ISSUE_WIDTH; i = i + 1) begin
-            if (mul_issue_valid[i] && mul_issue_ready[i]) begin
-                perf_mul_issue_count_o = perf_mul_issue_count_o + 1'b1;
-                perf_issue_count_o = perf_issue_count_o + 1'b1;
-            end
-        end
-
-        if (perf_rob_head_not_done_o) begin
-            if (retire_entry[0].uop.is_load || retire_entry[0].uop.is_store) begin
-                perf_rob_head_mem_o = 1'b1;
-            end else if (retire_entry[0].uop.tube == TUBE_TYPE_MUL) begin
-                perf_rob_head_mul_o = 1'b1;
-            end else if ((retire_entry[0].uop.tube == TUBE_TYPE_ALU) ||
-                         (retire_entry[0].uop.tube == TUBE_TYPE_BRC)) begin
-                perf_rob_head_int_o = 1'b1;
-            end else begin
-                perf_rob_head_other_o = 1'b1;
-            end
-        end
-    end
-`endif
 
     assign commit_valid_o = commit_valid;
     assign commit_entry_o = retire_entry;

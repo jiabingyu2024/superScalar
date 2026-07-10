@@ -1,0 +1,11 @@
+{
+  "design": {
+    "name": "superScalar"
+  },
+  "sim": {
+    "simulator": "vivado_xsim",
+    "waveform": "auto",
+    "dump_format": "wdb",
+    "dump_file": "/mnt/e/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/digital_twin.sim/sim_1/impl/func/xsim/top_func_impl.wdb"
+  }
+}

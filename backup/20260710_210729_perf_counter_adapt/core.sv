@@ -48,28 +48,6 @@ module core(
 `ifdef VERILATOR_TB
     logic [RETIRE_WIDTH-1:0] trace_valid;
     PcPath [RETIRE_WIDTH-1:0] trace_next_pc;
-    logic [2:0] perf_dispatch_count;
-    logic [2:0] perf_issue_count;
-    logic [2:0] perf_int_issue_count;
-    logic [2:0] perf_mem_issue_count;
-    logic [2:0] perf_mul_issue_count;
-    logic perf_dispatch_block;
-    logic perf_issue_block;
-    logic perf_rob_full;
-    logic perf_int_iq_block;
-    logic perf_mem_iq_block;
-    logic perf_mul_iq_block;
-    logic perf_rob_head_not_done;
-    logic perf_rob_head_int;
-    logic perf_rob_head_mem;
-    logic perf_rob_head_mul;
-    logic perf_rob_head_other;
-    logic perf_free_list_empty;
-    logic perf_store_buffer_block;
-    logic perf_serial_block;
-    logic perf_load_pending;
-    logic perf_mem_issue_block;
-    logic perf_int_blocked_by_load;
 `endif
 
     logic [2:0] commit_inc;
@@ -198,31 +176,6 @@ module core(
         .commit_valid_o (commit_valid),
         .commit_entry_o (commit_entry),
         .dmem           (dromAccess)
-`ifdef VERILATOR_TB
-        ,
-        .perf_dispatch_count_o(perf_dispatch_count),
-        .perf_issue_count_o(perf_issue_count),
-        .perf_int_issue_count_o(perf_int_issue_count),
-        .perf_mem_issue_count_o(perf_mem_issue_count),
-        .perf_mul_issue_count_o(perf_mul_issue_count),
-        .perf_dispatch_block_o(perf_dispatch_block),
-        .perf_issue_block_o(perf_issue_block),
-        .perf_rob_full_o(perf_rob_full),
-        .perf_int_iq_block_o(perf_int_iq_block),
-        .perf_mem_iq_block_o(perf_mem_iq_block),
-        .perf_mul_iq_block_o(perf_mul_iq_block),
-        .perf_rob_head_not_done_o(perf_rob_head_not_done),
-        .perf_rob_head_int_o(perf_rob_head_int),
-        .perf_rob_head_mem_o(perf_rob_head_mem),
-        .perf_rob_head_mul_o(perf_rob_head_mul),
-        .perf_rob_head_other_o(perf_rob_head_other),
-        .perf_free_list_empty_o(perf_free_list_empty),
-        .perf_store_buffer_block_o(perf_store_buffer_block),
-        .perf_serial_block_o(perf_serial_block),
-        .perf_load_pending_o(perf_load_pending),
-        .perf_mem_issue_block_o(perf_mem_issue_block),
-        .perf_int_blocked_by_load_o(perf_int_blocked_by_load)
-`endif
     );
 
 `ifdef VERILATOR_TB
@@ -309,9 +262,11 @@ module core(
                 end
             end
         end
-`ifdef VERILATOR_TB
-        issue_inc = perf_issue_count;
-`endif
+        for (int j = 0; j < DECODE_WIDTH; j = j + 1) begin
+            if (decode_valid[j] && decode_ready[j]) begin
+                issue_inc = issue_inc + 3'd1;
+            end
+        end
     end
 
 `ifndef VERILATOR_TB
@@ -461,61 +416,13 @@ module core(
             perf.jalrCnt <= perf.jalrCnt + 64'(jalr_inc);
             perf.jalrMissCnt <= perf.jalrMissCnt + 64'(jalr_miss_inc);
             perf.recoveryCycles <= perf.recoveryCycles + (backend_recover_valid ? 64'd1 : 64'd0);
-            perf.dispatchWidth0Cycles <= perf.dispatchWidth0Cycles +
-                                         ((perf_dispatch_count == 3'd0) ? 64'd1 : 64'd0);
-            perf.dispatchWidth1Cycles <= perf.dispatchWidth1Cycles +
-                                         ((perf_dispatch_count == 3'd1) ? 64'd1 : 64'd0);
-            perf.dispatchWidth2Cycles <= perf.dispatchWidth2Cycles +
-                                         ((perf_dispatch_count >= 3'd2) ? 64'd1 : 64'd0);
             perf.issueWidth0Cycles <= perf.issueWidth0Cycles + ((issue_inc == 3'd0) ? 64'd1 : 64'd0);
             perf.issueWidth1Cycles <= perf.issueWidth1Cycles + ((issue_inc == 3'd1) ? 64'd1 : 64'd0);
             perf.issueWidth2Cycles <= perf.issueWidth2Cycles + ((issue_inc >= 3'd2) ? 64'd1 : 64'd0);
             perf.commitWidth0Cycles <= perf.commitWidth0Cycles + ((commit_inc == 3'd0) ? 64'd1 : 64'd0);
             perf.commitWidth1Cycles <= perf.commitWidth1Cycles + ((commit_inc == 3'd1) ? 64'd1 : 64'd0);
             perf.commitWidth2Cycles <= perf.commitWidth2Cycles + ((commit_inc >= 3'd2) ? 64'd1 : 64'd0);
-            perf.idStallCycles <= perf.idStallCycles +
-                                  ((fetch_req_valid && !fetch_req_ready) ? 64'd1 : 64'd0);
-            perf.rnStallCycles <= perf.rnStallCycles +
-                                  ((|(decode_valid & ~decode_ready)) ? 64'd1 : 64'd0);
-            perf.dsStallCycles <= perf.dsStallCycles + (perf_dispatch_block ? 64'd1 : 64'd0);
-            perf.isStallCycles <= perf.isStallCycles + (perf_issue_block ? 64'd1 : 64'd0);
-            perf.exStallCycles <= perf.exStallCycles + (perf_mem_issue_block ? 64'd1 : 64'd0);
-            perf.robFullCycles <= perf.robFullCycles + (perf_rob_full ? 64'd1 : 64'd0);
-            perf.issueQueueFullCycles <= perf.issueQueueFullCycles +
-                                         ((perf_int_iq_block || perf_mem_iq_block ||
-                                           perf_mul_iq_block) ? 64'd1 : 64'd0);
-            perf.intIssueQueueFullCycles <= perf.intIssueQueueFullCycles +
-                                            (perf_int_iq_block ? 64'd1 : 64'd0);
-            perf.memIssueQueueFullCycles <= perf.memIssueQueueFullCycles +
-                                            (perf_mem_iq_block ? 64'd1 : 64'd0);
-            perf.mulIssueQueueFullCycles <= perf.mulIssueQueueFullCycles +
-                                            (perf_mul_iq_block ? 64'd1 : 64'd0);
-            perf.robHeadNotDoneCycles <= perf.robHeadNotDoneCycles +
-                                         (perf_rob_head_not_done ? 64'd1 : 64'd0);
-            perf.robHeadNotDoneIntCycles <= perf.robHeadNotDoneIntCycles +
-                                            (perf_rob_head_int ? 64'd1 : 64'd0);
-            perf.robHeadNotDoneMemCycles <= perf.robHeadNotDoneMemCycles +
-                                            (perf_rob_head_mem ? 64'd1 : 64'd0);
-            perf.robHeadNotDoneMulCycles <= perf.robHeadNotDoneMulCycles +
-                                            (perf_rob_head_mul ? 64'd1 : 64'd0);
-            perf.robHeadNotDoneOtherCycles <= perf.robHeadNotDoneOtherCycles +
-                                              (perf_rob_head_other ? 64'd1 : 64'd0);
-            perf.freeListEmptyCycles <= perf.freeListEmptyCycles +
-                                        (perf_free_list_empty ? 64'd1 : 64'd0);
-            perf.storeBufferFullCycles <= perf.storeBufferFullCycles +
-                                          (perf_store_buffer_block ? 64'd1 : 64'd0);
-            perf.serialBlockCycles <= perf.serialBlockCycles +
-                                      (perf_serial_block ? 64'd1 : 64'd0);
-            perf.memLoadReturnBlockCycles <= perf.memLoadReturnBlockCycles +
-                                             (perf_load_pending ? 64'd1 : 64'd0);
-            perf.memLoadAccessBlockCycles <= perf.memLoadAccessBlockCycles +
-                                             (perf_mem_issue_block ? 64'd1 : 64'd0);
-            perf.storeCommitBlockedByLoadCycles <= perf.storeCommitBlockedByLoadCycles +
-                                                   (perf_int_blocked_by_load ? 64'd1 : 64'd0);
-            perf.intIssueCount <= perf.intIssueCount + 64'(perf_int_issue_count);
-            perf.memIssueCount <= perf.memIssueCount + 64'(perf_mem_issue_count);
-            perf.mulIssueCount <= perf.mulIssueCount + 64'(perf_mul_issue_count);
-            if (!(&fetch_push_ready)) begin
+            if (pc_hold) begin
                 perf.frontendStallCycles <= perf.frontendStallCycles + 64'd1;
             end
 `endif

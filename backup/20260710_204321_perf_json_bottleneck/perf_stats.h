@@ -26,9 +26,6 @@ public:
     uint64_t store_count = 0;
     uint64_t dcache_access = 0;
     uint64_t dcache_miss = 0;
-    uint64_t aggregate_mem_stall_cycles = 0;
-    uint64_t aggregate_muldiv_stall_cycles = 0;
-    uint64_t aggregate_load_use_stall_cycles = 0;
     uint64_t cond_branch_count = 0;
     uint64_t cond_branch_miss_count = 0;
     uint64_t jal_count = 0;

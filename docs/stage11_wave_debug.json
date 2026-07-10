@@ -1,0 +1,89 @@
+{
+  "$schema": "stage11_wave_debug",
+  "version": "1.1",
+  "design_name": "superScalar",
+  "timestamp": "2026-07-10T23:25:00+08:00",
+  "eda_tool": {
+    "waveform_viewer": "Vivado Simulator waveform viewer",
+    "waveform_version": "Vivado 2023.2, build 4029153",
+    "dump_simulator": "xsim",
+    "dump_format": "wdb",
+    "dump_compile_flags": "xvlog --incr --relax; xelab --incr --debug typical --relax --mt 2",
+    "dump_runtime_flags": "-key {Post-Implementation:sim_1:Functional:top} -tclbatch top.tcl",
+    "actual_dump_command": "xsim post_impl_load_trace -tclbatch post_impl_load_trace.tcl -log post_impl_load_trace.log",
+    "actual_wave_open_command": "open_wave_database top_func_impl.wdb",
+    "source": "input_config.json and generated XSim scripts"
+  },
+  "failure_context": {
+    "from_triage": "standalone board-failure analysis; stage10_debug_triage.json is absent",
+    "failure_class": "data mismatch",
+    "suspected_area": "srcWithMext RV32I dispatcher control flow and the DRAM-to-DCache refill data path"
+  },
+  "dump_status": {
+    "dump_exists": true,
+    "dump_format": "wdb",
+    "dump_file": "/mnt/e/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/digital_twin.sim/sim_1/impl/func/xsim/top_func_impl.wdb",
+    "rerun_required": false,
+    "rerun_command": "fpga/diagnostics/run_post_impl_load_trace.bat"
+  },
+  "signals_traced": [
+    {
+      "signal": "SEG=0x33800000",
+      "module": "srcWithMext software result protocol",
+      "reason": "Decodes to RV32I 33/37 and M extension 8/8"
+    },
+    {
+      "signal": "cpu_req_addr[1:0] -> cpu_resp_rdata",
+      "module": "CoreDCache post-route netlist",
+      "reason": "Post-route LUT network contains both address-low bits and the registered load-response mux"
+    },
+    {
+      "signal": "req_byte_q[1:0]",
+      "module": "CoreDCache post-route netlist",
+      "reason": "Both miss-path offset registers exist and are driven by cpu_req_addr[1:0]"
+    },
+    {
+      "signal": "mem_size[1:0], mem_signed",
+      "module": "CoreMemIssueQueue and CoreExecuteCluster post-route netlist",
+      "reason": "All fields are retained through the five-entry memory queue and drive load-extension LUTs"
+    },
+    {
+      "signal": "entry_q payload primitives",
+      "module": "CoreCompressedQueue post-route netlist",
+      "reason": "Payload maps to FDRE cells with reset tied low; valid/count own visibility"
+    },
+    {
+      "signal": "mem_req_addr, mem_resp_valid, mem_resp_rdata",
+      "module": "CoreDCache post-route downstream port",
+      "reason": "Pairs each refill word request with the value already presented to DCache, separating upstream DRAM alignment from DCache fill placement"
+    }
+  ],
+  "observations": [
+    "The diagnostic post-route simulation reproduces the board result by issuing an MMIO write of 0x33800000 to 0x80200020; it is not a stale-bitstream-only symptom.",
+    "Dump-directed counter tracing shows SB, SH, and LB explicitly pass, then LH, LW, LBU, and LHU explicitly take their four fail paths; later tests continue. The dispatcher did not skip, repeat, or run away.",
+    "At the CoreDCache downstream port, request 0x8010000c receives 0, request 0x80100010 receives 0x1234abcd, and request 0x80100014 receives 0x55667788. DRAM initialization places 0x1234abcd at 0x8010000c and 0x55667788 at 0x80100010, proving the response data trails the request by one word before entering DCache.",
+    "LB passes because 0x80100008 is overwritten by the preceding SW test before LB executes; the overwritten cache word no longer depends on the corrupted refill value. LH/LW/LBU/LHU still consume the shifted initial line and fail.",
+    "The cacheable range covers all 0x8010_xxxx test addresses. Refill and writeback requests reaching DramBramAdapter are word aligned; cacheable narrow-load lane selection is therefore owned by CoreDCache, not by the SoC adapter byte-write mask.",
+    "The 100 printed Synth 8-7137 warnings plus one suppression message are all reported under CoreCompressedQueue. The post-route memory-queue payload registers have R=0 and are gated by valid/count ownership, so the warnings are real cleanup items but do not establish corruption of mem_size or mem_signed.",
+    "The actual failing set is LH/LW/LBU/LHU. It is explained by the shifted initial cache line, whereas mem_size or mem_signed corruption cannot explain the correctly ordered pass/fail counter updates and the already-wrong downstream memory responses.",
+    "Post-route timing meets constraints: WNS=0.274 ns, WHS=0.088 ns, TNS=0, THS=0.",
+    "The generated DRAM IP uses a registered primitive output, while DramBramAdapter asserts resp_valid from only read_valid_d2. Post-route sampling shows DCache consumes the old DRAM output on that edge; the correct word appears with the following request."
+  ],
+  "root_cause": {
+    "found": true,
+    "description": "DramBramAdapter asserts the read response one sampling edge before the registered Vivado DRAM_0 output is usable by CoreDCache. Each cache-line refill therefore stores the preceding DRAM word into the current burst slot.",
+    "evidence": "The post-route CoreDCache downstream trace pairs 0x8010000c with 0 and 0x80100010 with 0x1234abcd, although DRAM_0.mif places 0x1234abcd at 0x8010000c. The same one-word lag repeats with 0x55667788. Dump-directed pass/fail updates identify LH/LW/LBU/LHU, not four generic narrow loads, and exclude control-flow run-away.",
+    "affected_module": "rtl/soc/DramBramAdapter.sv read_valid/read_offset pipeline relative to generated DRAM_0 registered output"
+  },
+  "fix_recommendation": {
+    "type": "rtl_and_ip_contract",
+    "description": "Keep byte-write masking unchanged. Align DramBramAdapter resp_valid and read_offset with the actual registered DRAM_0 output, most directly by adding the required response stage while keeping the current IP configuration, or alternatively by removing the IP output register and re-validating timing. Then update rtl/ip/DRAM_0.sv and docs/fpga/ip_timing_alignment.md to the same edge-based contract and rerun post-route simulation.",
+    "target_files": [
+      "rtl/soc/DramBramAdapter.sv",
+      "rtl/ip/DRAM_0.sv",
+      "fpga/create_vivado_project.tcl",
+      "docs/fpga/ip_timing_alignment.md"
+    ]
+  },
+  "rerun_path": "frontend-compile-sim-run"
+}

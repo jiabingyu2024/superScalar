@@ -342,12 +342,6 @@ module CoreDCache #(
         endcase
     end
 
-`ifndef VERILATOR_TB
-    assign perf_access_o = '0;
-    assign perf_miss_o = '0;
-    assign perf_stall_o = '0;
-`endif
-
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             state_q <= DC_IDLE;
@@ -365,23 +359,18 @@ module CoreDCache #(
             req_byte_q <= '0;
             victim_tag_q <= '0;
             burst_word_q <= '0;
-`ifdef VERILATOR_TB
             perf_access_o <= 64'b0;
             perf_miss_o <= 64'b0;
             perf_stall_o <= 64'b0;
-`endif
             valid_q <= '0;
             dirty_q <= '0;
             lru_q <= '0;
         end else begin
             cpu_resp_valid <= 1'b0;
 
-`ifdef VERILATOR_TB
-            if (state_q != DC_IDLE ||
-                (cpu_req_valid && !cpu_req_ready && !cpu_req_write)) begin
+            if (state_q != DC_IDLE || (cpu_req_valid && !cpu_req_ready && !cpu_req_write)) begin
                 perf_stall_o <= perf_stall_o + 64'd1;
             end
-`endif
 
             unique case (state_q)
                 DC_IDLE: begin
@@ -398,11 +387,9 @@ module CoreDCache #(
                         victim_way_q <= victim_way;
                         victim_tag_q <= victim_way ? tag_way1_read : tag_way0_read;
 
-`ifdef VERILATOR_TB
                         if (req_cacheable) begin
                             perf_access_o <= perf_access_o + 64'd1;
                         end
-`endif
 
                         if (!req_cacheable) begin
                             if (mem_req_ready) begin
@@ -423,9 +410,7 @@ module CoreDCache #(
                                 cpu_resp_rdata <= align_load_word(hit_word, cpu_req_addr[1:0]);
                             end
                         end else begin
-`ifdef VERILATOR_TB
                             perf_miss_o <= perf_miss_o + 64'd1;
-`endif
                             burst_word_q <= '0;
                             if (valid_q[victim_way][req_index] && dirty_q[victim_way][req_index]) begin
                                 state_q <= DC_WRITEBACK_REQ;
