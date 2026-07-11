@@ -149,7 +149,12 @@ module CoreBackend (
     AddrPath store_push_addr;
     DataPath store_push_data;
     logic [3:0] store_push_mask;
+    logic store_push_data_valid;
+    PhyRegNumPath store_push_data_prd;
     logic store_push_ready;
+    logic store_complete_valid;
+    RobIndexPath store_complete_rob_idx;
+    AddrPath store_complete_addr;
     logic store_buffer_empty;
     logic load_query_valid;
     AddrPath load_query_addr;
@@ -295,6 +300,9 @@ module CoreBackend (
         .complete_csr_write_i(complete_csr_write),
         .complete_csr_addr_i(complete_csr_addr),
         .complete_csr_wdata_i(complete_csr_wdata),
+        .store_complete_valid_i(store_complete_valid),
+        .store_complete_idx_i(store_complete_rob_idx),
+        .store_complete_addr_i(store_complete_addr),
         .retire_ready_i(retire_ready),
         .retire_valid_o(retire_valid),
         .retire_entry_o(retire_entry),
@@ -389,6 +397,9 @@ module CoreBackend (
         .mem_issue_ready_o(mem_issue_ready),
         .mem_issue_valid_i(mem_issue_valid),
         .mem_issue_uop_i(mem_issue_uop),
+        .wakeup_valid_i(complete_valid),
+        .wakeup_phy_i(complete_prd),
+        .wakeup_result_i(complete_result),
         .mem_issue_lookahead_i(mem_issue_lookahead),
         .mem_issue_slot_i(mem_issue_slot),
         .mem_issue_age_i(mem_issue_age),
@@ -419,6 +430,8 @@ module CoreBackend (
         .store_push_addr_o(store_push_addr),
         .store_push_data_o(store_push_data),
         .store_push_mask_o(store_push_mask),
+        .store_push_data_valid_o(store_push_data_valid),
+        .store_push_data_prd_o(store_push_data_prd),
         .store_push_ready_i(store_push_ready),
         .store_buffer_empty_i(store_buffer_empty),
         .load_query_valid_o(load_query_valid),
@@ -445,7 +458,15 @@ module CoreBackend (
         .push_addr_i(store_push_addr),
         .push_data_i(store_push_data),
         .push_mask_i(store_push_mask),
+        .push_data_valid_i(store_push_data_valid),
+        .push_data_prd_i(store_push_data_prd),
         .push_ready_o(store_push_ready),
+        .complete_valid_i(complete_valid),
+        .complete_prd_i(complete_prd),
+        .complete_result_i(complete_result),
+        .store_complete_valid_o(store_complete_valid),
+        .store_complete_rob_idx_o(store_complete_rob_idx),
+        .store_complete_addr_o(store_complete_addr),
         .commit_valid_i(commit_valid),
         .commit_rob_idx_i(commit_rob_idx),
         .load_query_valid_i(load_query_valid),

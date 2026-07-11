@@ -2,7 +2,7 @@ import CoreConfigPkg::*;
 import CoreTypesPkg::*;
 
 module CoreMulDivPipe #(
-    parameter int MUL_LATENCY = 3
+    parameter int MUL_LATENCY = 2
 ) (
     input  logic clk,
     input  logic rst,

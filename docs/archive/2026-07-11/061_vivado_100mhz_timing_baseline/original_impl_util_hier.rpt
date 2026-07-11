@@ -1,14 +1,14 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
-| Date         : Sat Jul 11 11:46:48 2026
+| Date         : Sat Jul 11 19:38:16 2026
 | Host         : LAPTOP-6CG4KN49 running 64-bit major release  (build 9200)
-| Command      : report_utilization -hierarchical -hierarchical_depth 12 -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/digital_twin.runs/impl_1/reports/impl_util_hier.rpt
+| Command      : report_utilization -hierarchical -hierarchical_depth 12 -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_4762e00314f7_100mhz_routed_20260711/utilization_hier.rpt
 | Design       : top
 | Device       : xc7k325tffg900-2
 | Speed File   : -2
-| Design State : Optimized
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Design State : Routed
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Utilization Design Information
 
@@ -22,57 +22,56 @@ Table of Contents
 +-----------------------------------------------------------------------+-------------------------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
 |                                Instance                               |                         Module                        | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs  | RAMB36 | RAMB18 | DSP Blocks |
 +-----------------------------------------------------------------------+-------------------------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
-| top                                                                   |                                                 (top) |      76917 |      74764 |    2152 |    1 | 30503 |     68 |      0 |          0 |
+| top                                                                   |                                                 (top) |      76183 |      74032 |    2150 |    1 | 31544 |     68 |      0 |          0 |
 |   (top)                                                               |                                                 (top) |          1 |          1 |       0 |    0 |   146 |      0 |      0 |          0 |
 |   pll_inst                                                            |                                                   pll |          0 |          0 |       0 |    0 |     0 |      0 |      0 |          0 |
 |     inst                                                              |                                           pll_clk_wiz |          0 |          0 |       0 |    0 |     0 |      0 |      0 |          0 |
-|   student_top_inst                                                    |                                           student_top |      76699 |      74546 |    2152 |    1 | 30043 |     68 |      0 |          0 |
+|   student_top_inst                                                    |                                           student_top |      75971 |      73820 |    2150 |    1 | 31084 |     68 |      0 |          0 |
 |     (student_top_inst)                                                |                                           student_top |          0 |          0 |       0 |    0 |   148 |      0 |      0 |          0 |
-|     Core_cpu                                                          |                                                 myCPU |      76289 |      74136 |    2152 |    1 | 29600 |      0 |      0 |          0 |
-|       (Core_cpu)                                                      |                                                 myCPU |         61 |         61 |       0 |    0 |   104 |      0 |      0 |          0 |
-|       u_core                                                          |                                                  core |      71740 |      71107 |     632 |    1 | 28617 |      0 |      0 |          0 |
-|         (u_core)                                                      |                                                  core |        216 |        216 |       0 |    0 |     0 |      0 |      0 |          0 |
-|         gen_decoder[0].u_decoder                                      |                                    CoreRv32Decoder__1 |         61 |         61 |       0 |    0 |     0 |      0 |      0 |          0 |
+|     Core_cpu                                                          |                                                 myCPU |      75553 |      73402 |    2150 |    1 | 30641 |      0 |      0 |          0 |
+|       (Core_cpu)                                                      |                                                 myCPU |         63 |         63 |       0 |    0 |   105 |      0 |      0 |          0 |
+|       u_core                                                          |                                                  core |      71050 |      70419 |     630 |    1 | 29578 |      0 |      0 |          0 |
+|         (u_core)                                                      |                                                  core |        231 |        231 |       0 |    0 |     0 |      0 |      0 |          0 |
+|         gen_decoder[0].u_decoder                                      |                                    CoreRv32Decoder__1 |         60 |         60 |       0 |    0 |     0 |      0 |      0 |          0 |
 |         gen_decoder[1].u_decoder                                      |                                       CoreRv32Decoder |         59 |         59 |       0 |    0 |     0 |      0 |      0 |          0 |
-|         u_backend                                                     |                                           CoreBackend |      58628 |      58627 |       0 |    1 | 21791 |      0 |      0 |          0 |
-|           (u_backend)                                                 |                                           CoreBackend |          9 |          9 |       0 |    0 |   486 |      0 |      0 |          0 |
-|           u_busy                                                      |                                         CoreBusyTable |       2324 |       2324 |       0 |    0 |    63 |      0 |      0 |          0 |
-|           u_commit                                                    |                                        CoreCommitUnit |       1674 |       1674 |       0 |    0 |   482 |      0 |      0 |          0 |
-|           u_dispatch                                                  |                                      CoreDispatchUnit |          7 |          7 |       0 |    0 |     0 |      0 |      0 |          0 |
-|           u_execute                                                   |                                    CoreExecuteCluster |      15598 |      15597 |       0 |    1 |  6675 |      0 |      0 |          0 |
-|             (u_execute)                                               |                                    CoreExecuteCluster |       3478 |       3478 |       0 |    0 |   372 |      0 |      0 |          0 |
-|             u_muldiv                                                  |                                        CoreMulDivPipe |       2685 |       2684 |       0 |    1 |  4287 |      0 |      0 |          0 |
-|               (u_muldiv)                                              |                                        CoreMulDivPipe |        332 |        332 |       0 |    0 |   186 |      0 |      0 |          0 |
-|               u_div                                                   |                                                 DIV_0 |       1193 |       1192 |       0 |    1 |  3241 |      0 |      0 |          0 |
-|                 U0                                                    |                                 DIV_0_div_gen_v5_1_20 |       1193 |       1192 |       0 |    1 |  3241 |      0 |      0 |          0 |
-|                   i_synth                                             |                             DIV_0_div_gen_v5_1_20_viv |       1193 |       1192 |       0 |    1 |  3241 |      0 |      0 |          0 |
-|                     i_has_input_skid.i_2to1                           |                                  DIV_0_axi_slave_2to1 |         43 |         43 |       0 |    0 |   135 |      0 |      0 |          0 |
+|         u_backend                                                     |                                           CoreBackend |      58362 |      58361 |       0 |    1 | 22454 |      0 |      0 |          0 |
+|           (u_backend)                                                 |                                           CoreBackend |          9 |          9 |       0 |    0 |   485 |      0 |      0 |          0 |
+|           u_busy                                                      |                                         CoreBusyTable |       2442 |       2442 |       0 |    0 |    63 |      0 |      0 |          0 |
+|           u_commit                                                    |                                        CoreCommitUnit |       1688 |       1688 |       0 |    0 |   482 |      0 |      0 |          0 |
+|           u_dispatch                                                  |                                      CoreDispatchUnit |       1119 |       1119 |       0 |    0 |   731 |      0 |      0 |          0 |
+|           u_execute                                                   |                                    CoreExecuteCluster |      15464 |      15463 |       0 |    1 |  7062 |      0 |      0 |          0 |
+|             (u_execute)                                               |                                    CoreExecuteCluster |       3527 |       3527 |       0 |    0 |   759 |      0 |      0 |          0 |
+|             u_muldiv                                                  |                                        CoreMulDivPipe |       2684 |       2683 |       0 |    1 |  4287 |      0 |      0 |          0 |
+|               (u_muldiv)                                              |                                        CoreMulDivPipe |        333 |        333 |       0 |    0 |   186 |      0 |      0 |          0 |
+|               u_div                                                   |                                                 DIV_0 |       1191 |       1190 |       0 |    1 |  3241 |      0 |      0 |          0 |
+|                 U0                                                    |                                 DIV_0_div_gen_v5_1_20 |       1191 |       1190 |       0 |    1 |  3241 |      0 |      0 |          0 |
+|                   i_synth                                             |                             DIV_0_div_gen_v5_1_20_viv |       1191 |       1190 |       0 |    1 |  3241 |      0 |      0 |          0 |
+|                     i_has_input_skid.i_2to1                           |                                  DIV_0_axi_slave_2to1 |         42 |         42 |       0 |    0 |   135 |      0 |      0 |          0 |
 |                     i_nd_to_rdy                                       |                            DIV_0_xbip_pipe_v3_0_7_viv |          1 |          0 |       0 |    1 |     2 |      0 |      0 |          0 |
-|                     i_nonzero_fract.i_synth                           |                                   DIV_0_div_gen_synth |       1149 |       1149 |       0 |    0 |  3104 |      0 |      0 |          0 |
-|                       i_algo_r2_or_lutmult.i_nonzero_fract.i_sdivider |                              DIV_0_bip_sdivider_synth |       1149 |       1149 |       0 |    0 |  3104 |      0 |      0 |          0 |
-|                         i_sdivider.divider_blk                        |                                    DIV_0_dividervdc_v |       1149 |       1149 |       0 |    0 |  3104 |      0 |      0 |          0 |
+|                     i_nonzero_fract.i_synth                           |                                   DIV_0_div_gen_synth |       1148 |       1148 |       0 |    0 |  3104 |      0 |      0 |          0 |
+|                       i_algo_r2_or_lutmult.i_nonzero_fract.i_sdivider |                              DIV_0_bip_sdivider_synth |       1148 |       1148 |       0 |    0 |  3104 |      0 |      0 |          0 |
+|                         i_sdivider.divider_blk                        |                                    DIV_0_dividervdc_v |       1148 |       1148 |       0 |    0 |  3104 |      0 |      0 |          0 |
 |               u_mul                                                   |                                                 MUL_0 |       1160 |       1160 |       0 |    0 |   860 |      0 |      0 |          0 |
 |                 U0                                                    |                               MUL_0_mult_gen_v12_0_19 |       1160 |       1160 |       0 |    0 |   860 |      0 |      0 |          0 |
 |                   i_mult                                              |                           MUL_0_mult_gen_v12_0_19_viv |       1160 |       1160 |       0 |    0 |   860 |      0 |      0 |          0 |
 |                     gLUT.gLUT_speed.iLUT                              |                                            MUL_0_luts |       1160 |       1160 |       0 |    0 |   860 |      0 |      0 |          0 |
-|             u_prf                                                     |                                       CorePhysRegFile |       9435 |       9435 |       0 |    0 |  2016 |      0 |      0 |          0 |
-|           u_free_list                                                 |                                          CoreFreeList |       3505 |       3505 |       0 |    0 |    63 |      0 |      0 |          0 |
-|           u_int_iq                                                    |                                     CoreIntIssueQueue |      10633 |      10633 |       0 |    0 |  2572 |      0 |      0 |          0 |
-|             u_queue                                                   |                                   CoreCompressedQueue |      10633 |      10633 |       0 |    0 |  2572 |      0 |      0 |          0 |
-|           u_mem_iq                                                    |                                     CoreMemIssueQueue |       2831 |       2831 |       0 |    0 |  1488 |      0 |      0 |          0 |
-|             u_queue                                                   |                   CoreCompressedQueue__parameterized0 |       2831 |       2831 |       0 |    0 |  1488 |      0 |      0 |          0 |
-|           u_mul_iq                                                    |                                  CoreMulDivIssueQueue |        439 |        439 |       0 |    0 |   143 |      0 |      0 |          0 |
-|             u_queue                                                   |                   CoreCompressedQueue__parameterized1 |        439 |        439 |       0 |    0 |   143 |      0 |      0 |          0 |
-|           u_rename                                                    |                                        CoreRenameUnit |        937 |        937 |       0 |    0 |   372 |      0 |      0 |          0 |
-|           u_rob                                                       |                                               CoreROB |      18939 |      18939 |       0 |    0 |  8843 |      0 |      0 |          0 |
-|           u_store_buffer                                              |                                       CoreStoreBuffer |       1732 |       1732 |       0 |    0 |   604 |      0 |      0 |          0 |
-|         u_bpu                                                         |                                   CoreBranchPredictor |      11118 |      10486 |     632 |    0 |  5897 |      0 |      0 |          0 |
+|             u_prf                                                     |                                       CorePhysRegFile |       9253 |       9253 |       0 |    0 |  2016 |      0 |      0 |          0 |
+|           u_free_list                                                 |                                          CoreFreeList |       3827 |       3827 |       0 |    0 |    63 |      0 |      0 |          0 |
+|           u_int_iq                                                    |                                     CoreIntIssueQueue |      10842 |      10842 |       0 |    0 |  2658 |      0 |      0 |          0 |
+|             u_queue                                                   |                                   CoreCompressedQueue |      10842 |      10842 |       0 |    0 |  2658 |      0 |      0 |          0 |
+|           u_mem_iq                                                    |                                     CoreMemIssueQueue |       2221 |       2221 |       0 |    0 |   956 |      0 |      0 |          0 |
+|           u_mul_iq                                                    |                                  CoreMulDivIssueQueue |        448 |        448 |       0 |    0 |   143 |      0 |      0 |          0 |
+|             u_queue                                                   |                   CoreCompressedQueue__parameterized0 |        448 |        448 |       0 |    0 |   143 |      0 |      0 |          0 |
+|           u_rename                                                    |                                        CoreRenameUnit |       1120 |       1120 |       0 |    0 |   372 |      0 |      0 |          0 |
+|           u_rob                                                       |                                               CoreROB |      17357 |      17357 |       0 |    0 |  8835 |      0 |      0 |          0 |
+|           u_store_buffer                                              |                                       CoreStoreBuffer |       1830 |       1830 |       0 |    0 |   604 |      0 |      0 |          0 |
+|         u_bpu                                                         |                                   CoreBranchPredictor |      10688 |      10058 |     630 |    0 |  6156 |      0 |      0 |          0 |
 |         u_fetch                                                       |                                        CoreIromFetch2 |        121 |        121 |       0 |    0 |   101 |      0 |      0 |          0 |
-|         u_fetch_buffer                                                |                                       CoreFetchBuffer |       1503 |       1503 |       0 |    0 |   796 |      0 |      0 |          0 |
+|         u_fetch_buffer                                                |                                       CoreFetchBuffer |       1496 |       1496 |       0 |    0 |   796 |      0 |      0 |          0 |
 |           (u_fetch_buffer)                                            |                                       CoreFetchBuffer |          2 |          2 |       0 |    0 |     0 |      0 |      0 |          0 |
-|           u_fifo                                                      |                                     CoreMultiPushFifo |       1501 |       1501 |       0 |    0 |   796 |      0 |      0 |          0 |
-|         u_pc_gen                                                      |                                             CorePcGen |         34 |         34 |       0 |    0 |    32 |      0 |      0 |          0 |
-|       u_dcache                                                        |                                            CoreDCache |       4488 |       2968 |    1520 |    0 |   879 |      0 |      0 |          0 |
+|           u_fifo                                                      |                                     CoreMultiPushFifo |       1494 |       1494 |       0 |    0 |   796 |      0 |      0 |          0 |
+|         u_pc_gen                                                      |                                             CorePcGen |         34 |         34 |       0 |    0 |    71 |      0 |      0 |          0 |
+|       u_dcache                                                        |                                            CoreDCache |       4441 |       2921 |    1520 |    0 |   958 |      0 |      0 |          0 |
 |     Mem_IROM                                                          |                                                IROM_0 |          0 |          0 |       0 |    0 |     0 |      4 |      0 |          0 |
 |       U0                                                              |                             IROM_0_blk_mem_gen_v8_4_7 |          0 |          0 |       0 |    0 |     0 |      4 |      0 |          0 |
 |         inst_blk_mem_gen                                              |                       IROM_0_blk_mem_gen_v8_4_7_synth |          0 |          0 |       0 |    0 |     0 |      4 |      0 |          0 |
@@ -86,11 +85,11 @@ Table of Contents
 |                 prim_init.ram                                         |  IROM_0_blk_mem_gen_prim_wrapper_init__parameterized1 |          0 |          0 |       0 |    0 |     0 |      1 |      0 |          0 |
 |               ramloop[3].ram.r                                        |         IROM_0_blk_mem_gen_prim_width__parameterized2 |          0 |          0 |       0 |    0 |     0 |      1 |      0 |          0 |
 |                 prim_init.ram                                         |  IROM_0_blk_mem_gen_prim_wrapper_init__parameterized2 |          0 |          0 |       0 |    0 |     0 |      1 |      0 |          0 |
-|     mem_bridge                                                        |                                          SocMemBridge |        410 |        410 |       0 |    0 |   295 |     64 |      0 |          0 |
-|       (mem_bridge)                                                    |                                          SocMemBridge |        127 |        127 |       0 |    0 |   162 |      0 |      0 |          0 |
-|       counter_inst                                                    |                                               counter |         64 |         64 |       0 |    0 |   114 |      0 |      0 |          0 |
-|       dram_adapter                                                    |                                       DramBramAdapter |        191 |        191 |       0 |    0 |    14 |     64 |      0 |          0 |
-|         (dram_adapter)                                                |                                       DramBramAdapter |         47 |         47 |       0 |    0 |     6 |      0 |      0 |          0 |
+|     mem_bridge                                                        |                                          SocMemBridge |        418 |        418 |       0 |    0 |   295 |     64 |      0 |          0 |
+|       (mem_bridge)                                                    |                                          SocMemBridge |        129 |        129 |       0 |    0 |   162 |      0 |      0 |          0 |
+|       counter_inst                                                    |                                               counter |         55 |         55 |       0 |    0 |   114 |      0 |      0 |          0 |
+|       dram_adapter                                                    |                                       DramBramAdapter |        206 |        206 |       0 |    0 |    14 |     64 |      0 |          0 |
+|         (dram_adapter)                                                |                                       DramBramAdapter |         62 |         62 |       0 |    0 |     6 |      0 |      0 |          0 |
 |         dram                                                          |                                                DRAM_0 |        144 |        144 |       0 |    0 |     8 |     64 |      0 |          0 |
 |           U0                                                          |                             DRAM_0_blk_mem_gen_v8_4_7 |        144 |        144 |       0 |    0 |     8 |     64 |      0 |          0 |
 |             inst_blk_mem_gen                                          |                       DRAM_0_blk_mem_gen_v8_4_7_synth |        144 |        144 |       0 |    0 |     8 |     64 |      0 |          0 |
@@ -231,8 +230,9 @@ Table of Contents
 |         SEG2                                                          |                                               seg7__2 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
 |         SEG3                                                          |                                               seg7__3 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
 |         SEG4                                                          |                                                  seg7 |          4 |          4 |       0 |    0 |     0 |      0 |      0 |          0 |
-|   twin_controller_inst                                                |                                       twin_controller |        150 |        150 |       0 |    0 |   232 |      0 |      0 |          0 |
-|   uart_inst                                                           |                                                  uart |         67 |         67 |       0 |    0 |    82 |      0 |      0 |          0 |
+|   twin_controller_inst                                                |                                       twin_controller |        147 |        147 |       0 |    0 |   232 |      0 |      0 |          0 |
+|   uart_inst                                                           |                                                  uart |         64 |         64 |       0 |    0 |    82 |      0 |      0 |          0 |
 +-----------------------------------------------------------------------+-------------------------------------------------------+------------+------------+---------+------+-------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
 
 

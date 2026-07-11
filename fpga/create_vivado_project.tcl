@@ -345,8 +345,9 @@ set_ip_config_required MUL_0 {PortAWidth port_a_width} {33}
 set_ip_config_required MUL_0 {PortBType port_b_type} {Signed}
 set_ip_config_required MUL_0 {PortBWidth port_b_width} {33}
 set_ip_config_required MUL_0 {MultType multiplier_type} {Parallel_Multiplier}
+set_ip_config_required MUL_0 {Multiplier_Construction multiplier_construction} {Use_Mults}
 set_ip_config_optional MUL_0 {OptGoal optimization_goal} {Speed}
-set_ip_config_required MUL_0 {PipeStages pipeline_stages} {3}
+set_ip_config_required MUL_0 {PipeStages pipeline_stages} {2}
 set_ip_config_required MUL_0 {Use_Custom_Output_Width use_custom_output_width} {true}
 set_ip_config_required MUL_0 {OutputWidthHigh output_width_high} {65}
 set_ip_config_required MUL_0 {OutputWidthLow output_width_low} {0}
@@ -359,7 +360,7 @@ set_ip_config_required DIV_0 {remainder_type Remainder_Type} {Remainder}
 set_ip_config_required DIV_0 {operand_sign Operand_Sign} {Unsigned}
 set_ip_config_required DIV_0 {clocks_per_division Clocks_Per_Division} {1}
 set_ip_config_required DIV_0 {latency_configuration Latency_Configuration} {Manual}
-set_ip_config_required DIV_0 {latency Latency} {34}
+set_ip_config_required DIV_0 {latency Latency} {16}
 set_ip_config_required DIV_0 {FlowControl flow_control} {Blocking}
 
 set cdc_constraint_dir [file normalize [file join $project_dir constraints]]

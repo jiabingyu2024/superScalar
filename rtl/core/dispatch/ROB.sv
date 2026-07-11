@@ -26,6 +26,10 @@ module CoreROB #(
     input  logic [COMPLETE_WIDTH-1:0][11:0] complete_csr_addr_i,
     input  DataPath [COMPLETE_WIDTH-1:0] complete_csr_wdata_i,
 
+    input  logic store_complete_valid_i,
+    input  RobIndexPath store_complete_idx_i,
+    input  AddrPath store_complete_addr_i,
+
     input  logic [RETIRE_W-1:0] retire_ready_i,
     output logic [RETIRE_W-1:0] retire_valid_o,
     output CoreRobEntry [RETIRE_W-1:0] retire_entry_o,
@@ -199,6 +203,16 @@ module CoreROB #(
                 end
             end
 
+            if (store_complete_valid_i) begin
+                entry_q[store_complete_idx_i].done <= 1'b1;
+                entry_q[store_complete_idx_i].result <=
+                    store_complete_addr_i;
+                entry_q[store_complete_idx_i].exception <= 1'b0;
+                entry_q[store_complete_idx_i].exception_cause <= '0;
+                entry_q[store_complete_idx_i].branch_miss <= 1'b0;
+                entry_q[store_complete_idx_i].csr_write <= 1'b0;
+            end
+
             for (int r = 0; r < RETIRE_W; r = r + 1) begin
                 if (retire_fire[r]) begin
                     entry_q[wrap_add(head_q, retire_offset[r])].valid <= 1'b0;
@@ -207,4 +221,17 @@ module CoreROB #(
             end
         end
     end
+
+`ifdef VERILATOR_TB
+    always_ff @(posedge clk) begin
+        if (!rst && !clear_i && store_complete_valid_i) begin
+            assert (entry_q[store_complete_idx_i].valid)
+                else $error("store completion targeted an unowned ROB entry");
+            assert (entry_q[store_complete_idx_i].uop.is_store)
+                else $error("store completion targeted a non-store ROB entry");
+            assert (!entry_q[store_complete_idx_i].done)
+                else $error("store completion was reported more than once");
+        end
+    end
+`endif
 endmodule : CoreROB

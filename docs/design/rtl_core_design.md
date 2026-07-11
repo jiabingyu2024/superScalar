@@ -31,8 +31,8 @@ myCPU
 | `ISSUE_QUEUE_DEPTH` | 16 | 调度窗口大小。 |
 | `STORE_BUFFER_DEPTH` | 8 | 投机 store 暂存深度。 |
 | `CHECKPOINT_NUM` | 8 | 分支/serial checkpoint 数量。 |
-| `MUL_LATENCY` | 3 | 乘法 IP 固定 3 拍；当前全 core 只例化一颗 `MUL_0`。 |
-| `DIV_LATENCY` | 34 | 除法/取余 IP 固定 34 拍；当前全 core 只例化一颗 `DIV_0`。 |
+| `MUL_LATENCY` | 2 | 乘法 IP/行为模型/metadata 均为 2 级；当前全 core 只例化一颗 `MUL_0`。 |
+| `DIV_LATENCY` | 16 | Divider Generator manual latency 和行为模型为 16；RTL 以 `m_axis_dout_tvalid` 判完成。 |
 
 ## 3. 文件分层
 
@@ -377,27 +377,28 @@ issueFire = !isPipe.stall && !isPipe.flush && {Int/Mem/Mul}IssuePopRes.done
 
 ## 11. StoreBuffer 与内存顺序
 
-StoreBuffer 深度 8，承担三件事：
+StoreBuffer 深度 8，承担四件事：
 
-1. Dispatch 为 store 分配 entry。
-2. ExecuteMem 计算 store 地址、raw store data 和 raw byte mask 后写入 entry。
-3. Commit 只允许 ROB head store 提交；StoreBuffer 负责把 head store 写到 DRAM。
+1. store 的地址源 ready 后，MEM IQ 允许它先进入 registered request queue。
+2. Execute 建立带 `rob_idx/addr/mask/data_prd` 的有序 shell；data 未 ready 时继续按 PRD 监听 completion bus。
+3. data 到达后，StoreBuffer 从寄存状态单独完成对应 ROB store entry，不把 CAM 组合回 Commit ready。
+4. Commit 只允许已完成的 ROB head store 退休；StoreBuffer 再按序把 retired head 写到 DRAM。
 
 Load 查询 StoreBuffer：
 
 | 查询结果 | 行为 |
 | --- | --- |
-| 完全命中所需字节 | 直接转发数据到 WB。 |
-| 部分命中所需字节 | 将命中字节作为 `forwardData/forwardMask` 送入 load metadata，等待 DRAM 返回后逐字节合并。 |
-| 无冲突 | 发起 DRAM read。 |
+| 所需字节全部由 data-ready store 覆盖 | 直接转发数据到 WB。 |
+| 有重叠字节但覆盖不完整，或最新同字节 store 的 data 尚未到达 | registered MEM request 原地等待，不读取 DCache 旧值。 |
+| 同 word 但 byte mask 不重叠，或完全无 alias | cacheable load 可发起 DCache read。 |
 
 维护注意：
 
 1. store 对外提交时不在 core 内按 `addr[1:0]` 左移，统一交给 `dram_driver` 或 TB memory model 对齐。
 2. StoreBuffer 内部 forwarding 仍需按 entry 地址临时对齐 `data/wstrb`，再按 load 地址右移成外部 DRAM 返回格式，保证 store-to-load forwarding 和外部 load 返回语义一致。
-3. StoreBuffer 不用“部分命中”阻塞 load；`ExecuteMemStage` 会把 StoreBuffer 给出的字节和两拍后的 DRAM word 合并，再做 LB/LH/LW 的符号/零扩展。
-4. StoreBuffer 不用“尚未填充的任意 store entry”阻塞 load；这会把年轻 store 误当 older store，造成 `load` 卡住 EX、older store 又无法进入 EX 的死锁。older store/load 的程序序职责放在 IssueQueue MEM 保序中。
-5. store 每周期分配限制已经由 Decode/Dispatch 配合保证。
+3. data-pending store 只阻塞与其 byte mask 真正重叠的 load；不能把同 word 的非重叠 byte 误当 barrier。
+4. 多个同址 store 按老到年轻扫描；较年轻 pending store 必须撤销同 byte 上更老 store 已贡献的 forwarding mask，否则会转发旧值。
+5. MEM IQ 不允许 load 越过 store/fence/device；因此 StoreBuffer 中可见的 store 对当前 load 都是 older owner。
 
 ## 12. ReadReg、Bypass 和 PRF
 
@@ -429,7 +430,7 @@ Bypass 只匹配 WriteBackStage 当前周期的 wbForward
 | ALU | ADD/SUB/SHIFT/LOGIC/SLT | IntIssueQueue 最多发射 3 条，ReadRegStage pack 到 3 条 ALU lane，一拍输出 WB payload。 |
 | BRC | branch/JAL/JALR | IntIssueQueue 最多发射 3 条，计算 taken、真实 target，JAL/JALR 写回 `pc+4`。 |
 | MEM | load/store | MemIssueQueue 是 4 项严格 FIFO，每周期最多发射 1 条；MEM->WB 保留 2 个完成口，用于 load return 与当前 store/forward-hit load 同周期完成。 |
-| MUL | RV32M mul/div/rem | MulIssueQueue 是 4 项严格 FIFO，每周期最多发射 1 条；MUL 使用单实例 `MUL_0`，33x33 signed，3 拍；DIV/REM 使用单实例 `DIV_0`，unsigned 32/32，34 拍，外围处理 signed、除零和有符号溢出。 |
+| MUL | RV32M mul/div/rem | MulIssueQueue 每周期最多发射 1 条；MUL 使用单实例 `MUL_0`，33x33 signed、DSP 构造、2 级；DIV/REM 使用单实例 `DIV_0`，unsigned 32/32、manual latency 16，外围处理 signed、除零和有符号溢出。 |
 | SYS | CSR/ECALL/EBREAK/MRET/FENCE 类 serial | IntIssueQueue 可承载 SYS，但 Rename/Commit 的 serial 排干规则仍保证 CSR/ECALL/MRET/FENCE 类路径不乱序。 |
 
 ### 13.1 IROM 取指时序
@@ -463,18 +464,15 @@ T2: loadMetaPipe1.valid 时，使用 dram.exReadData 生成 WB 结果
 当前 M 扩展路径的边界：
 
 ```text
-MulIssueQueue
-  -> 4 项 FIFO，head ready 时每周期最多发射 1 条 TUBE_TYPE_MUL
-ReadRegStage
-  -> 将该 uop pack 到唯一 nextToMulStage[0]
-ExecuteMulStage
-  -> 对唯一 MUL lane 做 bypass 读请求
-  -> 选择唯一有效的非 div/rem MUL uop 送入单颗 MUL_0
-  -> 选择唯一有效的 DIV/REM uop 送入单颗 DIV_0
-  -> 用 mulMetaPipe 记录 Rd/writeRd/robIndex
-  -> 用 divMetaPipe 记录 Rd/writeRd/robIndex/符号恢复信息
-  -> MUL_0 第 3 拍输出 product 后写回 self.nextMulToStage[0]
-  -> DIV_0 第 34 拍输出 quotient/remainder 后写回 self.nextMulToStage[0]
+CoreMulDivIssueQueue
+  -> ready head 每周期最多发射 1 条 TUBE_TYPE_MUL
+CoreExecuteCluster
+  -> PRF/bypass 读出两个源操作数
+CoreMulDivPipe
+  -> 非 div/rem 送入单颗 MUL_0，并用 2-entry metadata valid 对齐 owner
+  -> DIV/REM 只在 mul pipe 空时送入单颗 DIV_0
+  -> normal DIV 等 m_axis_dout_tvalid，special DIV 走本地一拍路径
+  -> flush 中止可见 owner；已启动 divider 的迟到 valid 由 div_drain_q 吸收
 ```
 
 `MUL_0` 是 FPGA 侧 Vivado `mult_gen` IP 的仿真/综合同名边界。
@@ -485,7 +483,7 @@ ExecuteMulStage
 | 端口 | `CLK/A[32:0]/B[32:0]/P[65:0]` |
 | 有符号性 | `A/B/P` 均按 signed 处理 |
 | 宽度 | 33x33 -> 66 bit |
-| 延迟 | 3 个 clk pipeline stage |
+| 延迟 | 2 个 clk pipeline stage；Tcl 显式 `Use_Mults + Speed` |
 | reset/CE | 无 reset、无 clock enable；flush 只清 metadata，旧 product 被 valid 丢弃 |
 
 33 位操作数用于统一覆盖 `MULH/MULHSU/MULHU`：
@@ -502,18 +500,18 @@ ExecuteMulStage
 | 实例数 | 1 |
 | 接口 | AXI4-Stream 风格：`s_axis_dividend_*`、`s_axis_divisor_*`、`m_axis_dout_*` |
 | 操作数 | unsigned 32 bit dividend / unsigned 32 bit divisor |
-| 输出 | `m_axis_dout_tdata[31:0] = quotient`，`[63:32] = remainder` |
-| 延迟 | 34 个 clk pipeline stage |
+| 输出 | `m_axis_dout_tdata[63:32] = quotient`，`[31:0] = remainder` |
+| 延迟 | manual latency 16；完成仍由 `m_axis_dout_tvalid` 决定 |
 | 吞吐 | 目标配置为每周期可接收一个输入，当前 core 仍只给单 M lane 输入 |
 
-Vivado Tcl 将 `DIV_0` 配成 `FlowControl=Blocking`，因此输出侧没有 `m_axis_dout_tready` 端口。当前 core 也不支持除法输出反压，`ExecuteMulStage` 在 `m_axis_dout_tvalid=1` 且 metadata 到达第 34 拍时直接写回结果。
+Vivado Tcl 将 `DIV_0` 配成 `FlowControl=Blocking`，输出侧没有 `m_axis_dout_tready`。`CoreMulDivPipe` 不假定 output valid 必在固定拍到达，而是保持唯一 active owner，直到 `m_axis_dout_tvalid=1` 才写回。
 
 RISC-V signed 语义不交给 `DIV_0`：
 
 1. `DIV/REM` 在进入 IP 前对操作数取绝对值。
 2. `DIVU/REMU` 直接使用原操作数。
-3. `divisor == 0` 和 `0x80000000 / -1` 溢出仍走 metadata 特例，送给 IP 的是假安全输入，只用于保持 34 拍节奏对齐。
-4. 第 34 拍根据 metadata 对 quotient/remainder 做符号恢复，再选择 `DIV/DIVU` 的商或 `REM/REMU` 的余数。
+3. `divisor == 0` 和 `0x80000000 / -1` 溢出走 `MD_SPECIAL`，不启动 divider。
+4. `div_valid` 到达时根据 active metadata 对 quotient/remainder 做符号恢复，再选择 `DIV/DIVU` 的商或 `REM/REMU` 的余数。
 
 当前只放一颗 M 类 IP 入口，所以 `MulIssueQueue` 本身是单发 FIFO，保证同周期最多一条 `TUBE_TYPE_MUL` 进入 `ExecuteMulStage`。若误把 MulIssueQueue 扩成多发而不增加 IP 和写回仲裁，第二条 M 类 uop 会被单 IP 选择逻辑丢弃，最终 ROB 等不到对应 done。
 

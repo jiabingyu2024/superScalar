@@ -177,12 +177,12 @@ uncached:  单 word 访问下游 memory，不填充 cache
 
 ## 8. MulDivUnit 与 FPGA IP 契约
 
-`MulDivUnit.sv` 实例化：
+`MulDivPipe.sv` 实例化：
 
 | IP | 端口契约 | Tcl 生成 |
 |---|---|---|
-| `MUL_0` | `.CLK/.A[32:0]/.B[32:0]/.P[65:0]` | `mult_gen`，33x33 signed，3-stage pipeline，输出 66 bit。 |
-| `DIV_0` | AXI-stream dividend/divisor 输入，`m_axis_dout_tdata[63:0]` 输出 remainder/quotient。 | `div_gen`，Radix2，32-bit，unsigned，blocking flow，latency 34。 |
+| `MUL_0` | `.CLK/.A[32:0]/.B[32:0]/.P[65:0]` | `mult_gen`，33x33 signed，DSP multiplier、speed goal、2-stage pipeline，输出 66 bit。 |
+| `DIV_0` | AXI-stream dividend/divisor 输入，`m_axis_dout_tdata[63:32]` 为 quotient、`[31:0]` 为 remainder。 | `div_gen`，Radix2，32-bit，unsigned，blocking flow，manual latency 16。 |
 
 有符号除法通过先取绝对值、使用 unsigned divider、再恢复符号实现。除 0 和 `INT_MIN / -1` 在 `MD_SPECIAL` 中旁路，不启动 divider。
 

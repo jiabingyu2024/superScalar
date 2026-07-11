@@ -1,30 +1,83 @@
 {
-  "timestamp": "2026-07-11T12:58:19+08:00",
-  "trigger": "Commit 66454dd 100 MHz routed report: 128 top-path hits terminate in CoreMemIssueQueue payload/control, many at entry_q register S pins, while prior Synth 8-7137 warnings identify CoreCompressedQueue payload ownership",
-  "backup_dir": "backup/20260711_125720_queue_payload_reset_split",
+  "timestamp": "2026-07-11T19:45:58+08:00",
+  "trigger": "User-requested MUL/DIV 2/16 latency alignment, INT IQ cold parking capacity, and store address/data split",
+  "backup_dir": "rtl/core/backup/20260711_cold_iq_store_split_muldiv216",
   "files_modified": [
     {
+      "path": "rtl/core/execute/MulDivPipe.sv",
+      "lines_changed": "4-6",
+      "change_type": "latency_alignment"
+    },
+    {
+      "path": "rtl/ip/MUL_0.sv",
+      "lines_changed": "3-20",
+      "change_type": "simulation_model_alignment"
+    },
+    {
+      "path": "rtl/ip/DIV_0.sv",
+      "lines_changed": "3-24",
+      "change_type": "simulation_model_alignment"
+    },
+    {
+      "path": "fpga/create_vivado_project.tcl",
+      "lines_changed": "342-364",
+      "change_type": "vivado_ip_configuration"
+    },
+    {
       "path": "rtl/core/issue/CompressedQueue.sv",
-      "lines_changed": "185-217",
-      "change_type": "reset_control_set_cleanup",
-      "notes": "Split valid/count from payload storage. valid_q/count_q retain async reset and synchronous clear semantics; entry_q moves to a reset-free clocked process and updates only when reset/clear are inactive. Queue selection, wakeup, compaction, push order, ready/valid behavior, and interfaces are unchanged."
+      "lines_changed": "25-29,155-160",
+      "change_type": "interface_extension"
+    },
+    {
+      "path": "rtl/core/issue/IntIssueQueue.sv",
+      "lines_changed": "4-180",
+      "change_type": "microarchitecture_change"
+    },
+    {
+      "path": "rtl/core/issue/MulDivIssueQueue.sv",
+      "lines_changed": "32-35",
+      "change_type": "port_alignment"
+    },
+    {
+      "path": "rtl/core/issue/MemIssueQueue.sv",
+      "lines_changed": "47-198",
+      "change_type": "store_address_data_split"
+    },
+    {
+      "path": "rtl/core/execute/ExecuteCluster.sv",
+      "lines_changed": "13-950",
+      "change_type": "store_request_owner_tracking"
+    },
+    {
+      "path": "rtl/core/execute/StoreBuffer.sv",
+      "lines_changed": "9-285",
+      "change_type": "store_shell_data_fill_and_completion"
+    },
+    {
+      "path": "rtl/core/dispatch/ROB.sv",
+      "lines_changed": "29-237",
+      "change_type": "store_completion_port"
+    },
+    {
+      "path": "rtl/core/backend/CoreBackend.sv",
+      "lines_changed": "149-479",
+      "change_type": "integration_wiring"
     }
   ],
-  "cascade_scope": "compile_and_lint",
-  "verification_required": [
-    "COMPLETED: myCPU and student_top rebuilt with zero MULTIDRIVEN, LATCH, or UNOPTFLAT diagnostics.",
-    "COMPLETED: RV32UI 40/40, RV32UM 8/8, and RV32MI 4/4 passed.",
-    "COMPLETED: full srcSmoke passed at the exact P1A result of 33,398,117 cycles, 30,758,590 commits, IPC 0.920968.",
-    "COMPLETED: srcWithMext 500k regular and difftest retained 441,070 perf commits, IPC 0.882140, RV32I=37, fail=0, M/Z=8; difftest selfchecked 441,075 commits.",
-    "On the next user-scheduled Vivado build, confirm Synth 8-7137 count and entry_q S/R control pins disappear, then compare rename-to-MEM-IQ top paths and control-set utilization.",
-    "Do not infer Fmax improvement until the same 100 MHz routed report is regenerated."
+  "cascade_scope": "full_reverify",
+  "verification": [
+    "Verilator lint passed with no error, LATCH, UNOPTFLAT, or MULTIDRIVEN diagnostics.",
+    "RV32UI 40/40, RV32UM 8/8, and RV32MI 4/4 passed.",
+    "srcSmoke passed at 33,087,618 cycles, 30,758,594 commits, IPC 0.929610.",
+    "srcWithMext 500k reached 593,643 commits, IPC 1.187290, RV32I=37, fail=0, M=8.",
+    "srcWithMext 50M reached 60,789,745 commits, IPC 1.215790, RV32I=37, fail=0, M=8, with no assertion failure.",
+    "AMD PG108/PG151 confirm the requested width and latency parameter ranges.",
+    "Fresh Vivado 2023.2 IP generation accepted MUL Use_Mults/Speed/PipeStages=2 and DIV Radix2/32x32/Remainder/Manual=16."
   ],
-  "routed_evidence": {
-    "report": "/mnt/e/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_66454dd_100mhz_routed_20260711/setup_top200.rpt",
-    "cpu_wns_ns": -4.275,
-    "mem_iq_top_path_hits": 128,
-    "rename_top_path_hits": 142,
-    "execute_or_prf_top_path_hits": 0
-  },
-  "notes": "Dynamic behavior is exactly unchanged versus P1A at both full srcSmoke and 500k srcWithMext. P1A DCache optimization remains in the working tree. Vivado was not invoked by this agent."
+  "remaining_physical_verification": [
+    "Run clean current-worktree synthesis and route at the target CPU clock.",
+    "Do not use the old 061 checkpoint to claim current WNS/TNS or Fmax.",
+    "Check the two-stage MUL, cold reinject path, and StoreBuffer-to-ROB registered completion in routed top paths."
+  ],
+  "notes": "MUL construction is explicitly frozen to DSP primitives (Use_Mults) with Speed goal; DIV remains Radix2 because High Radix cannot directly return the integer remainder required by REM/REMU."
 }

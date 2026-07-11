@@ -45,6 +45,9 @@ module CoreMemIssueQueue (
     RobIndexPath denied_rob_idx_q;
 
     logic [MEM_IQ_DEPTH-1:0] ready_now;
+    logic [MEM_IQ_DEPTH-1:0] src1_ready_now;
+    logic [MEM_IQ_DEPTH-1:0] src2_ready_now;
+    logic [MEM_IQ_DEPTH-1:0] older_all_load;
     logic [MEM_IQ_DEPTH-1:0] remove_mask;
     logic [MEM_IQ_DEPTH-1:0] free_mask;
     logic [DISPATCH_WIDTH-1:0] push_fire;
@@ -73,11 +76,29 @@ module CoreMemIssueQueue (
 
     always_comb begin
         for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
-            ready_now[e] = valid_q[e] &&
-                           src_ready_after_wakeup(entry_q[e].prs1,
-                                                  entry_q[e].src1_ready) &&
-                           src_ready_after_wakeup(entry_q[e].prs2,
-                                                  entry_q[e].src2_ready);
+            src1_ready_now[e] = src_ready_after_wakeup(
+                entry_q[e].prs1, entry_q[e].src1_ready
+            );
+            src2_ready_now[e] = src_ready_after_wakeup(
+                entry_q[e].prs2, entry_q[e].src2_ready
+            );
+            // A store may establish its ordered StoreBuffer shell as soon as
+            // the address source is ready.  Store data retains a separate PRD
+            // owner and is captured later if src2 is still pending.
+            ready_now[e] = valid_q[e] && src1_ready_now[e] &&
+                           (entry_q[e].uop.is_store || src2_ready_now[e]);
+        end
+    end
+
+    always_comb begin
+        older_all_load = '1;
+        for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
+            for (int o = 0; o < MEM_IQ_DEPTH; o++) begin
+                if (valid_q[o] && (age_q[o] < age_q[e]) &&
+                    !entry_q[o].uop.is_load) begin
+                    older_all_load[e] = 1'b0;
+                end
+            end
         end
     end
 
@@ -102,17 +123,11 @@ module CoreMemIssueQueue (
                           !(denied_valid_q &&
                             (denied_slot_q == SLOT_WIDTH'(e)) &&
                             (denied_rob_idx_q == entry_q[e].rob_idx))))) begin
-                        logic older_all_load;
-                        older_all_load = 1'b1;
-                        for (int o = 0; o < MEM_IQ_DEPTH; o++) begin
-                            if (valid_q[o] && (age_q[o] < age_q[e]) &&
-                                !entry_q[o].uop.is_load) begin
-                                older_all_load = 1'b0;
-                            end
-                        end
-                        if ((wanted_age == 0) || older_all_load) begin
+                        if ((wanted_age == 0) || older_all_load[e]) begin
                             issue_valid_o[0] = 1'b1;
                             issue_uop_o[0] = entry_q[e];
+                            issue_uop_o[0].src1_ready = src1_ready_now[e];
+                            issue_uop_o[0].src2_ready = src2_ready_now[e];
                             issue_lookahead_o = (wanted_age != 0);
                             issue_slot_o = SLOT_WIDTH'(e);
                             issue_age_o = age_q[e];
@@ -155,10 +170,7 @@ module CoreMemIssueQueue (
     always_comb begin
         free_mask = ~valid_q | remove_mask;
         push_ready_o = '0;
-        push_fire = '0;
         push_slot = '{default:'0};
-        push_rank = '{default:'0};
-        push_count = '0;
         for (int p = 0; p < DISPATCH_WIDTH; p++) begin
             for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
                 if (!push_ready_o[p] && free_mask[e]) begin
@@ -167,13 +179,20 @@ module CoreMemIssueQueue (
                     free_mask[e] = 1'b0;
                 end
             end
+        end
+    end
+
+    // Valid affects only the state update/rank of accepted pushes, never the
+    // externally visible ready decision above.
+    always_comb begin
+        push_fire = '0;
+        push_rank = '{default:'0};
+        push_count = '0;
+        for (int p = 0; p < DISPATCH_WIDTH; p++) begin
             push_fire[p] = push_valid_i[p] && push_ready_o[p];
             push_rank[p] = push_count;
             if (push_fire[p]) begin
                 push_count = push_count + 1'b1;
-            end
-            if (!push_fire[p] && push_ready_o[p]) begin
-                free_mask[push_slot[p]] = 1'b1;
             end
         end
     end

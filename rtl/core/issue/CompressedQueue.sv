@@ -25,6 +25,7 @@ module CoreCompressedQueue #(
 
     output logic empty_o,
     output logic full_o,
+    output logic [COUNT_WIDTH-1:0] count_o,
     output logic head_not_ready_o,
     output logic younger_ready_behind_head_o
 );
@@ -155,6 +156,7 @@ module CoreCompressedQueue #(
 
     assign empty_o = (count_q == '0);
     assign full_o = (count_q == DEPTH_COUNT);
+    assign count_o = count_q;
 
     always_comb begin
         head_not_ready_o = valid_q[0] &&

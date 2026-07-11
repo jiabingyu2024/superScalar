@@ -32,6 +32,7 @@ module CoreMulDivIssueQueue (
         .issue_uop_o(issue_uop_o),
         .empty_o(),
         .full_o(),
+        .count_o(),
         .head_not_ready_o(),
         .younger_ready_behind_head_o()
     );

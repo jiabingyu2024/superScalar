@@ -13,6 +13,9 @@ module CoreExecuteCluster (
     output logic [MEM_ISSUE_WIDTH-1:0] mem_issue_ready_o,
     input  logic [MEM_ISSUE_WIDTH-1:0] mem_issue_valid_i,
     input  CoreRenamedUop [MEM_ISSUE_WIDTH-1:0] mem_issue_uop_i,
+    input  logic [ISSUE_WIDTH-1:0] wakeup_valid_i,
+    input  PhyRegNumPath [ISSUE_WIDTH-1:0] wakeup_phy_i,
+    input  DataPath [ISSUE_WIDTH-1:0] wakeup_result_i,
     input  logic mem_issue_lookahead_i,
     input  logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_slot_i,
     input  logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_age_i,
@@ -47,6 +50,8 @@ module CoreExecuteCluster (
     output AddrPath store_push_addr_o,
     output DataPath store_push_data_o,
     output logic [3:0] store_push_mask_o,
+    output logic store_push_data_valid_o,
+    output PhyRegNumPath store_push_data_prd_o,
     input  logic store_push_ready_i,
     input  logic store_buffer_empty_i,
 
@@ -100,17 +105,25 @@ module CoreExecuteCluster (
     AddrPath mem_req_addr_q [MEM_REQ_DEPTH-1:0];
     DataPath mem_req_store_data_q [MEM_REQ_DEPTH-1:0];
     logic [3:0] mem_req_store_mask_q [MEM_REQ_DEPTH-1:0];
+    logic mem_req_store_data_valid_q [MEM_REQ_DEPTH-1:0];
+    PhyRegNumPath mem_req_store_data_prd_q [MEM_REQ_DEPTH-1:0];
+    logic mem_req_store_data_valid_now [MEM_REQ_DEPTH-1:0];
+    DataPath mem_req_store_data_now [MEM_REQ_DEPTH-1:0];
     logic mem_req_valid;
     CoreRenamedUop mem_req_head_uop;
     AddrPath mem_req_head_addr;
     DataPath mem_req_head_store_data;
     logic [3:0] mem_req_head_store_mask;
+    logic mem_req_head_store_data_valid;
+    PhyRegNumPath mem_req_head_store_data_prd;
     logic mem_issue_fire;
     logic mem_enqueue;
     CoreRenamedUop mem_enqueue_uop;
     AddrPath mem_enqueue_addr;
     DataPath mem_enqueue_store_data;
     logic [3:0] mem_enqueue_store_mask;
+    logic mem_enqueue_store_data_valid;
+    PhyRegNumPath mem_enqueue_store_data_prd;
     logic mem_probe_valid_q;
     CoreRenamedUop mem_probe_uop_q;
     AddrPath mem_probe_addr_q;
@@ -121,6 +134,7 @@ module CoreExecuteCluster (
     logic mem_probe_cacheable;
     logic mem_probe_misaligned;
     logic mem_req_complete;
+    logic mem_req_report_complete;
     logic mem_req_consume;
     logic mem_req_load_send;
     logic mem_req_cacheable;
@@ -295,8 +309,10 @@ module CoreExecuteCluster (
     assign mem_req_valid = (mem_req_count_q != '0);
     assign mem_req_head_uop = mem_req_uop_q[0];
     assign mem_req_head_addr = mem_req_addr_q[0];
-    assign mem_req_head_store_data = mem_req_store_data_q[0];
+    assign mem_req_head_store_data = mem_req_store_data_now[0];
     assign mem_req_head_store_mask = mem_req_store_mask_q[0];
+    assign mem_req_head_store_data_valid = mem_req_store_data_valid_now[0];
+    assign mem_req_head_store_data_prd = mem_req_store_data_prd_q[0];
     assign mem_req_cacheable = (mem_req_head_addr >= CACHE_ADDR_START) &&
                                (mem_req_head_addr < CACHE_ADDR_END);
     assign mem_req_misaligned =
@@ -319,6 +335,23 @@ module CoreExecuteCluster (
     assign mem_probe_resolve_rob_idx_o = mem_probe_uop_q.rob_idx;
 
     always_comb begin
+        for (int e = 0; e < MEM_REQ_DEPTH; e++) begin
+            mem_req_store_data_now[e] = mem_req_store_data_q[e];
+            mem_req_store_data_valid_now[e] =
+                mem_req_store_data_valid_q[e];
+            if (!mem_req_store_data_valid_q[e]) begin
+                for (int w = 0; w < ISSUE_WIDTH; w++) begin
+                    if (wakeup_valid_i[w] && (wakeup_phy_i[w] != '0) &&
+                        (wakeup_phy_i[w] == mem_req_store_data_prd_q[e])) begin
+                        mem_req_store_data_now[e] = wakeup_result_i[w];
+                        mem_req_store_data_valid_now[e] = 1'b1;
+                    end
+                end
+            end
+        end
+    end
+
+    always_comb begin
         mem_enqueue = (mem_issue_fire && !mem_issue_lookahead_i) ||
                       mem_probe_resolve_accept_o;
         mem_enqueue_uop = mem_issue_uop_i[0];
@@ -327,11 +360,25 @@ module CoreExecuteCluster (
              mem_issue_uop_i[0].uop.imm_s : mem_issue_uop_i[0].uop.imm_i);
         mem_enqueue_store_data = prf_rdata[2 * MEM_SLOT + 1];
         mem_enqueue_store_mask = store_mask(mem_issue_uop_i[0].uop);
+        mem_enqueue_store_data_valid = mem_issue_uop_i[0].src2_ready;
+        mem_enqueue_store_data_prd = mem_issue_uop_i[0].prs2;
+        if (mem_issue_uop_i[0].uop.is_store &&
+            !mem_enqueue_store_data_valid) begin
+            for (int w = 0; w < ISSUE_WIDTH; w++) begin
+                if (wakeup_valid_i[w] && (wakeup_phy_i[w] != '0) &&
+                    (wakeup_phy_i[w] == mem_enqueue_store_data_prd)) begin
+                    mem_enqueue_store_data = wakeup_result_i[w];
+                    mem_enqueue_store_data_valid = 1'b1;
+                end
+            end
+        end
         if (mem_probe_resolve_accept_o) begin
             mem_enqueue_uop = mem_probe_uop_q;
             mem_enqueue_addr = mem_probe_addr_q;
             mem_enqueue_store_data = mem_probe_store_data_q;
             mem_enqueue_store_mask = mem_probe_store_mask_q;
+            mem_enqueue_store_data_valid = 1'b1;
+            mem_enqueue_store_data_prd = '0;
         end
     end
     assign load_meta_pop = dmem.exReadReady && (load_meta_count_q != '0);
@@ -365,6 +412,9 @@ module CoreExecuteCluster (
 
         mem_req_consume = mem_req_complete ||
                           (mem_req_load_send && dmem.exReadAccept);
+        mem_req_report_complete = mem_req_complete &&
+            (!mem_req_head_uop.uop.is_store || mem_req_misaligned ||
+             mem_req_head_store_data_valid);
         load_meta_push = mem_req_load_send && dmem.exReadAccept;
     end
 
@@ -390,7 +440,7 @@ module CoreExecuteCluster (
             mem_issue_ready_o[m] = !clear_i &&
                 !mem_probe_valid_q &&
                 (mem_req_count_q < MEM_REQ_COUNT_BITS'(MEM_REQ_DEPTH));
-            issue_valid[INT_ISSUE_WIDTH + m] = mem_req_complete;
+            issue_valid[INT_ISSUE_WIDTH + m] = mem_req_report_complete;
         end
         for (int u = 0; u < MULDIV_ISSUE_WIDTH; u = u + 1) begin
             mul_issue_ready_o[u] = !clear_i && (u == 0) && muldiv_ready;
@@ -443,6 +493,8 @@ module CoreExecuteCluster (
         store_push_addr_o = '0;
         store_push_data_o = '0;
         store_push_mask_o = '0;
+        store_push_data_valid_o = 1'b0;
+        store_push_data_prd_o = '0;
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
             src0[i] = prf_rdata[2*i];
             src1[i] = prf_rdata[2*i + 1];
@@ -583,6 +635,8 @@ module CoreExecuteCluster (
             store_push_addr_o = mem_req_head_addr;
             store_push_data_o = mem_req_head_store_data;
             store_push_mask_o = mem_req_head_store_mask;
+            store_push_data_valid_o = mem_req_head_store_data_valid;
+            store_push_data_prd_o = mem_req_head_store_data_prd;
         end
 
         if (mem_req_complete && mem_req_head_uop.uop.is_load &&
@@ -724,11 +778,20 @@ module CoreExecuteCluster (
     always_ff @(posedge clk) begin
         if (!rst) begin
             if (!clear_i) begin
+                for (int e = 0; e < MEM_REQ_DEPTH; e++) begin
+                    mem_req_store_data_q[e] <= mem_req_store_data_now[e];
+                    mem_req_store_data_valid_q[e] <=
+                        mem_req_store_data_valid_now[e];
+                end
                 if (mem_req_consume && (mem_req_count_q > 1)) begin
                     mem_req_uop_q[0] <= mem_req_uop_q[1];
                     mem_req_addr_q[0] <= mem_req_addr_q[1];
-                    mem_req_store_data_q[0] <= mem_req_store_data_q[1];
+                    mem_req_store_data_q[0] <= mem_req_store_data_now[1];
                     mem_req_store_mask_q[0] <= mem_req_store_mask_q[1];
+                    mem_req_store_data_valid_q[0] <=
+                        mem_req_store_data_valid_now[1];
+                    mem_req_store_data_prd_q[0] <=
+                        mem_req_store_data_prd_q[1];
                 end
 
                 if (mem_enqueue) begin
@@ -737,6 +800,10 @@ module CoreExecuteCluster (
                         mem_req_addr_q[0] <= mem_enqueue_addr;
                         mem_req_store_data_q[0] <= mem_enqueue_store_data;
                         mem_req_store_mask_q[0] <= mem_enqueue_store_mask;
+                        mem_req_store_data_valid_q[0] <=
+                            mem_enqueue_store_data_valid;
+                        mem_req_store_data_prd_q[0] <=
+                            mem_enqueue_store_data_prd;
                     end else begin
                         mem_req_uop_q[mem_req_count_q[0]] <=
                             mem_enqueue_uop;
@@ -746,6 +813,10 @@ module CoreExecuteCluster (
                             mem_enqueue_store_data;
                         mem_req_store_mask_q[mem_req_count_q[0]] <=
                             mem_enqueue_store_mask;
+                        mem_req_store_data_valid_q[mem_req_count_q[0]] <=
+                            mem_enqueue_store_data_valid;
+                        mem_req_store_data_prd_q[mem_req_count_q[0]] <=
+                            mem_enqueue_store_data_prd;
                     end
                 end
             end
@@ -823,6 +894,8 @@ module CoreExecuteCluster (
     AddrPath mem_req_addr_prev_q;
     DataPath mem_req_store_data_prev_q;
     logic [3:0] mem_req_store_mask_prev_q;
+    logic mem_req_store_data_valid_prev_q;
+    PhyRegNumPath mem_req_store_data_prd_prev_q;
 
     always_ff @(posedge clk) begin
         if (rst || clear_i) begin
@@ -832,9 +905,16 @@ module CoreExecuteCluster (
                 assert (mem_req_valid &&
                         (mem_req_head_uop == mem_req_uop_prev_q) &&
                         (mem_req_head_addr == mem_req_addr_prev_q) &&
-                        (mem_req_head_store_data == mem_req_store_data_prev_q) &&
-                        (mem_req_head_store_mask == mem_req_store_mask_prev_q))
+                        (mem_req_head_store_mask == mem_req_store_mask_prev_q) &&
+                        (mem_req_head_store_data_prd ==
+                         mem_req_store_data_prd_prev_q))
                     else $error("MEM request payload changed while stalled");
+                if (mem_req_store_data_valid_prev_q) begin
+                    assert (mem_req_head_store_data_valid &&
+                            (mem_req_head_store_data ==
+                             mem_req_store_data_prev_q))
+                        else $error("ready store data changed while stalled");
+                end
             end
             assert (mem_req_count_q <=
                     MEM_REQ_COUNT_BITS'(MEM_REQ_DEPTH))
@@ -870,6 +950,9 @@ module CoreExecuteCluster (
             mem_req_addr_prev_q <= mem_req_head_addr;
             mem_req_store_data_prev_q <= mem_req_head_store_data;
             mem_req_store_mask_prev_q <= mem_req_head_store_mask;
+            mem_req_store_data_valid_prev_q <=
+                mem_req_head_store_data_valid;
+            mem_req_store_data_prd_prev_q <= mem_req_head_store_data_prd;
         end
     end
 `endif

@@ -3,7 +3,7 @@
 /**
  * @module DIV_0
  * @description Behavioral replacement for the Vivado div_gen IP used by FPGA.
- *              Unsigned 32/32 divider with remainder output and fixed 34-cycle
+ *              Unsigned 32/32 divider with remainder output and fixed 16-cycle
  *              registered latency. The output packing follows Divider Generator
  *              remainder mode for 32-bit operands:
  *              m_axis_dout_tdata[63:32] = quotient
@@ -20,7 +20,7 @@ module DIV_0 (
     output logic        m_axis_dout_tvalid,
     output logic [63:0] m_axis_dout_tdata
 );
-    localparam int DIV_LATENCY = 34;
+    localparam int DIV_LATENCY = 16;
 
     logic [63:0] dataPipe [0:DIV_LATENCY-1];
     logic        validPipe [0:DIV_LATENCY-1];
