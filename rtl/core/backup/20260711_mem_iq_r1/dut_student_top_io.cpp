@@ -87,10 +87,6 @@ CorePerfSample capture_student_top_perf(const Vstudent_top& top) {
     sample.mem_forward_cycles = top.dbg_perf_mem_forward_cycles;
     sample.mem_iq_head_not_ready_cycles = top.dbg_perf_mem_iq_head_not_ready_cycles;
     sample.mem_iq_younger_ready_cycles = top.dbg_perf_mem_iq_younger_ready_cycles;
-    sample.mem_iq_occupancy_sum = top.dbg_perf_mem_iq_occupancy_sum;
-    sample.mem_iq_probe_launch_count = top.dbg_perf_mem_iq_probe_launch_count;
-    sample.mem_iq_probe_accept_count = top.dbg_perf_mem_iq_probe_accept_count;
-    sample.mem_iq_probe_reject_count = top.dbg_perf_mem_iq_probe_reject_count;
     sample.mul_op_count = top.dbg_perf_mul_op_count;
     sample.div_op_count = top.dbg_perf_div_op_count;
     sample.rem_op_count = top.dbg_perf_rem_op_count;

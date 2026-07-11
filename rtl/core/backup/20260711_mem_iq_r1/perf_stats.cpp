@@ -133,10 +133,6 @@ void PerfStats::observe_core(uint64_t cycle, const CorePerfSample& sample) {
     mem_forward_cycles = sample.mem_forward_cycles;
     mem_iq_head_not_ready_cycles = sample.mem_iq_head_not_ready_cycles;
     mem_iq_younger_ready_cycles = sample.mem_iq_younger_ready_cycles;
-    mem_iq_occupancy_sum = sample.mem_iq_occupancy_sum;
-    mem_iq_probe_launch_count = sample.mem_iq_probe_launch_count;
-    mem_iq_probe_accept_count = sample.mem_iq_probe_accept_count;
-    mem_iq_probe_reject_count = sample.mem_iq_probe_reject_count;
     mul_op_count = sample.mul_op_count;
     div_op_count = sample.div_op_count;
     rem_op_count = sample.rem_op_count;
@@ -339,14 +335,7 @@ void PerfStats::write_json_fields(std::ostream& out) const {
     out << "      \"mem_iq_head_not_ready_cycles\": "
         << mem_iq_head_not_ready_cycles << ",\n";
     out << "      \"younger_ready_behind_head_cycles\": "
-        << mem_iq_younger_ready_cycles << ",\n";
-    out << "      \"mem_iq_occupancy_sum\": " << mem_iq_occupancy_sum << ",\n";
-    out << "      \"mem_iq_probe_launch_count\": "
-        << mem_iq_probe_launch_count << ",\n";
-    out << "      \"mem_iq_probe_accept_count\": "
-        << mem_iq_probe_accept_count << ",\n";
-    out << "      \"mem_iq_probe_reject_count\": "
-        << mem_iq_probe_reject_count << "\n";
+        << mem_iq_younger_ready_cycles << "\n";
     out << "    },\n";
     out << "    \"throughput\": {\n";
     out << "      \"issue_mix\": {\n";

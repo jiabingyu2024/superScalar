@@ -90,10 +90,6 @@ module myCPU (
     output logic [63:0] dbg_perf_mem_forward_cycles,
     output logic [63:0] dbg_perf_mem_iq_head_not_ready_cycles,
     output logic [63:0] dbg_perf_mem_iq_younger_ready_cycles,
-    output logic [63:0] dbg_perf_mem_iq_occupancy_sum,
-    output logic [63:0] dbg_perf_mem_iq_probe_launch_count,
-    output logic [63:0] dbg_perf_mem_iq_probe_accept_count,
-    output logic [63:0] dbg_perf_mem_iq_probe_reject_count,
     output logic [63:0] dbg_perf_mul_op_count,
     output logic [63:0] dbg_perf_div_op_count,
     output logic [63:0] dbg_perf_rem_op_count,
@@ -244,10 +240,6 @@ module myCPU (
     assign dbg_perf_mem_forward_cycles = perfIF.memForwardCycles;
     assign dbg_perf_mem_iq_head_not_ready_cycles = perfIF.memIqHeadNotReadyCycles;
     assign dbg_perf_mem_iq_younger_ready_cycles = perfIF.memIqYoungerReadyCycles;
-    assign dbg_perf_mem_iq_occupancy_sum = perfIF.memIqOccupancySum;
-    assign dbg_perf_mem_iq_probe_launch_count = perfIF.memIqProbeLaunchCount;
-    assign dbg_perf_mem_iq_probe_accept_count = perfIF.memIqProbeAcceptCount;
-    assign dbg_perf_mem_iq_probe_reject_count = perfIF.memIqProbeRejectCount;
     assign dbg_perf_mul_op_count = perfIF.mulOpCount;
     assign dbg_perf_div_op_count = perfIF.divOpCount;
     assign dbg_perf_rem_op_count = perfIF.remOpCount;

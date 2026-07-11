@@ -13,14 +13,6 @@ module CoreExecuteCluster (
     output logic [MEM_ISSUE_WIDTH-1:0] mem_issue_ready_o,
     input  logic [MEM_ISSUE_WIDTH-1:0] mem_issue_valid_i,
     input  CoreRenamedUop [MEM_ISSUE_WIDTH-1:0] mem_issue_uop_i,
-    input  logic mem_issue_lookahead_i,
-    input  logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_slot_i,
-    input  logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_age_i,
-    output logic mem_probe_resolve_valid_o,
-    output logic mem_probe_resolve_accept_o,
-    output logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_probe_resolve_slot_o,
-    output logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_probe_resolve_age_o,
-    output RobIndexPath mem_probe_resolve_rob_idx_o,
 
     output logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_ready_o,
     input  logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_valid_i,
@@ -106,20 +98,6 @@ module CoreExecuteCluster (
     DataPath mem_req_head_store_data;
     logic [3:0] mem_req_head_store_mask;
     logic mem_issue_fire;
-    logic mem_enqueue;
-    CoreRenamedUop mem_enqueue_uop;
-    AddrPath mem_enqueue_addr;
-    DataPath mem_enqueue_store_data;
-    logic [3:0] mem_enqueue_store_mask;
-    logic mem_probe_valid_q;
-    CoreRenamedUop mem_probe_uop_q;
-    AddrPath mem_probe_addr_q;
-    DataPath mem_probe_store_data_q;
-    logic [3:0] mem_probe_store_mask_q;
-    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_probe_slot_q;
-    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_probe_age_q;
-    logic mem_probe_cacheable;
-    logic mem_probe_misaligned;
     logic mem_req_complete;
     logic mem_req_consume;
     logic mem_req_load_send;
@@ -302,38 +280,6 @@ module CoreExecuteCluster (
     assign mem_req_misaligned =
         mem_misaligned(mem_req_head_uop.uop, mem_req_head_addr);
     assign mem_issue_fire = mem_issue_valid_i[0] && mem_issue_ready_o[0];
-    assign mem_probe_cacheable =
-        (mem_probe_addr_q >= CACHE_ADDR_START) &&
-        (mem_probe_addr_q < CACHE_ADDR_END);
-    assign mem_probe_misaligned =
-        mem_misaligned(mem_probe_uop_q.uop, mem_probe_addr_q);
-    assign mem_probe_resolve_valid_o = mem_probe_valid_q && !clear_i;
-    assign mem_probe_resolve_accept_o = mem_probe_resolve_valid_o &&
-                                        mem_probe_uop_q.uop.is_load &&
-                                        mem_probe_cacheable &&
-                                        !mem_probe_misaligned &&
-                                        (mem_req_count_q <
-                                         MEM_REQ_COUNT_BITS'(MEM_REQ_DEPTH));
-    assign mem_probe_resolve_slot_o = mem_probe_slot_q;
-    assign mem_probe_resolve_age_o = mem_probe_age_q;
-    assign mem_probe_resolve_rob_idx_o = mem_probe_uop_q.rob_idx;
-
-    always_comb begin
-        mem_enqueue = (mem_issue_fire && !mem_issue_lookahead_i) ||
-                      mem_probe_resolve_accept_o;
-        mem_enqueue_uop = mem_issue_uop_i[0];
-        mem_enqueue_addr = prf_rdata[2 * MEM_SLOT] +
-            (mem_issue_uop_i[0].uop.is_store ?
-             mem_issue_uop_i[0].uop.imm_s : mem_issue_uop_i[0].uop.imm_i);
-        mem_enqueue_store_data = prf_rdata[2 * MEM_SLOT + 1];
-        mem_enqueue_store_mask = store_mask(mem_issue_uop_i[0].uop);
-        if (mem_probe_resolve_accept_o) begin
-            mem_enqueue_uop = mem_probe_uop_q;
-            mem_enqueue_addr = mem_probe_addr_q;
-            mem_enqueue_store_data = mem_probe_store_data_q;
-            mem_enqueue_store_mask = mem_probe_store_mask_q;
-        end
-    end
     assign load_meta_pop = dmem.exReadReady && (load_meta_count_q != '0);
     assign load_resp_complete = load_meta_pop &&
                                 !load_meta_killed_q[0] &&
@@ -388,7 +334,6 @@ module CoreExecuteCluster (
             // include mem_req_consume here: that would reconnect DCache/SB
             // acceptance into MEM-IQ select in the same cycle.
             mem_issue_ready_o[m] = !clear_i &&
-                !mem_probe_valid_q &&
                 (mem_req_count_q < MEM_REQ_COUNT_BITS'(MEM_REQ_DEPTH));
             issue_valid[INT_ISSUE_WIDTH + m] = mem_req_complete;
         end
@@ -686,7 +631,7 @@ module CoreExecuteCluster (
                 mem_req_count_q <= '0;
                 store_drain_pending_q <= 1'b0;
             end else begin
-                unique case ({mem_enqueue, mem_req_consume})
+                unique case ({mem_issue_fire, mem_req_consume})
                     2'b10: mem_req_count_q <= mem_req_count_q + 1'b1;
                     2'b01: mem_req_count_q <= mem_req_count_q - 1'b1;
                     default: mem_req_count_q <= mem_req_count_q;
@@ -731,21 +676,29 @@ module CoreExecuteCluster (
                     mem_req_store_mask_q[0] <= mem_req_store_mask_q[1];
                 end
 
-                if (mem_enqueue) begin
+                if (mem_issue_fire) begin
                     if (mem_req_consume && (mem_req_count_q <= 1)) begin
-                        mem_req_uop_q[0] <= mem_enqueue_uop;
-                        mem_req_addr_q[0] <= mem_enqueue_addr;
-                        mem_req_store_data_q[0] <= mem_enqueue_store_data;
-                        mem_req_store_mask_q[0] <= mem_enqueue_store_mask;
+                        mem_req_uop_q[0] <= mem_issue_uop_i[0];
+                        mem_req_addr_q[0] <= prf_rdata[2 * MEM_SLOT] +
+                            (mem_issue_uop_i[0].uop.is_store ?
+                             mem_issue_uop_i[0].uop.imm_s :
+                             mem_issue_uop_i[0].uop.imm_i);
+                        mem_req_store_data_q[0] <=
+                            prf_rdata[2 * MEM_SLOT + 1];
+                        mem_req_store_mask_q[0] <=
+                            store_mask(mem_issue_uop_i[0].uop);
                     end else begin
                         mem_req_uop_q[mem_req_count_q[0]] <=
-                            mem_enqueue_uop;
+                            mem_issue_uop_i[0];
                         mem_req_addr_q[mem_req_count_q[0]] <=
-                            mem_enqueue_addr;
+                            prf_rdata[2 * MEM_SLOT] +
+                            (mem_issue_uop_i[0].uop.is_store ?
+                             mem_issue_uop_i[0].uop.imm_s :
+                             mem_issue_uop_i[0].uop.imm_i);
                         mem_req_store_data_q[mem_req_count_q[0]] <=
-                            mem_enqueue_store_data;
+                            prf_rdata[2 * MEM_SLOT + 1];
                         mem_req_store_mask_q[mem_req_count_q[0]] <=
-                            mem_enqueue_store_mask;
+                            store_mask(mem_issue_uop_i[0].uop);
                     end
                 end
             end
@@ -776,28 +729,6 @@ module CoreExecuteCluster (
                         load_meta_killed_q[load_meta_count_q[0]] <= 1'b0;
                     end
                 end
-            end
-        end
-    end
-
-    // A lookahead candidate is only a probe on its launch edge.  This
-    // register owns the PRF/AGU result until the following-cycle accept/reject
-    // response returns to the stable IQ slot.
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            mem_probe_valid_q <= 1'b0;
-        end else if (clear_i) begin
-            mem_probe_valid_q <= 1'b0;
-        end else begin
-            mem_probe_valid_q <= mem_issue_fire && mem_issue_lookahead_i;
-            if (mem_issue_fire && mem_issue_lookahead_i) begin
-                mem_probe_uop_q <= mem_issue_uop_i[0];
-                mem_probe_addr_q <= prf_rdata[2 * MEM_SLOT] +
-                                    mem_issue_uop_i[0].uop.imm_i;
-                mem_probe_store_data_q <= prf_rdata[2 * MEM_SLOT + 1];
-                mem_probe_store_mask_q <= store_mask(mem_issue_uop_i[0].uop);
-                mem_probe_slot_q <= mem_issue_slot_i;
-                mem_probe_age_q <= mem_issue_age_i;
             end
         end
     end
@@ -842,11 +773,6 @@ module CoreExecuteCluster (
             assert (load_meta_count_q <=
                     LOAD_META_COUNT_BITS'(LOAD_META_DEPTH))
                 else $error("load metadata queue overflow");
-            if (mem_probe_resolve_accept_o) begin
-                assert (mem_probe_uop_q.uop.is_load &&
-                        mem_probe_cacheable && !mem_probe_misaligned)
-                    else $error("MEM lookahead accepted unsafe probe");
-            end
             if (dmem.exReadReady) begin
                 assert (load_meta_count_q != '0)
                     else $error("load response arrived without metadata owner");

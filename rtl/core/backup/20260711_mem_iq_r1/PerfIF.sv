@@ -53,10 +53,6 @@ interface PerfIF(input logic clk, rst);
     logic [63:0] memForwardCycles;
     logic [63:0] memIqHeadNotReadyCycles;
     logic [63:0] memIqYoungerReadyCycles;
-    logic [63:0] memIqOccupancySum;
-    logic [63:0] memIqProbeLaunchCount;
-    logic [63:0] memIqProbeAcceptCount;
-    logic [63:0] memIqProbeRejectCount;
     logic [63:0] mulOpCount;
     logic [63:0] divOpCount;
     logic [63:0] remOpCount;
@@ -117,10 +113,6 @@ interface PerfIF(input logic clk, rst);
         output memForwardCycles,
         output memIqHeadNotReadyCycles,
         output memIqYoungerReadyCycles,
-        output memIqOccupancySum,
-        output memIqProbeLaunchCount,
-        output memIqProbeAcceptCount,
-        output memIqProbeRejectCount,
         output mulOpCount,
         output divOpCount,
         output remOpCount,

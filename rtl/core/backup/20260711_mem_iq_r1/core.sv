@@ -76,10 +76,6 @@ module core(
     logic perf_mem_forward;
     logic perf_mem_iq_head_not_ready;
     logic perf_mem_iq_younger_ready;
-    logic [2:0] perf_mem_iq_occupancy;
-    logic perf_mem_iq_probe_launch;
-    logic perf_mem_iq_probe_accept;
-    logic perf_mem_iq_probe_reject;
     logic perf_mul_op;
     logic perf_div_op;
     logic perf_rem_op;
@@ -242,10 +238,6 @@ module core(
         .perf_mem_forward_o(perf_mem_forward),
         .perf_mem_iq_head_not_ready_o(perf_mem_iq_head_not_ready),
         .perf_mem_iq_younger_ready_o(perf_mem_iq_younger_ready),
-        .perf_mem_iq_occupancy_o(perf_mem_iq_occupancy),
-        .perf_mem_iq_probe_launch_o(perf_mem_iq_probe_launch),
-        .perf_mem_iq_probe_accept_o(perf_mem_iq_probe_accept),
-        .perf_mem_iq_probe_reject_o(perf_mem_iq_probe_reject),
         .perf_mul_op_o(perf_mul_op),
         .perf_div_op_o(perf_div_op),
         .perf_rem_op_o(perf_rem_op),
@@ -474,10 +466,6 @@ module core(
             perf.memForwardCycles <= 64'b0;
             perf.memIqHeadNotReadyCycles <= 64'b0;
             perf.memIqYoungerReadyCycles <= 64'b0;
-            perf.memIqOccupancySum <= 64'b0;
-            perf.memIqProbeLaunchCount <= 64'b0;
-            perf.memIqProbeAcceptCount <= 64'b0;
-            perf.memIqProbeRejectCount <= 64'b0;
             perf.mulOpCount <= 64'b0;
             perf.divOpCount <= 64'b0;
             perf.remOpCount <= 64'b0;
@@ -579,14 +567,6 @@ module core(
                                             (perf_mem_iq_head_not_ready ? 64'd1 : 64'd0);
             perf.memIqYoungerReadyCycles <= perf.memIqYoungerReadyCycles +
                                             (perf_mem_iq_younger_ready ? 64'd1 : 64'd0);
-            perf.memIqOccupancySum <= perf.memIqOccupancySum +
-                                      64'(perf_mem_iq_occupancy);
-            perf.memIqProbeLaunchCount <= perf.memIqProbeLaunchCount +
-                                          (perf_mem_iq_probe_launch ? 64'd1 : 64'd0);
-            perf.memIqProbeAcceptCount <= perf.memIqProbeAcceptCount +
-                                          (perf_mem_iq_probe_accept ? 64'd1 : 64'd0);
-            perf.memIqProbeRejectCount <= perf.memIqProbeRejectCount +
-                                          (perf_mem_iq_probe_reject ? 64'd1 : 64'd0);
             perf.mulOpCount <= perf.mulOpCount + (perf_mul_op ? 64'd1 : 64'd0);
             perf.divOpCount <= perf.divOpCount + (perf_div_op ? 64'd1 : 64'd0);
             perf.remOpCount <= perf.remOpCount + (perf_rem_op ? 64'd1 : 64'd0);

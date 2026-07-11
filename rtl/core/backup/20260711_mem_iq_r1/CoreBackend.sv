@@ -48,10 +48,6 @@ module CoreBackend (
     output logic perf_mem_forward_o,
     output logic perf_mem_iq_head_not_ready_o,
     output logic perf_mem_iq_younger_ready_o,
-    output logic [2:0] perf_mem_iq_occupancy_o,
-    output logic perf_mem_iq_probe_launch_o,
-    output logic perf_mem_iq_probe_accept_o,
-    output logic perf_mem_iq_probe_reject_o,
     output logic perf_mul_op_o,
     output logic perf_div_op_o,
     output logic perf_rem_op_o,
@@ -94,18 +90,6 @@ module CoreBackend (
     logic [MEM_ISSUE_WIDTH-1:0] mem_issue_ready;
     logic [MEM_ISSUE_WIDTH-1:0] mem_issue_valid;
     CoreRenamedUop [MEM_ISSUE_WIDTH-1:0] mem_issue_uop;
-    logic mem_issue_lookahead;
-    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_slot;
-    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_age;
-    logic mem_probe_resolve_valid;
-    logic mem_probe_resolve_accept;
-    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_probe_resolve_slot;
-    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_probe_resolve_age;
-    RobIndexPath mem_probe_resolve_rob_idx;
-    logic [$clog2(MEM_IQ_DEPTH+1)-1:0] mem_iq_occupancy;
-    logic mem_iq_probe_launch;
-    logic mem_iq_probe_accept;
-    logic mem_iq_probe_reject;
     logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_ready;
     logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_valid;
     CoreRenamedUop [MULDIV_ISSUE_WIDTH-1:0] mul_issue_uop;
@@ -349,20 +333,8 @@ module CoreBackend (
         .issue_ready_i(mem_issue_ready),
         .issue_valid_o(mem_issue_valid),
         .issue_uop_o(mem_issue_uop),
-        .issue_lookahead_o(mem_issue_lookahead),
-        .issue_slot_o(mem_issue_slot),
-        .issue_age_o(mem_issue_age),
-        .probe_resolve_valid_i(mem_probe_resolve_valid),
-        .probe_resolve_accept_i(mem_probe_resolve_accept),
-        .probe_resolve_slot_i(mem_probe_resolve_slot),
-        .probe_resolve_age_i(mem_probe_resolve_age),
-        .probe_resolve_rob_idx_i(mem_probe_resolve_rob_idx),
         .head_not_ready_o(mem_iq_head_not_ready),
-        .younger_ready_behind_head_o(mem_iq_younger_ready),
-        .occupancy_o(mem_iq_occupancy),
-        .probe_launch_o(mem_iq_probe_launch),
-        .probe_accept_o(mem_iq_probe_accept),
-        .probe_reject_o(mem_iq_probe_reject)
+        .younger_ready_behind_head_o(mem_iq_younger_ready)
     );
 
     CoreMulDivIssueQueue u_mul_iq (
@@ -389,14 +361,6 @@ module CoreBackend (
         .mem_issue_ready_o(mem_issue_ready),
         .mem_issue_valid_i(mem_issue_valid),
         .mem_issue_uop_i(mem_issue_uop),
-        .mem_issue_lookahead_i(mem_issue_lookahead),
-        .mem_issue_slot_i(mem_issue_slot),
-        .mem_issue_age_i(mem_issue_age),
-        .mem_probe_resolve_valid_o(mem_probe_resolve_valid),
-        .mem_probe_resolve_accept_o(mem_probe_resolve_accept),
-        .mem_probe_resolve_slot_o(mem_probe_resolve_slot),
-        .mem_probe_resolve_age_o(mem_probe_resolve_age),
-        .mem_probe_resolve_rob_idx_o(mem_probe_resolve_rob_idx),
         .mul_issue_ready_o(mul_issue_ready),
         .mul_issue_valid_i(mul_issue_valid),
         .mul_issue_uop_i(mul_issue_uop),
@@ -552,10 +516,6 @@ module CoreBackend (
         perf_mem_forward_o = execute_mem_forward;
         perf_mem_iq_head_not_ready_o = mem_iq_head_not_ready;
         perf_mem_iq_younger_ready_o = mem_iq_head_not_ready && mem_iq_younger_ready;
-        perf_mem_iq_occupancy_o = 3'(mem_iq_occupancy);
-        perf_mem_iq_probe_launch_o = mem_iq_probe_launch;
-        perf_mem_iq_probe_accept_o = mem_iq_probe_accept;
-        perf_mem_iq_probe_reject_o = mem_iq_probe_reject;
         perf_mul_op_o = mul_issue_valid[0] && mul_issue_ready[0] &&
                         (mul_issue_uop[0].uop.muldiv_op <= MULDIV_OP_MULHU);
         perf_div_op_o = mul_issue_valid[0] && mul_issue_ready[0] &&

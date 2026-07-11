@@ -136,10 +136,6 @@ struct CorePerfSample {
     uint64_t mem_forward_cycles = 0;
     uint64_t mem_iq_head_not_ready_cycles = 0;
     uint64_t mem_iq_younger_ready_cycles = 0;
-    uint64_t mem_iq_occupancy_sum = 0;
-    uint64_t mem_iq_probe_launch_count = 0;
-    uint64_t mem_iq_probe_accept_count = 0;
-    uint64_t mem_iq_probe_reject_count = 0;
     uint64_t mul_op_count = 0;
     uint64_t div_op_count = 0;
     uint64_t rem_op_count = 0;
