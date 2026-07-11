@@ -79,7 +79,7 @@ SoC 侧的假设如下：
 | IP | Verilator 行为模型 | Vivado Tcl 当前参数 | RTL 消费方合同 | 修改时必须同步检查 |
 | --- | --- | --- | --- | --- |
 | `IROM_0` | `rtl/ip/IROM_0.sv` 在 `ena/enb` 时分别用 `clka/clkb` 锁存 `addra/addrb`，`douta/doutb = mem[addr*_q]`。取指侧按 1 拍 ROM 读延迟使用。 | `Dual_Port_ROM`，`Assume_Synchronous_Clk=true`，A/B 端口同接 CPU 时钟，均使用 enable pin，A/B 端口输出寄存器均关闭。 | `rtl/soc/student_top.sv` 连接 CPU `irom_addrA/B`、`irom_dataA/B`、`irom_enaA/B`，并把 `clka/clkb` 都接到 `w_cpu_clk`。CPU 取指状态机默认下一拍可用。 | 若打开 ROM 输出寄存器、改成更深 pipeline 或让 A/B 口异步时钟，必须调整 CPU fetch/PC 对齐逻辑，并同步改 `rtl/ip/IROM_0.sv`。 |
-| `DRAM_0` | `rtl/ip/DRAM_0.sv` 已拆分 memory latch 与 primitive output register：`ena` 更新 latch，`regcea` 更新 `douta`，写边沿按 READ_FIRST 锁存旧 word。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=true`，`Register_PortA_Output_of_Memory_Core=false`，`Use_REGCEA_Pin=true`。重新生成后应得到 `C_HAS_MEM_OUTPUT_REGS_A=1`、`C_HAS_ENA=1`、`C_HAS_REGCEA=1`。 | Adapter 用 request 驱动 `ENA`、用 `read_valid_d1` 驱动 `REGCEA`，并以 d2 对齐 `resp_valid/read_offset`。 | 必须重新生成 Vivado IP 和 bitstream；若生成 XML 中 `C_HAS_REGCEA` 不是 1，则不得上板。 |
+| `DRAM_0` | `rtl/ip/DRAM_0.sv` 当前在 `ena=0` 时仍无条件推进 `douta`，与真实 BMG 的 output-register enable 合同不一致，会掩盖单拍 `ena` 问题。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=true`，`Register_PortA_Output_of_Memory_Core=false`；生成模型为 `C_HAS_MEM_OUTPUT_REGS_A=1`、`C_HAS_ENA=1`、`C_HAS_REGCEA=0`，output register 的 `regce_i=ENA`。 | 当前 Adapter 虽把 valid/offset 延到 d3，但 `DRAM_0.ena=req_valid` 仍只有一拍，不能保证目标 word 穿过 primitive output register；该合同尚未修复。 | 同时核对 data latency 和 enable duration。保留 primitive output register 时必须为内部读和 output transfer 提供完整使能边沿；不能只增加 valid 延迟。 |
 | `MUL_0` | `rtl/ip/MUL_0.sv` 是 33x33 signed multiplier，`pipe0/pipe1/P` 共 3 级寄存输出。 | `mult_gen`，`PipeStages=3`，33 位 signed 输入，自定义 66 位输出。 | `rtl/core/execute/MulDivUnit.sv` 用 `mul_count_q` 等待固定乘法结果拍数。 | 若 Tcl `PipeStages` 改变，必须同步改 `MUL_0.sv` pipeline 深度和 `MulDivUnit.sv` 的等待计数。 |
 | `DIV_0` | `rtl/ip/DIV_0.sv` 固定 `DIV_LATENCY=34`，AXI-stream valid 管线后输出 `{quotient, remainder}`。 | `div_gen`，`Latency_Configuration=Manual`，`Latency=34`，`FlowControl=Blocking`，unsigned radix-2 divider，remainder mode。 | `rtl/core/execute/MulDivUnit.sv` 等待 `m_axis_dout_tvalid`，并按 Vivado 2023.2 生成 demo TB 的约定解包：`div_data[63:32]=quotient`、`div_data[31:0]=remainder`。 | 若 Tcl `Latency`、`FlowControl` 或 output packing 改变，必须同步改 `DIV_0.sv`，并检查 `MulDivUnit.sv` 是否还满足握手和选位协议。 |
 | `pll` | `rtl/ip/pll.sv` 只服务仿真，不代表真实锁相环时钟收敛和相位行为。 | `clk_wiz` 生成 `clk_out1` 系统时钟和 `clk_out2` CPU 时钟，频率由 `FPGA_SYS_CLK_MHZ/FPGA_CPU_CLK_MHZ` 控制。 | `rtl/soc/top.sv` 用 `locked` 派生 reset，同步释放到 50 MHz 和 CPU 时钟域。 | 若改 CPU 频率，必须重新看 timing report、UART `CLK_FREQ`、counter 换算、跨时钟 reset 和 CDC。 |
@@ -119,8 +119,7 @@ output-register CE = Use_REGCEA_Pin ? REGCEA : ENA
 
 ### 当前 `DRAM_0` 的真实配置映射
 
-失败 bitstream 所用的旧 Tcl 配置，以及 2026-07-11 已生成但尚未按本次修复 regenerate 的
-`DRAM_0.xml/sim/DRAM_0.v`，对应关系是：
+当前 Tcl 和 2026-07-11 生成的 `DRAM_0.xml/sim/DRAM_0.v` 对应关系是：
 
 | 配置 | 当前值 | 生成模型 | 时序含义 |
 | --- | --- | --- | --- |
@@ -133,7 +132,7 @@ output-register CE = Use_REGCEA_Pin ? REGCEA : ENA
 生成的 BMG 行为模型也明确实现了这一点：当 `C_HAS_REGCEA=0` 时，内部
 `regce_i = (C_HAS_EN==0 || EN)`；memory read 在 `ENA` 边沿更新 `memory_out_a`，primitive output stage 也只在 `regce_i` 为 1 的边沿更新 `DOUTA`。
 
-失败版本的 `DramBramAdapter.sv` 只把 `.ena(req_valid)`，而 DCache 在
+当前 `DramBramAdapter.sv` 却把 `.ena(req_valid)`，而 DCache 在
 `DC_REFILL_REQ` 接受一次请求后立即进入 `DC_REFILL_WAIT`，所以下一拍
 `req_valid=0`。其实际错误时序为：
 
@@ -159,7 +158,7 @@ next request:    ENA 再次为 1，旧请求的 word 才进入 douta，于是连
 
 不要通过把 `READ_FIRST` 改成 `NO_CHANGE/WRITE_FIRST` 修复本问题：三种模式只改变写边沿的输出语义，不会让 `ENA=0` 时的 output register 自动更新。也不要额外打开 core output register；那会再增加一级 latency，并且仍需要正确的 enable pipeline。
 
-### 已采用方案 A：精确边沿合同
+### 推荐方案 A 的精确边沿合同
 
 Tcl 增加：
 
@@ -195,17 +194,12 @@ edge N+2:      DCache 同一采样沿消费 A 的 valid、data 和 lane
 `REGCEA` 推出 A、用 `ENA` 把 B 放入 latch；edge N+2 再推出 B。read 后紧跟
 write 时，edge N+1 的 `REGCEA` 仍推出 A，而 `ENA+WEA` 独立执行写操作。
 
-2026-07-11 已完成对应源码修改：
+对应代码修改点：
 
 1. `fpga/create_vivado_project.tcl`：为 `DRAM_0` 增加 `Use_REGCEA_Pin=true`。
-2. `rtl/soc/DramBramAdapter.sv`：新增 `.regcea(read_valid_d1)`；响应所有权收敛到 d2，并删除无意义的 d3。
-3. `rtl/ip/DRAM_0.sv`：端口增加 `regcea`；`ena` 边沿更新 memory latch，`regcea` 边沿更新 `douta`；写边沿实现 READ_FIRST 旧值锁存。
-4. 尚待重新生成 Vivado IP/bitstream，并把 `fpga/diagnostics/post_impl_load_trace_tb.sv` 延长到最终 SEG 写；trace 至少打印 `ENA/REGCEA/read_valid_d1/d2/douta` 与 DCache downstream request/response。
-
-仓库中还存在旧的 `rtl/soc/dram_driver.sv`，其 `DRAM_0` 实例没有连接
-`REGCEA`。该模块不在 `scripts/filelists/soc.f`，不属于当前 `student_top` FPGA
-构建，因此本次没有把它混入活动修复；若未来重新启用旧 `perip_bridge/dram_driver`
-路径，必须先迁移到相同的 ENA/REGCEA 合同，否则读数据会停在 output register 之前。
+2. `rtl/soc/DramBramAdapter.sv`：实例化新增 `.regcea(read_valid_d1)`；响应所有权收敛到 d2，删除无意义的 d3，或先保留 d3 做保守验证但会多损失一拍。
+3. `rtl/ip/DRAM_0.sv`：端口增加 `regcea`；`ena` 边沿更新 memory latch，`regcea` 边沿更新 `douta`。READ_FIRST 模型应在 `ena` 写边沿先把旧 `mem[addra]` 放入 latch，再更新被 `wea` 选中的 byte。
+4. `fpga/diagnostics/post_impl_load_trace_tb.sv`：仿真周期必须超过最终 SEG 写，且至少打印 `ENA/REGCEA/read_valid_d1/d2/douta` 与 DCache downstream request/response。
 
 行为模型的核心结构应等价于：
 
@@ -230,9 +224,9 @@ end
 
 当前 DCache 已支持 `mem_req_ready` 反压，因此非流水 FSM 在功能上可行；但推荐方案 A 不需要改变 `req_ready=1` 的现有合同，吞吐和功耗都更好。
 
-因此该边界必须长期同时满足：
+因此后续修复 `DramBramAdapter.sv` 必须同时满足：
 
-- 保留 primitive output register 时，除了请求边沿的 `ENA`，还要为 output-transfer 边沿提供 register CE；推荐独立 `REGCEA`，未启用该 pin 时才需要延长 `ENA`。只延迟 `resp_valid` 无效。
+- 保留 primitive output register 时，除了请求边沿，还要为 output-transfer 边沿提供 `ENA`，并明确锁存该事务的地址/读写属性；只延迟 `resp_valid` 无效。
 - `resp_valid` 与 byte offset 必须和“数据真正到达 `douta`”的事务同级，禁止 valid、数据和 lane 属于不同请求。
 - store 写通道保持当拍发给 BRAM，不要被读响应 pipeline 影响。
 - `req_ready` 当前恒为 1；如果未来改成可反压 DRAM，就必须重新审查 DCache miss/fill 状态机。
@@ -251,7 +245,7 @@ request 0x80100014 -> response 0x55667788  // 实际属于 0x80100010
 
 2026-07-11 复核证明，上述“只增加 `read_valid_d3/read_offset_d3` 即修复”的结论不完整。新实现确实综合了 d3 且 bitstream 晚于源码修改，但板上仍为 `0x33800000`。真正残留是 `DRAM_0.ena` 仍只接一拍 `req_valid`：真实 BMG 的 primitive output register 没有独立 `REGCEA`，其时钟使能等于 `ENA`；请求后一拍 `ENA=0`，目标 word 无法从内部 memory output 转移到 `douta`，直到下一请求才推出。因此 d3 只延迟了 valid，没有推进 data。
 
-同时，修复前 `rtl/ip/DRAM_0.sv` 的 `douta <= read_data_d1` 不受 `ena` 控制，和生成 BMG 不一致，导致 Verilator/RTL 行为仿真会在空闲第二拍自动推出数据并掩盖板级问题。当前源码已改为独立 `regcea` 推进 `douta`，但仍需重新跑软件回归和 regenerate IP 验证；这仍与 byte mask、DCache lane mux 或 `Synth 8-7137` 无关。
+同时，`rtl/ip/DRAM_0.sv` 的 `douta <= read_data_d1` 不受 `ena` 控制，和生成 BMG 不一致，导致 Verilator/RTL 行为仿真会在空闲第二拍自动推出数据并掩盖板级问题。修复必须成对处理 Adapter 的 enable/address 事务和行为模型的 enable 语义；这仍与 byte mask、DCache lane mux 或 `Synth 8-7137` 无关。
 
 必须长期遵守：
 

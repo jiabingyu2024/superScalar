@@ -82,23 +82,13 @@
   },
   "fix_recommendation": {
     "type": "rtl_and_ip_contract",
-    "description": "Keep byte-write masking and the primitive output register unchanged. Enable the independent BMG REGCEA port: use ENA on the request edge to load the memory-output latch, use read_valid_d1 as REGCEA on the following edge to transfer the latch to DOUT, and align response valid/offset at d2. Update the behavioral model to separate ENA-controlled latch update from REGCEA-controlled DOUT update. Verify with isolated and consecutive non-zero words in current post-implementation simulation before generating the next bitstream.",
+    "description": "Keep byte-write masking unchanged. If retaining the primitive output register, make the adapter perform the complete two-edge BMG read transaction: keep the BRAM enable asserted for the output-transfer edge, keep the associated address/operation stable or explicitly register it, and assert resp_valid only when douta is usable. Preserve single-outstanding ordering and prevent the continuation enable from becoming a write. Update rtl/ip/DRAM_0.sv so douta obeys the same ENA gating; alternatively disable the primitive output register and re-derive the valid/offset latency. Verify with isolated and consecutive non-zero words in current post-implementation simulation before generating the next bitstream.",
     "target_files": [
       "rtl/soc/DramBramAdapter.sv",
       "rtl/ip/DRAM_0.sv",
       "fpga/create_vivado_project.tcl",
       "docs/fpga/ip_timing_alignment.md"
     ]
-  },
-  "fix_implementation_status": {
-    "state": "implemented_in_source_pending_reverification",
-    "timestamp": "2026-07-11T11:08:00+08:00",
-    "changes": [
-      "fpga/create_vivado_project.tcl enables Use_REGCEA_Pin for DRAM_0",
-      "rtl/soc/DramBramAdapter.sv drives REGCEA from read_valid_d1 and aligns response ownership at d2",
-      "rtl/ip/DRAM_0.sv models separate ENA latch and REGCEA output-register phases"
-    ],
-    "not_yet_done": "DRAM_0 regeneration, Vivado synthesis/implementation, current post-implementation trace, and board confirmation"
   },
   "rerun_path": "frontend-compile-sim-run"
 }
