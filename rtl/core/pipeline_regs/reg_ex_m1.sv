@@ -20,6 +20,8 @@ module reg_ex_m1 (
     input logic                               i_reg_write,
     input logic  [3:0]                        i_mem_mask,
     input logic                               i_load_unsigned,
+    input logic                               i_is_mul,
+    input logic [`M_OP_BUS]                   i_m_op,
     input logic                               i_update_taken,
     input logic                               i_update_en,
     input logic [`PC_BUS]                     i_update_pc,
@@ -37,6 +39,8 @@ module reg_ex_m1 (
     output logic                              o_reg_write,
     output logic [3:0]                        o_mem_mask,
     output logic                              o_load_unsigned,
+    output logic                              o_is_mul,
+    output logic [`M_OP_BUS]                  o_m_op,
     output logic                              o_update_taken,
     output logic                              o_update_en,
     output logic [`PC_BUS]                    o_update_pc,
@@ -57,6 +61,8 @@ module reg_ex_m1 (
             o_reg_write     <= 1'b0;
             o_mem_mask      <= `MASK_WORD;
             o_load_unsigned <= 1'b0;
+            o_is_mul        <= 1'b0;
+            o_m_op          <= '0;
             o_update_taken  <= 1'b0;
             o_update_en     <= 1'b0;
             o_update_pc     <= '0;
@@ -73,6 +79,8 @@ module reg_ex_m1 (
             o_reg_write     <= 1'b0;
             o_mem_mask      <= `MASK_WORD;
             o_load_unsigned <= 1'b0;
+            o_is_mul        <= 1'b0;
+            o_m_op          <= '0;
             o_update_taken  <= 1'b0;
             o_update_en     <= 1'b0;
             o_update_pc     <= '0;
@@ -89,6 +97,8 @@ module reg_ex_m1 (
             o_reg_write     <= i_reg_write;
             o_mem_mask      <= i_mem_mask;
             o_load_unsigned <= i_load_unsigned;
+            o_is_mul        <= i_is_mul;
+            o_m_op          <= i_m_op;
             o_update_taken  <= i_update_taken;
             o_update_en     <= i_update_en;
             o_update_pc     <= i_update_pc;

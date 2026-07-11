@@ -18,6 +18,8 @@ module core(
     output logic                                     irom_ena,   // assign irom_ena = stall_p_f;
 
     input  logic  [`DATA_BUS]                        dram_rdata,
+    input  logic                                     dram_fast_valid,
+    input  logic  [`DATA_BUS]                        dram_fast_rdata,
     input  logic                                     dram_req_ready,
     output logic                                     dram_wen,
     output logic                                     dram_ren,
@@ -102,6 +104,10 @@ module core(
     logic             reg_write_ex2;
     logic [3:0]       mem_mask_ex2;
     logic             load_unsigned_ex2;
+    logic             is_mul_ex2;
+    logic [`M_OP_BUS] m_op_ex2;
+    logic             mul_result_valid;
+    logic [`DATA_BUS] mul_result;
     logic             update_taken_e;
     logic             update_en_e;
     logic [`PC_BUS]   update_pc_e;
@@ -118,6 +124,8 @@ module core(
     logic             reg_write_m;
     logic [3:0]       mem_mask_m;
     logic             load_unsigned_m;
+    logic             is_mul_m;
+    logic [`M_OP_BUS] m_op_m;
     logic             update_taken_m;
     logic             update_en_m;
     logic [`PC_BUS]   update_pc_m;
@@ -131,12 +139,26 @@ module core(
     logic             reg_write_m2;
     logic [3:0]       mem_mask_m2;
     logic             load_unsigned_m2;
+    logic             is_mul_m2;
+    logic [`M_OP_BUS] m_op_m2;
     logic [`DATA_BUS] mem_data_m2;
     logic [`DATA_BUS] wb_data_m2;
+    logic [`DATA_BUS] load_data_m_fast;
 
     logic [`RF_BUS]   rd_addr_w;
     logic             reg_write_w;
     logic [`DATA_BUS] wb_data_w;
+    logic             is_mul_w;
+    logic [`M_OP_BUS] m_op_w;
+    logic [`DATA_BUS] wb_data_arch;
+    logic [`DATA_BUS] mul_result_fifo [0:3];
+    logic [1:0]       mul_fifo_head;
+    logic [1:0]       mul_fifo_tail;
+    logic [2:0]       mul_fifo_count;
+    logic             mul_wb_consume;
+    logic             mul_fifo_enqueue;
+    logic             mul_fifo_dequeue;
+    logic [`DATA_BUS] mul_result_for_wb;
 
     logic             stall_p_f;
     logic             stall_f_d;
@@ -210,9 +232,11 @@ module core(
         .i_rd_addr_e     (rd_addr_e),
         .i_mem_read_e    (mem_read_e),
         .i_reg_write_e   (reg_write_e),
+        .i_is_mul_e      (is_m_ext_e && !m_op_e[2]),
         .i_rd_addr_ex2   (rd_addr_ex2),
         .i_mem_read_ex2  (mem_read_ex2),
         .i_reg_write_ex2 (reg_write_ex2),
+        .i_is_mul_ex2    (is_mul_ex2),
         .i_predict_taken (predict_taken_f),
         .i_predict_target(predict_target_f),
         .i_error         (branch_error_m),
@@ -254,7 +278,7 @@ module core(
         .i_pc_predict    (pc_predict_d),
         .i_we            (reg_write_w),
         .i_w_addr        (rd_addr_w),
-        .i_w_data        (wb_data_w),
+        .i_w_data        (wb_data_arch),
         .o_mem_read      (mem_read_d),
         .o_mem_write     (mem_write_d),
         .o_reg_write     (reg_write_d),
@@ -359,7 +383,10 @@ module core(
         .i_imm           (imm_e),
         .i_pc            (pc_e),
         .i_fwd_e_m       (alu_res_m),
-        .i_fwd_m_w       (wb_data_w),
+        .i_fwd_mem_read_m(mem_read_m),
+        .i_fwd_load_m_valid(dram_fast_valid),
+        .i_fwd_load_m    (load_data_m_fast),
+        .i_fwd_m_w       (wb_data_arch),
         .i_fwd_m_m       (wb_data_m2),
         .i_fwd_rd_m      (rd_addr_m),
         .i_fwd_reg_write_m(reg_write_m),
@@ -402,7 +429,11 @@ module core(
         .o_update_target (update_target_e),
         .o_error         (error_e),
         .o_right_pc      (right_pc_e),
-        .o_m_busy        (m_busy_e)
+        .o_m_busy        (m_busy_e),
+        .o_is_mul        (is_mul_ex2),
+        .o_m_op          (m_op_ex2),
+        .o_mul_result_valid(mul_result_valid),
+        .o_mul_result    (mul_result)
     );
 
     reg_ex_m1 u_reg_ex_m1 (
@@ -419,6 +450,8 @@ module core(
         .i_reg_write     (reg_write_ex2),
         .i_mem_mask      (mem_mask_ex2),
         .i_load_unsigned (load_unsigned_ex2),
+        .i_is_mul        (is_mul_ex2),
+        .i_m_op          (m_op_ex2),
         .i_update_taken  (update_taken_e),
         .i_update_en     (update_en_e),
         .i_update_pc     (update_pc_e),
@@ -434,6 +467,8 @@ module core(
         .o_reg_write     (reg_write_m),
         .o_mem_mask      (mem_mask_m),
         .o_load_unsigned (load_unsigned_m),
+        .o_is_mul        (is_mul_m),
+        .o_m_op          (m_op_m),
         .o_update_taken  (update_taken_m),
         .o_update_en     (update_en_m),
         .o_update_pc     (update_pc_m),
@@ -448,6 +483,13 @@ module core(
     assign dram_wdata = a2_data_m;
     assign dram_mask  = mem_mask_m;
 
+    stage_m2 u_stage_m1_fast (
+        .i_mem_mask      (mem_mask_m),
+        .i_load_unsigned (load_unsigned_m),
+        .i_dram_rdata    (dram_fast_rdata),
+        .o_mem_rdata     (load_data_m_fast)
+    );
+
     reg_m1_m2 u_reg_m1_m2 (
         .i_clk           (clk),
         .i_rst_n         (rst_n),
@@ -459,12 +501,16 @@ module core(
         .i_wb_src        (wb_src_m),
         .i_reg_write     (reg_write_m),
         .i_load_unsigned (load_unsigned_m),
+        .i_is_mul        (is_mul_m),
+        .i_m_op          (m_op_m),
         .o_rd_addr       (rd_addr_m2),
         .o_alu_res       (alu_res_m2),
         .o_mem_mask      (mem_mask_m2),
         .o_wb_src        (wb_src_m2),
         .o_reg_write     (reg_write_m2),
-        .o_load_unsigned (load_unsigned_m2)
+        .o_load_unsigned (load_unsigned_m2),
+        .o_is_mul        (is_mul_m2),
+        .o_m_op          (m_op_m2)
     );
 
     stage_m2 u_stage_m2 (
@@ -492,9 +538,43 @@ module core(
         .i_reg_write     (reg_write_m2),
         .i_rd_addr       (rd_addr_m2),
         .i_wb_data       (wb_data_m2),
+        .i_is_mul        (is_mul_m2),
+        .i_m_op          (m_op_m2),
         .o_rd_addr       (rd_addr_w),
         .o_wb_data       (wb_data_w),
-        .o_reg_write     (reg_write_w)
+        .o_reg_write     (reg_write_w),
+        .o_is_mul        (is_mul_w),
+        .o_m_op          (m_op_w)
     );
+
+    assign mul_wb_consume = is_mul_w && reg_write_w;
+    assign mul_fifo_enqueue = mul_result_valid &&
+                              !(mul_wb_consume && (mul_fifo_count == 0));
+    assign mul_fifo_dequeue = mul_wb_consume && (mul_fifo_count != 0);
+    assign mul_result_for_wb = (mul_fifo_count != 0) ?
+                               mul_result_fifo[mul_fifo_head] : mul_result;
+    assign wb_data_arch = is_mul_w ? mul_result_for_wb : wb_data_w;
+
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            mul_fifo_head  <= '0;
+            mul_fifo_tail  <= '0;
+            mul_fifo_count <= '0;
+        end else begin
+            if (mul_fifo_enqueue) begin
+                mul_result_fifo[mul_fifo_tail] <= mul_result;
+                mul_fifo_tail <= mul_fifo_tail + 2'd1;
+            end
+            if (mul_fifo_dequeue) begin
+                mul_fifo_head <= mul_fifo_head + 2'd1;
+            end
+
+            unique case ({mul_fifo_enqueue, mul_fifo_dequeue})
+                2'b10: mul_fifo_count <= mul_fifo_count + 3'd1;
+                2'b01: mul_fifo_count <= mul_fifo_count - 3'd1;
+                default: mul_fifo_count <= mul_fifo_count;
+            endcase
+        end
+    end
 
 endmodule

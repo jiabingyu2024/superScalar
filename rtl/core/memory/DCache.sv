@@ -65,6 +65,8 @@ module DCache #(
     input  logic        cpu_req_uncached,
     output logic        cpu_resp_valid,
     output logic [31:0] cpu_resp_rdata,
+    output logic        cpu_fast_valid,
+    output logic [31:0] cpu_fast_rdata,
 
     output logic        mem_req_valid,
     input  logic        mem_req_ready,
@@ -253,6 +255,18 @@ module DCache #(
                             (state_q == DC_UNCACHED_REPLAY) ||
                             (state_q == DC_MISS_REPLAY);
     assign cpu_resp_rdata = resp_rdata_q;
+
+    // Same-cycle hit/replay data for the M1->EX2 late-bypass path.  The normal
+    // registered response remains unchanged for M2/WB and for the external
+    // ready/valid contract.
+    assign cpu_fast_valid = ((state_q == DC_IDLE) && cpu_req_valid &&
+                             !cpu_req_write && req_cacheable_c && req_hit_c) ||
+                            (state_q == DC_UNCACHED_REPLAY) ||
+                            (state_q == DC_MISS_REPLAY);
+    assign cpu_fast_rdata = ((state_q == DC_IDLE) && cpu_req_valid &&
+                             !cpu_req_write && req_cacheable_c && req_hit_c) ?
+                            (cache_word_c >> {cpu_req_addr[1:0], 3'b000}) :
+                            resp_rdata_q;
 
     always_ff @(posedge clk) begin
         if (rst) begin

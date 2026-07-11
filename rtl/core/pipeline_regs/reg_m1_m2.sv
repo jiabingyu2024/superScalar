@@ -19,6 +19,8 @@ module reg_m1_m2 (
     input logic                               i_wb_src,
     input logic                               i_reg_write,
     input logic                               i_load_unsigned,
+    input logic                               i_is_mul,
+    input logic [`M_OP_BUS]                   i_m_op,
 
     output logic [`RF_BUS]                    o_rd_addr,
     output logic [`DATA_BUS]                  o_alu_res,
@@ -27,7 +29,9 @@ module reg_m1_m2 (
 
     output logic                              o_wb_src,
     output logic                              o_reg_write,
-    output logic                              o_load_unsigned
+    output logic                              o_load_unsigned,
+    output logic                              o_is_mul,
+    output logic [`M_OP_BUS]                  o_m_op
 
 );
 
@@ -38,6 +42,8 @@ module reg_m1_m2 (
             o_wb_src        <= `WB_SRC_ALU;
             o_reg_write     <= 1'b0;
             o_load_unsigned <= 1'b0;
+            o_is_mul        <= 1'b0;
+            o_m_op          <= '0;
             o_mem_mask      <= 4'b0000;
         end else if (i_flush) begin
             o_rd_addr       <= '0;
@@ -45,6 +51,8 @@ module reg_m1_m2 (
             o_wb_src        <= `WB_SRC_ALU;
             o_reg_write     <= 1'b0;
             o_load_unsigned <= 1'b0;
+            o_is_mul        <= 1'b0;
+            o_m_op          <= '0;
             o_mem_mask      <= 4'b0000;
         end else if (!i_stall) begin
             o_rd_addr       <= i_rd_addr;
@@ -52,6 +60,8 @@ module reg_m1_m2 (
             o_wb_src        <= i_wb_src;
             o_reg_write     <= i_reg_write;
             o_load_unsigned <= i_load_unsigned;
+            o_is_mul        <= i_is_mul;
+            o_m_op          <= i_m_op;
             o_mem_mask      <= i_mem_mask;
         end
     end

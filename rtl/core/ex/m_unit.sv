@@ -24,7 +24,6 @@ module m_unit (
     output logic  [`DATA_BUS]               o_res
 );
 
-    localparam int MUL_LATENCY = `MUL_LATENCY;     // 3
     localparam int DIV_LATENCY = `DIV_LATENCY;     // 34
     localparam int CNT_W       = $clog2(DIV_LATENCY + 1);
 
@@ -41,7 +40,7 @@ module m_unit (
     logic [`DATA_BUS] rs2_ip;
 
     assign start_pulse = i_start && !o_busy;
-    assign init_cnt    = i_m_op[2] ? CNT_W'(DIV_LATENCY) : CNT_W'(MUL_LATENCY);
+    assign init_cnt    = CNT_W'(DIV_LATENCY);
     // 启动拍把当前 EX 操作数直送 IP，同时锁存；后续 stall 周期使用锁存值，
     // 避免前递源变化导致 MUL/DIV IP 吃到漂移的数据。
     assign rs1_ip      = start_pulse ? i_rs1 : rs1_q;
@@ -206,10 +205,6 @@ module m_unit (
     // ------------------------------------------------------------------ //
     always_comb begin
         unique case (m_op_q)
-            `M_MUL   : o_res = mul_ss_p[31:0];
-            `M_MULH  : o_res = mul_ss_p[63:32];
-            `M_MULHSU: o_res = mul_su_p[63:32];
-            `M_MULHU : o_res = mul_uu_p[63:32];
             `M_DIV   : o_res = quot_corrected;
             `M_DIVU  : o_res = quot_corrected;
             `M_REM   : o_res = rem_corrected;

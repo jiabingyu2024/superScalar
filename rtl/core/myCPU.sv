@@ -58,6 +58,8 @@ module myCPU (
     logic        dcache_cpu_ready;
     logic        dcache_cpu_resp_valid;
     logic [31:0] dcache_cpu_rdata;
+    logic        dcache_fast_valid;
+    logic [31:0] dcache_fast_rdata;
 
     logic [63:0] perf_cycle_q;
     logic [63:0] perf_dcache_access;
@@ -81,6 +83,8 @@ module myCPU (
         .irom_addr     (irom_addr),
         .irom_ena      (irom_ena),
         .dram_rdata    (dcache_cpu_rdata),
+        .dram_fast_valid(dcache_fast_valid),
+        .dram_fast_rdata(dcache_fast_rdata),
         .dram_req_ready(dcache_cpu_ready),
         .dram_wen      (core_dram_wen),
         .dram_ren      (core_dram_ren),
@@ -90,7 +94,7 @@ module myCPU (
     );
 
     DCache #(
-        .LINE_COUNT      (1024),
+        .LINE_COUNT      (512),
         .CACHE_ADDR_START(32'h8010_0000),
         .CACHE_ADDR_END  (32'h8014_0000)
     ) u_dcache (
@@ -105,6 +109,8 @@ module myCPU (
         .cpu_req_uncached  (1'b0),
         .cpu_resp_valid    (dcache_cpu_resp_valid),
         .cpu_resp_rdata    (dcache_cpu_rdata),
+        .cpu_fast_valid    (dcache_fast_valid),
+        .cpu_fast_rdata    (dcache_fast_rdata),
         .mem_req_valid     (dmem_req_valid),
         .mem_req_ready     (dmem_req_ready),
         .mem_req_write     (dmem_req_write),

@@ -17,11 +17,15 @@ module reg_m2_wb(
 
     input  logic [`RF_BUS]               i_rd_addr,
     input  logic [`DATA_BUS]             i_wb_data,
+    input  logic                         i_is_mul,
+    input  logic [`M_OP_BUS]              i_m_op,
 
     output logic [`RF_BUS]               o_rd_addr,
     output logic [`DATA_BUS]             o_wb_data,
 
-    output logic                         o_reg_write
+    output logic                         o_reg_write,
+    output logic                         o_is_mul,
+    output logic [`M_OP_BUS]              o_m_op
 
 
 );
@@ -31,14 +35,20 @@ module reg_m2_wb(
             o_rd_addr   <= '0;
             o_wb_data   <= '0;
             o_reg_write <= 1'b0;
+            o_is_mul    <= 1'b0;
+            o_m_op      <= '0;
         end else if (i_flush) begin
             o_rd_addr   <= '0;
             o_wb_data   <= '0;
             o_reg_write <= 1'b0;
+            o_is_mul    <= 1'b0;
+            o_m_op      <= '0;
         end else if (!i_stall) begin
             o_rd_addr   <= i_rd_addr;
             o_wb_data   <= i_wb_data;
             o_reg_write <= i_reg_write;
+            o_is_mul    <= i_is_mul;
+            o_m_op      <= i_m_op;
         end
     end
 endmodule

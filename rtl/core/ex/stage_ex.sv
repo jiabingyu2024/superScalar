@@ -21,6 +21,9 @@ module stage_ex(
     input  logic  [`DATA_BUS]               i_imm,
     input  logic  [`PC_BUS]                 i_pc,
     input  logic  [`DATA_BUS]               i_fwd_e_m,
+    input  logic                            i_fwd_mem_read_m,
+    input  logic                            i_fwd_load_m_valid,
+    input  logic  [`DATA_BUS]               i_fwd_load_m,
     input  logic  [`DATA_BUS]               i_fwd_m_w,
     input  logic  [`DATA_BUS]               i_fwd_m_m,
     input  logic  [`RF_BUS]                 i_fwd_rd_m,
@@ -75,7 +78,11 @@ module stage_ex(
     output logic                            o_error,
     output logic  [`PC_BUS]                 o_right_pc,
 
-    output logic                            o_m_busy
+    output logic                            o_m_busy,
+    output logic                            o_is_mul,
+    output logic  [`M_OP_BUS]               o_m_op,
+    output logic                            o_mul_result_valid,
+    output logic  [`DATA_BUS]               o_mul_result
 );
 
     logic [`DATA_BUS] a1_data;
@@ -87,6 +94,10 @@ module stage_ex(
     logic             stalled_operands_valid_q;
     logic [`DATA_BUS] rs1_exec_q;
     logic [`DATA_BUS] rs2_exec_q;
+    logic [`DATA_BUS] rs1_exec_final;
+    logic [`DATA_BUS] rs2_exec_final;
+    logic [`RF_BUS]   rs1_addr_q;
+    logic [`RF_BUS]   rs2_addr_q;
     logic [`DATA_BUS] imm_q;
     logic [`PC_BUS]   pc_q;
     logic [`PC_BUS]   pc_d_e_q;
@@ -147,9 +158,47 @@ module stage_ex(
             rs2_exec_mux = stalled_operands_valid_q ? stalled_rs2_q : i_rs2_data;
         end
 
-        t1_data = (inst_spec_q == `EX_JALR) ? rs1_exec_q : pc_d_e_q;
-        a1_data = (inst_spec_q == `EX_AUIPC) ? pc_q : rs1_exec_q;
-        a2_data = (is_rs2_imm_q || (inst_spec_q == `EX_AUIPC)) ? imm_q : rs2_exec_q;
+        // With one load-use bubble the consumer reaches EX2 in the same cycle
+        // that the producer's registered response is present in M2.  Override
+        // the EX1-captured operand here.  A matching M1 producer is younger
+        // than M2 and therefore suppresses the override.
+        rs1_exec_final = rs1_exec_q;
+        if (i_fwd_load_m_valid && i_fwd_mem_read_m &&
+            i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+            (i_fwd_rd_m == rs1_addr_q)) begin
+            rs1_exec_final = i_fwd_load_m;
+        end else if (i_fwd_reg_write_m2 && (i_fwd_rd_m2 != '0) &&
+            (i_fwd_rd_m2 == rs1_addr_q) &&
+            !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+              (i_fwd_rd_m == rs1_addr_q))) begin
+            rs1_exec_final = i_fwd_m_m;
+        end else if (i_fwd_reg_write_w && (i_fwd_rd_w != '0) &&
+                     (i_fwd_rd_w == rs1_addr_q) &&
+                     !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+                       (i_fwd_rd_m == rs1_addr_q))) begin
+            rs1_exec_final = i_fwd_m_w;
+        end
+
+        rs2_exec_final = rs2_exec_q;
+        if (i_fwd_load_m_valid && i_fwd_mem_read_m &&
+            i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+            (i_fwd_rd_m == rs2_addr_q)) begin
+            rs2_exec_final = i_fwd_load_m;
+        end else if (i_fwd_reg_write_m2 && (i_fwd_rd_m2 != '0) &&
+            (i_fwd_rd_m2 == rs2_addr_q) &&
+            !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+              (i_fwd_rd_m == rs2_addr_q))) begin
+            rs2_exec_final = i_fwd_m_m;
+        end else if (i_fwd_reg_write_w && (i_fwd_rd_w != '0) &&
+                     (i_fwd_rd_w == rs2_addr_q) &&
+                     !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+                       (i_fwd_rd_m == rs2_addr_q))) begin
+            rs2_exec_final = i_fwd_m_w;
+        end
+
+        t1_data = (inst_spec_q == `EX_JALR) ? rs1_exec_final : pc_d_e_q;
+        a1_data = (inst_spec_q == `EX_AUIPC) ? pc_q : rs1_exec_final;
+        a2_data = (is_rs2_imm_q || (inst_spec_q == `EX_AUIPC)) ? imm_q : rs2_exec_final;
     end
 
     // A long M operation or memory backpressure holds ID/EX while older
@@ -161,7 +210,7 @@ module stage_ex(
             stalled_rs1_q            <= '0;
             stalled_rs2_q            <= '0;
             stalled_operands_valid_q <= 1'b0;
-        end else if (i_stall_e && !stalled_operands_valid_q) begin
+        end else if (i_stall_e) begin
             stalled_rs1_q            <= rs1_exec_mux;
             stalled_rs2_q            <= rs2_exec_mux;
             stalled_operands_valid_q <= 1'b1;
@@ -174,6 +223,8 @@ module stage_ex(
         if (!i_rst_n) begin
             rs1_exec_q       <= '0;
             rs2_exec_q       <= '0;
+            rs1_addr_q       <= '0;
+            rs2_addr_q       <= '0;
             imm_q            <= '0;
             pc_q             <= '0;
             pc_d_e_q         <= '0;
@@ -197,6 +248,8 @@ module stage_ex(
         end else if (i_flush_e) begin
             rs1_exec_q       <= '0;
             rs2_exec_q       <= '0;
+            rs1_addr_q       <= '0;
+            rs2_addr_q       <= '0;
             imm_q            <= '0;
             pc_q             <= '0;
             pc_d_e_q         <= '0;
@@ -217,9 +270,16 @@ module stage_ex(
             reg_write_q      <= 1'b0;
             mem_mask_q       <= `MASK_WORD;
             load_unsigned_q  <= 1'b0;
-        end else if (!i_stall_e) begin
+        end else if (i_stall_e) begin
+            // Keep the current EX2 instruction in place, but refresh operands
+            // as older producers become available through late forwarding.
+            rs1_exec_q       <= rs1_exec_final;
+            rs2_exec_q       <= rs2_exec_final;
+        end else begin
             rs1_exec_q       <= rs1_exec_mux;
             rs2_exec_q       <= rs2_exec_mux;
+            rs1_addr_q       <= i_rs1_addr;
+            rs2_addr_q       <= i_rs2_addr;
             imm_q            <= i_imm;
             pc_q             <= i_pc;
             pc_d_e_q         <= i_pc_d_e;
@@ -256,8 +316,8 @@ module stage_ex(
     logic [`PC_BUS]  branch_right_pc;
 
     branch_cmp u_branch_cmp (
-        .i_b1_data       (rs1_exec_q),
-        .i_b2_data       (rs2_exec_q),
+        .i_b1_data       (rs1_exec_final),
+        .i_b2_data       (rs2_exec_final),
         .i_func3         (func3_q),
         .i_pc_d_e        (pc_d_e_q),
         .i_pc_target     (pc_target_q),
@@ -279,14 +339,61 @@ module stage_ex(
     logic             m_busy_int, m_done_int;
     logic [`DATA_BUS] m_res;
     logic             m_issued;
+    logic signed [32:0] mul_a;
+    logic signed [32:0] mul_b;
+    logic signed [65:0] mul_product;
+    logic               is_div_q;
+    logic               mul_issue;
+    logic [2:0]         mul_valid_pipe;
+    logic [`M_OP_BUS]  mul_op_pipe [0:2];
 
-    assign m_start_pulse = is_m_ext_q && !m_busy_int && !m_issued;
-    assign o_m_busy      = is_m_ext_q && !m_done_int;
+    assign is_div_q      = is_m_ext_q && m_op_q[2];
+    assign m_start_pulse = is_div_q && !m_busy_int && !m_issued;
+    assign o_m_busy      = is_div_q && !m_done_int;
+    assign o_is_mul      = is_m_ext_q && !m_op_q[2];
+    assign o_m_op        = m_op_q;
+    assign mul_issue     = o_is_mul && !i_stall_e && !i_flush_e;
+
+    // A single signed 33x33 multiplier covers all RV32M multiply variants by
+    // selecting sign/zero extension before the IP.  MUL_0 remains the same
+    // three-stage IP configured in the Vivado Tcl and Verilator model.
+    assign mul_a = (m_op_q == `M_MULHU) ? {1'b0, rs1_exec_final} :
+                                           {rs1_exec_final[31], rs1_exec_final};
+    assign mul_b = ((m_op_q == `M_MUL) || (m_op_q == `M_MULH)) ?
+                   {rs2_exec_final[31], rs2_exec_final} :
+                   {1'b0, rs2_exec_final};
+
+    MUL_0 u_mul_pipe (
+        .CLK (i_clk),
+        .A   (mul_a),
+        .B   (mul_b),
+        .P   (mul_product)
+    );
+
+    always_ff @(posedge i_clk) begin
+        if (!i_rst_n) begin
+            mul_valid_pipe <= '0;
+            mul_op_pipe[0] <= '0;
+            mul_op_pipe[1] <= '0;
+            mul_op_pipe[2] <= '0;
+        end else begin
+            mul_valid_pipe[0] <= mul_issue;
+            mul_valid_pipe[1] <= mul_valid_pipe[0];
+            mul_valid_pipe[2] <= mul_valid_pipe[1];
+            mul_op_pipe[0] <= m_op_q;
+            mul_op_pipe[1] <= mul_op_pipe[0];
+            mul_op_pipe[2] <= mul_op_pipe[1];
+        end
+    end
+
+    assign o_mul_result_valid = mul_valid_pipe[2];
+    assign o_mul_result = (mul_op_pipe[2] == `M_MUL) ? mul_product[31:0] :
+                                                           mul_product[63:32];
 
     always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             m_issued <= 1'b0;
-        end else if (i_flush_e || m_done_int || !is_m_ext_q) begin
+        end else if (i_flush_e || m_done_int || !is_div_q) begin
             m_issued <= 1'b0;
         end else if (m_start_pulse) begin
             m_issued <= 1'b1;
@@ -298,8 +405,8 @@ module stage_ex(
         .i_rst_n (i_rst_n),
         .i_start (m_start_pulse),
         .i_flush (i_flush_e),
-        .i_rs1   (rs1_exec_q),
-        .i_rs2   (rs2_exec_q),
+        .i_rs1   (rs1_exec_final),
+        .i_rs2   (rs2_exec_final),
         .i_m_op  (m_op_q),
         .o_busy  (m_busy_int),
         .o_done  (m_done_int),
@@ -321,7 +428,7 @@ module stage_ex(
     assign is_csr_inst = (inst_spec_q == `EX_CSR);
 
     // func3[2]=1 时为立即数版本；i_imm 已由 imm_unit 计算为 {27'b0, instr[19:15]}
-    assign csr_operand = (func3_q[2]) ? imm_q : rs1_exec_q;
+    assign csr_operand = (func3_q[2]) ? imm_q : rs1_exec_final;
 
     // wmode: func3[1:0] - 1 → 01→00(write), 10→01(set), 11→10(clear)
     assign csr_wmode = func3_q[1:0] - 2'b01;
@@ -389,10 +496,12 @@ module stage_ex(
     assign o_load_unsigned = load_unsigned_q;
 
     always_comb begin
-        o_a2_data = rs2_exec_q;
+        o_a2_data = rs2_exec_final;
 
-        if (is_m_ext_q) begin
+        if (is_div_q) begin
             o_alu_res = m_res;
+        end else if (o_is_mul) begin
+            o_alu_res = 32'd0;
         end else if (is_csr_inst) begin
             o_alu_res = csr_rdata;   // rd ← 旧 CSR 值
         end else begin
