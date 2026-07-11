@@ -40,9 +40,7 @@ module CoreMemIssueQueue (
     logic [SLOT_WIDTH-1:0] probe_slot_q;
     logic [SLOT_WIDTH-1:0] probe_age_q;
     RobIndexPath probe_rob_idx_q;
-    logic denied_valid_q;
-    logic [SLOT_WIDTH-1:0] denied_slot_q;
-    RobIndexPath denied_rob_idx_q;
+    logic [MEM_IQ_DEPTH-1:0] denied_q;
 
     logic [MEM_IQ_DEPTH-1:0] ready_now;
     logic [MEM_IQ_DEPTH-1:0] src1_ready_now;
@@ -102,27 +100,35 @@ module CoreMemIssueQueue (
         end
     end
 
-    // Stable-slot, oldest-three selection.  Age zero always has priority.  A
+    // Stable-slot selection. Age zero always has priority. A
     // younger candidate is only a load and every older inspected entry must
     // also be a load; its address/cacheability is proven by the registered
-    // probe in ExecuteCluster before this queue removes it.
+    // probe in ExecuteCluster before this queue removes it. When the previous
+    // probe resolves, a new younger candidate may replace it on the same edge,
+    // giving the address-probe stage an initiation interval of one cycle.
     always_comb begin
         issue_valid_o = '0;
         issue_uop_o = '0;
         issue_lookahead_o = 1'b0;
         issue_slot_o = '0;
         issue_age_o = '0;
-        if (!probe_pending_q) begin
-            for (int wanted_age = 0; wanted_age < 3; wanted_age++) begin
+        if (!probe_pending_q || probe_resolve_valid_i) begin
+            for (int wanted_age = 0;
+                 wanted_age < MEM_IQ_DEPTH;
+                 wanted_age++) begin
                 for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
                     if (!issue_valid_o[0] && valid_q[e] &&
                         (age_q[e] == SLOT_WIDTH'(wanted_age)) &&
                         ready_now[e] &&
+                        // A resolving probe may only be replaced by another
+                        // lookahead. Direct head issue and old-probe removal
+                        // cannot both consume IQ ownership in this cycle.
+                        (!probe_pending_q || (wanted_age != 0)) &&
+                        !(probe_pending_q &&
+                          (SLOT_WIDTH'(e) == probe_slot_q)) &&
                         ((wanted_age == 0) ||
                          (entry_q[e].uop.is_load &&
-                          !(denied_valid_q &&
-                            (denied_slot_q == SLOT_WIDTH'(e)) &&
-                            (denied_rob_idx_q == entry_q[e].rob_idx))))) begin
+                          !denied_q[e]))) begin
                         if ((wanted_age == 0) || older_all_load[e]) begin
                             issue_valid_o[0] = 1'b1;
                             issue_uop_o[0] = entry_q[e];
@@ -135,6 +141,15 @@ module CoreMemIssueQueue (
                     end
                 end
             end
+        end
+
+        // An accepted old probe compacts the age ranks on this edge. Capture
+        // the replacement candidate's post-remove age so its later resolve
+        // still matches the stable slot identity.
+        if (issue_valid_o[0] && issue_lookahead_o && probe_pending_q &&
+            probe_resolve_valid_i && probe_resolve_accept_i &&
+            (issue_age_o > probe_age_q)) begin
+            issue_age_o = issue_age_o - 1'b1;
         end
     end
 
@@ -216,15 +231,16 @@ module CoreMemIssueQueue (
             valid_q <= '0;
             count_q <= '0;
             probe_pending_q <= 1'b0;
-            denied_valid_q <= 1'b0;
+            denied_q <= '0;
         end else if (clear_i) begin
             valid_q <= '0;
             count_q <= '0;
             probe_pending_q <= 1'b0;
-            denied_valid_q <= 1'b0;
+            denied_q <= '0;
         end else begin
             valid_q <= valid_q & ~remove_mask;
             count_q <= count_q - COUNT_WIDTH'(remove_valid) + push_count;
+            denied_q <= denied_q & ~remove_mask;
             if (remove_valid) begin
                 for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
                     if (valid_q[e] && !remove_mask[e] &&
@@ -237,9 +253,18 @@ module CoreMemIssueQueue (
             for (int p = 0; p < DISPATCH_WIDTH; p++) begin
                 if (push_fire[p]) begin
                     valid_q[push_slot[p]] <= 1'b1;
+                    denied_q[push_slot[p]] <= 1'b0;
                     age_q[push_slot[p]] <= SLOT_WIDTH'(
                         count_q - COUNT_WIDTH'(remove_valid) + push_rank[p]);
                 end
+            end
+
+            if (probe_resolve_valid_i && !probe_resolve_accept_i &&
+                probe_pending_q &&
+                (probe_resolve_slot_i == probe_slot_q) &&
+                (probe_resolve_age_i == probe_age_q) &&
+                (probe_resolve_rob_idx_i == probe_rob_idx_q)) begin
+                denied_q[probe_resolve_slot_i] <= 1'b1;
             end
 
             if (probe_launch_o) begin
@@ -249,15 +274,6 @@ module CoreMemIssueQueue (
                 probe_rob_idx_q <= issue_uop_o[0].rob_idx;
             end else if (probe_resolve_valid_i) begin
                 probe_pending_q <= 1'b0;
-                if (!probe_resolve_accept_i) begin
-                    denied_valid_q <= 1'b1;
-                    denied_slot_q <= probe_resolve_slot_i;
-                    denied_rob_idx_q <= probe_resolve_rob_idx_i;
-                end
-            end
-
-            if (remove_valid && denied_valid_q && remove_mask[denied_slot_q]) begin
-                denied_valid_q <= 1'b0;
             end
         end
     end

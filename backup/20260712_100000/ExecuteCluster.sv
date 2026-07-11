@@ -132,13 +132,6 @@ module CoreExecuteCluster (
     DataPath [ISSUE_WIDTH-1:0] wb_csr_wdata_q;
     logic [ISSUE_WIDTH-1:0] wb_prf_we_d;
     logic [ISSUE_WIDTH-1:0] wb_prf_we_q;
-    // A store address may leave MEM-IQ one cycle before its data producer
-    // reaches architectural completion.  Keep one extra completion beat so
-    // the request-register insertion cannot fall into the gap after the IQ
-    // wakeup but before the StoreBuffer shell exists.
-    logic [ISSUE_WIDTH-1:0] store_wakeup_hold_valid_q;
-    PhyRegNumPath [ISSUE_WIDTH-1:0] store_wakeup_hold_prd_q;
-    DataPath [ISSUE_WIDTH-1:0] store_wakeup_hold_result_q;
 
     logic [MEM_REQ_COUNT_BITS-1:0] mem_req_count_q;
     CoreRenamedUop mem_req_uop_q [MEM_REQ_DEPTH-1:0];
@@ -346,28 +339,21 @@ module CoreExecuteCluster (
         end
     endfunction
 
-    // Recovery is sampled by the ROB/BusyTable/PRF on this same edge.  Mask
-    // the old-path writeback combinationally as well as clearing wb_valid_q;
-    // otherwise a completion visible during clear can target a recycled ROB
-    // index or wake a new physical-register owner.
-    assign complete_valid_o = wb_valid_q & {ISSUE_WIDTH{!clear_i}};
+    assign complete_valid_o = wb_valid_q;
     assign complete_rob_idx_o = wb_rob_idx_q;
     assign complete_prd_o = wb_prd_q;
-    assign early_wakeup_valid_o = wb_valid_d & wb_prf_we_d &
-                                  {ISSUE_WIDTH{!clear_i}};
+    assign early_wakeup_valid_o = wb_valid_d & wb_prf_we_d;
     assign early_wakeup_prd_o = wb_prd_d;
     assign complete_result_o = wb_result_q;
     assign complete_exception_o = wb_exception_q;
     assign complete_exception_cause_o = wb_exception_cause_q;
     assign complete_branch_miss_o = wb_branch_miss_q;
     assign complete_redirect_pc_o = wb_redirect_pc_q;
-    assign complete_csr_write_o = wb_valid_q & wb_csr_write_q &
-                                  {ISSUE_WIDTH{!clear_i}};
+    assign complete_csr_write_o = wb_valid_q & wb_csr_write_q;
     assign complete_csr_addr_o = wb_csr_addr_q;
     assign complete_csr_wdata_o = wb_csr_wdata_q;
 
-    assign prf_we = wb_valid_q & wb_prf_we_q &
-                    {ISSUE_WIDTH{!clear_i}};
+    assign prf_we = wb_valid_q & wb_prf_we_q;
     assign prf_waddr = wb_prd_q;
     assign prf_wdata = wb_result_q;
 
@@ -379,7 +365,7 @@ module CoreExecuteCluster (
         for (int r = 0; r < READ_PORTS; r = r + 1) begin
             prf_rdata_effective[r] = prf_rdata[r];
             for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
-                if (!clear_i && wb_valid_q[w] && wb_prf_we_q[w] &&
+                if (wb_valid_q[w] && wb_prf_we_q[w] &&
                     (wb_prd_q[w] != '0) &&
                     (wb_prd_q[w] == prf_raddr[r])) begin
                     prf_rdata_effective[r] = wb_result_q[w];
@@ -428,14 +414,6 @@ module CoreExecuteCluster (
                         mem_req_store_data_now[e] = wakeup_result_i[w];
                         mem_req_store_data_valid_now[e] = 1'b1;
                     end
-                    if (store_wakeup_hold_valid_q[w] &&
-                        (store_wakeup_hold_prd_q[w] != '0) &&
-                        (store_wakeup_hold_prd_q[w] ==
-                         mem_req_store_data_prd_q[e])) begin
-                        mem_req_store_data_now[e] =
-                            store_wakeup_hold_result_q[w];
-                        mem_req_store_data_valid_now[e] = 1'b1;
-                    end
                 end
             end
         end
@@ -458,13 +436,6 @@ module CoreExecuteCluster (
                 if (wakeup_valid_i[w] && (wakeup_phy_i[w] != '0) &&
                     (wakeup_phy_i[w] == mem_enqueue_store_data_prd)) begin
                     mem_enqueue_store_data = wakeup_result_i[w];
-                    mem_enqueue_store_data_valid = 1'b1;
-                end
-                if (store_wakeup_hold_valid_q[w] &&
-                    (store_wakeup_hold_prd_q[w] != '0) &&
-                    (store_wakeup_hold_prd_q[w] ==
-                     mem_enqueue_store_data_prd)) begin
-                    mem_enqueue_store_data = store_wakeup_hold_result_q[w];
                     mem_enqueue_store_data_valid = 1'b1;
                 end
             end
@@ -525,7 +496,7 @@ module CoreExecuteCluster (
         end
 
         for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
-            int_issue_ready_o[i] = !clear_i;
+            int_issue_ready_o[i] = 1'b1;
             issue_valid[i] = int_issue_valid_i[i] && int_issue_ready_o[i];
             issue_uop[i] = int_issue_uop_i[i];
         end
@@ -534,13 +505,13 @@ module CoreExecuteCluster (
             // Ready is derived only from registered local occupancy. Do not
             // include mem_req_consume here: that would reconnect DCache/SB
             // acceptance into MEM-IQ select in the same cycle.
-            mem_issue_ready_o[m] = !clear_i &&
+            mem_issue_ready_o[m] =
                 (!mem_probe_valid_q || mem_probe_resolve_valid_o) &&
                 (mem_req_count_q < MEM_REQ_COUNT_BITS'(MEM_REQ_DEPTH));
             issue_valid[INT_ISSUE_WIDTH + m] = mem_req_report_complete;
         end
         for (int u = 0; u < MULDIV_ISSUE_WIDTH; u = u + 1) begin
-            mul_issue_ready_o[u] = !clear_i && (u == 0) && muldiv_ready;
+            mul_issue_ready_o[u] = (u == 0) && muldiv_ready;
             issue_valid[INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + u] = mul_issue_valid_i[u] && mul_issue_ready_o[u];
             issue_uop[INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH + u] = mul_issue_uop_i[u];
         end
@@ -773,7 +744,7 @@ module CoreExecuteCluster (
             wb_prf_we_d[INT_ISSUE_WIDTH] = load_meta_uop_q[0].alloc_prd;
         end
 
-        wb_valid_d[MULDIV_SLOT] = !clear_i && muldiv_complete_valid;
+        wb_valid_d[MULDIV_SLOT] = muldiv_complete_valid;
         wb_rob_idx_d[MULDIV_SLOT] = muldiv_complete_uop.rob_idx;
         wb_prd_d[MULDIV_SLOT] = muldiv_complete_uop.prd;
         wb_result_d[MULDIV_SLOT] = muldiv_complete_result;
@@ -786,8 +757,7 @@ module CoreExecuteCluster (
         wb_csr_write_d[MULDIV_SLOT] = 1'b0;
         wb_csr_addr_d[MULDIV_SLOT] = '0;
         wb_csr_wdata_d[MULDIV_SLOT] = '0;
-        wb_prf_we_d[MULDIV_SLOT] = !clear_i &&
-                                   muldiv_complete_valid &&
+        wb_prf_we_d[MULDIV_SLOT] = muldiv_complete_valid &&
                                    muldiv_complete_uop.alloc_prd &&
                                    !muldiv_complete_uop.uop.exception;
     end
@@ -856,13 +826,7 @@ module CoreExecuteCluster (
             mem_req_count_q <= '0;
             load_meta_count_q <= '0;
             store_drain_pending_q <= 1'b0;
-            store_wakeup_hold_valid_q <= '0;
         end else begin
-            if (clear_i) begin
-                store_wakeup_hold_valid_q <= '0;
-            end else begin
-                store_wakeup_hold_valid_q <= wakeup_valid_i;
-            end
             if (clear_i) begin
                 // Requests not yet accepted by DCache are wrong-path and can
                 // be discarded. Accepted reads retain metadata ownership and
@@ -907,12 +871,6 @@ module CoreExecuteCluster (
     // global asynchronous reset tree.
     always_ff @(posedge clk) begin
         if (!rst) begin
-            for (int w = 0; w < ISSUE_WIDTH; w++) begin
-                if (wakeup_valid_i[w]) begin
-                    store_wakeup_hold_prd_q[w] <= wakeup_phy_i[w];
-                    store_wakeup_hold_result_q[w] <= wakeup_result_i[w];
-                end
-            end
             if (!clear_i) begin
                 for (int e = 0; e < MEM_REQ_DEPTH; e++) begin
                     mem_req_store_data_q[e] <= mem_req_store_data_now[e];

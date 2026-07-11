@@ -275,5 +275,48 @@
       "After functional acceptance, run a fresh 100 MHz Vivado implementation and confirm the early scheduler path ends at issue payload registers without restoring the old completion long loop."
     ],
     "notes": "The final version deliberately accepts the remaining approximately 0.66% gap rather than creating a Commit/FreeList-to-Rename combinational bypass. User requested small simulation only after the final fanout localization."
+  },
+  "latest_src1_livelock_fix": {
+    "timestamp": "2026-07-12T10:00:00+08:00",
+    "trigger": "src1 stopped committing near PC 0x80000420 and remained in ROB-head INT wait plus LSU partial-alias block until the 5,000,000-cycle timeout",
+    "diagnostic": {
+      "source": "rtl",
+      "file": "rtl/core/execute/ExecuteCluster.sv",
+      "error_type": "logic_bug",
+      "message": "A store left MEM-IQ before src2 was ready; its producer completed after address issue but before the request/StoreBuffer data owner became visible, so the one-cycle completion was lost and an aliasing load blocked forever.",
+      "cascade_hint": "full_reverify"
+    },
+    "backup_dir": "backup/20260712_100000",
+    "files_modified": [
+      {
+        "path": "rtl/core/execute/ExecuteCluster.sv",
+        "lines_changed": "one-cycle store completion hold/capture plus completion/wakeup/PRF/CSR recovery isolation",
+        "change_type": "store_data_lost_wakeup_fix"
+      },
+      {
+        "path": "docs/archive/2026-07-12/067_src1_recovery_writeback_livelock_fix.md",
+        "lines_changed": "new file",
+        "change_type": "root_cause_and_fix_record"
+      },
+      {
+        "path": "doc/rtl_changes.json",
+        "lines_changed": "latest_src1_livelock_fix",
+        "change_type": "change_manifest"
+      }
+    ],
+    "cascade_scope": "full_reverify",
+    "static_checks": [
+      "No module interface, parameter, filelist, or memory-map change.",
+      "A one-cycle PRD/result hold closes the gap between early store-address issue and request/StoreBuffer data ownership.",
+      "Recovery clears the held completion and masks ROB completion, early wakeup, PRF/CSR writes, local writeback bypass, and issue acceptance.",
+      "git diff --check passed."
+    ],
+    "verification": [
+      "Rebuilt student_top Verilator/difftest model successfully.",
+      "src1 20k: 11,417 commits and last PC 0x80001d1c versus the failing 1,050 commits at PC 0x80000420.",
+      "src1 1M: 607,804 commits with continued progress.",
+      "src1 5M: 3,043,208 commits, last PC 0x80000574, and no recurrence of permanent partial-alias livelock; the fixed-cycle run ended TIMEOUT before the pass marker."
+    ],
+    "notes": "The primary fix preserves split store address/data issue while retaining one extra completion beat. ROB indices are recycled without a generation tag, so clear_i also blocks old-path completion and wakeup at the observation boundary."
   }
 }
