@@ -42,24 +42,19 @@ module CoreROB #(
     localparam logic [COUNT_WIDTH-1:0] ROB_DEPTH_COUNT = COUNT_WIDTH'(ROB_DEPTH);
 
     CoreRobEntry entry_q [ROB_DEPTH-1:0];
-    CoreRobEntry retire_stage_entry_q [RETIRE_W-1:0];
-    CoreRobEntry retire_stage_next_entry [RETIRE_W-1:0];
     RobIndexPath head_q;
     RobIndexPath tail_q;
     logic [COUNT_WIDTH-1:0] count_q;
 
     logic [ALLOC_WIDTH-1:0] alloc_fire;
     logic [RETIRE_W-1:0] retire_fire;
-    logic [RETIRE_W-1:0] retire_stage_valid_q;
-    logic [RETIRE_W-1:0] retire_stage_next_valid;
-    logic [RETIRE_W-1:0] retire_stage_fill_fire;
     logic [COUNT_WIDTH-1:0] alloc_count;
-    logic [COUNT_WIDTH-1:0] retire_stage_fill_count;
-    logic [COUNT_WIDTH-1:0] retire_stage_survivor_count;
+    logic [COUNT_WIDTH-1:0] retire_count;
+    logic [COUNT_WIDTH-1:0] retire_offer_count;
     logic [COUNT_WIDTH-1:0] alloc_offset [ALLOC_WIDTH-1:0];
     logic [COUNT_WIDTH-1:0] alloc_req_prefix [ALLOC_WIDTH:0];
+    logic [COUNT_WIDTH-1:0] retire_offset [RETIRE_W-1:0];
     logic retire_prefix_valid;
-    logic retire_stage_fill_prefix;
 
     function automatic RobIndexPath wrap_add(
         input RobIndexPath base,
@@ -119,63 +114,35 @@ module CoreROB #(
         end
     end
 
-    // Commit only sees this registered two-wide stage. The 32-entry dynamic
-    // head mux therefore ends at local stage registers instead of feeding
-    // recovery/clear and the memory system in the same timing path.
     always_comb begin
+        retire_offer_count = '0;
         retire_prefix_valid = 1'b1;
         for (int r = 0; r < RETIRE_W; r = r + 1) begin
-            retire_entry_o[r] = retire_stage_entry_q[r];
-            retire_valid_o[r] = retire_stage_valid_q[r] &&
+            retire_offset[r] = retire_offer_count;
+            retire_entry_o[r] = entry_q[wrap_add(head_q, retire_offer_count)];
+            retire_valid_o[r] = (count_q > retire_offer_count) &&
+                                retire_entry_o[r].valid &&
+                                retire_entry_o[r].done &&
                                 retire_prefix_valid;
-            retire_fire[r] = retire_valid_o[r] && retire_ready_i[r] &&
-                             retire_prefix_valid;
-            retire_prefix_valid = retire_prefix_valid && retire_fire[r];
+
+            if (retire_valid_o[r]) begin
+                retire_offer_count = retire_offer_count + 1'b1;
+            end
+            retire_prefix_valid = retire_prefix_valid && retire_valid_o[r];
         end
     end
 
-    // Pop accepted stage entries, compact any survivor, and refill from the
-    // done prefix at entry_q[head_q]. Moving an entry into this stage transfers
-    // ownership out of the ROB array; Commit consumes it on a later edge.
     always_comb begin
-        retire_stage_next_valid = '0;
-        retire_stage_fill_fire = '0;
-        retire_stage_survivor_count = '0;
-        retire_stage_fill_count = '0;
-        retire_stage_fill_prefix = 1'b1;
-
+        retire_count = '0;
         for (int r = 0; r < RETIRE_W; r = r + 1) begin
-            retire_stage_next_entry[r] = '0;
-            if (retire_stage_valid_q[r] && !retire_fire[r]) begin
-                retire_stage_next_entry[retire_stage_survivor_count] =
-                    retire_stage_entry_q[r];
-                retire_stage_next_valid[retire_stage_survivor_count] = 1'b1;
-                retire_stage_survivor_count =
-                    retire_stage_survivor_count + 1'b1;
-            end
-        end
-
-        for (int f = 0; f < RETIRE_W; f = f + 1) begin
-            if (retire_stage_fill_prefix &&
-                ((retire_stage_survivor_count + COUNT_WIDTH'(f)) <
-                 COUNT_WIDTH'(RETIRE_W)) &&
-                (count_q > COUNT_WIDTH'(f)) &&
-                entry_q[wrap_add(head_q, COUNT_WIDTH'(f))].valid &&
-                entry_q[wrap_add(head_q, COUNT_WIDTH'(f))].done) begin
-                retire_stage_next_entry[
-                    retire_stage_survivor_count + COUNT_WIDTH'(f)] =
-                    entry_q[wrap_add(head_q, COUNT_WIDTH'(f))];
-                retire_stage_next_valid[
-                    retire_stage_survivor_count + COUNT_WIDTH'(f)] = 1'b1;
-                retire_stage_fill_fire[f] = 1'b1;
-                retire_stage_fill_count = retire_stage_fill_count + 1'b1;
-            end else begin
-                retire_stage_fill_prefix = 1'b0;
+            retire_fire[r] = retire_valid_o[r] && retire_ready_i[r];
+            if (retire_fire[r]) begin
+                retire_count = retire_count + 1'b1;
             end
         end
     end
 
-    assign empty_o = (count_q == '0) && !(|retire_stage_valid_q);
+    assign empty_o = (count_q == '0);
     assign full_o = (count_q == ROB_DEPTH_COUNT);
 
     // head/tail/count define ownership of entry_q. Empty entries are never
@@ -186,27 +153,14 @@ module CoreROB #(
             head_q <= '0;
             tail_q <= '0;
             count_q <= '0;
-            retire_stage_valid_q <= '0;
         end else if (clear_i) begin
             head_q <= '0;
             tail_q <= '0;
             count_q <= '0;
-            retire_stage_valid_q <= '0;
         end else begin
-            head_q <= wrap_add(head_q, retire_stage_fill_count);
+            head_q <= wrap_add(head_q, retire_count);
             tail_q <= wrap_add(tail_q, alloc_count);
-            count_q <= count_q + alloc_count - retire_stage_fill_count;
-            retire_stage_valid_q <= retire_stage_next_valid;
-        end
-    end
-
-    // Valid bits above own visibility, so the wide retire payload is kept out
-    // of the asynchronous reset/clear control set.
-    always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
-            for (int r = 0; r < RETIRE_W; r = r + 1) begin
-                retire_stage_entry_q[r] <= retire_stage_next_entry[r];
-            end
+            count_q <= count_q + alloc_count - retire_count;
         end
     end
 
@@ -259,10 +213,10 @@ module CoreROB #(
                 entry_q[store_complete_idx_i].csr_write <= 1'b0;
             end
 
-            for (int f = 0; f < RETIRE_W; f = f + 1) begin
-                if (retire_stage_fill_fire[f]) begin
-                    entry_q[wrap_add(head_q, COUNT_WIDTH'(f))].valid <= 1'b0;
-                    entry_q[wrap_add(head_q, COUNT_WIDTH'(f))].done <= 1'b0;
+            for (int r = 0; r < RETIRE_W; r = r + 1) begin
+                if (retire_fire[r]) begin
+                    entry_q[wrap_add(head_q, retire_offset[r])].valid <= 1'b0;
+                    entry_q[wrap_add(head_q, retire_offset[r])].done <= 1'b0;
                 end
             end
         end
@@ -270,20 +224,13 @@ module CoreROB #(
 
 `ifdef VERILATOR_TB
     always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
-            if (store_complete_valid_i) begin
-                assert (entry_q[store_complete_idx_i].valid)
-                    else $error("store completion targeted an unowned ROB entry");
-                assert (entry_q[store_complete_idx_i].uop.is_store)
-                    else $error("store completion targeted a non-store ROB entry");
-                assert (!entry_q[store_complete_idx_i].done)
-                    else $error("store completion was reported more than once");
-            end
-            assert (!(retire_stage_fill_fire[1] &&
-                      !retire_stage_fill_fire[0]))
-                else $error("ROB retire staging violated lane prefix");
-            assert (!(retire_fire[1] && !retire_fire[0]))
-                else $error("ROB commit handshake violated lane prefix");
+        if (!rst && !clear_i && store_complete_valid_i) begin
+            assert (entry_q[store_complete_idx_i].valid)
+                else $error("store completion targeted an unowned ROB entry");
+            assert (entry_q[store_complete_idx_i].uop.is_store)
+                else $error("store completion targeted a non-store ROB entry");
+            assert (!entry_q[store_complete_idx_i].done)
+                else $error("store completion was reported more than once");
         end
     end
 `endif

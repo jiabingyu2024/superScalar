@@ -79,5 +79,69 @@
     "Do not use the old 061 checkpoint to claim current WNS/TNS or Fmax.",
     "Check the two-stage MUL, cold reinject path, and StoreBuffer-to-ROB registered completion in routed top paths."
   ],
-  "notes": "MUL construction is explicitly frozen to DSP primitives (Use_Mults) with Speed goal; DIV remains Radix2 because High Radix cannot directly return the integer remainder required by REM/REMU."
+  "notes": "MUL construction is explicitly frozen to DSP primitives (Use_Mults) with Speed goal; DIV remains Radix2 because High Radix cannot directly return the integer remainder required by REM/REMU.",
+  "latest_incremental_fix": {
+    "timestamp": "2026-07-11T21:45:00+08:00",
+    "trigger": "commit 4762e003 100 MHz routed report: 47,536 failing endpoints dominated by completion/writeback, sRAT dispatch, ROB-head recovery, and BPU/PC path families",
+    "backup_dirs": [
+      "backup/20260711_201714",
+      "backup/20260711_203654",
+      "backup/20260711_205339",
+      "backup/20260711_210815",
+      "backup/20260711_211752",
+      "backup/20260711_212655"
+    ],
+    "files_modified": [
+      {
+        "path": "rtl/core/execute/ExecuteCluster.sv",
+        "lines_changed": "writeback bundle, PRF input mux, completion outputs, assertions",
+        "change_type": "registered_writeback_and_all_read_port_bypass"
+      },
+      {
+        "path": "rtl/core/backend/CoreBackend.sv",
+        "lines_changed": "completion wiring and 4-entry allocated dispatch buffer",
+        "change_type": "timing_pipeline_and_resource_ownership_change"
+      },
+      {
+        "path": "rtl/core/dispatch/ROB.sv",
+        "lines_changed": "retire select, ownership state, output staging, assertions",
+        "change_type": "two_wide_registered_retire_stage"
+      },
+      {
+        "path": "rtl/core/frontend/BranchPredictor.sv",
+        "lines_changed": "direction lookup and PHT/BTB update pipeline",
+        "change_type": "gshare_lookup_and_registered_table_rmw"
+      },
+      {
+        "path": "docs/archive/2026-07-11/065_100mhz_timing_rtl_optimization_implementation.md",
+        "lines_changed": "new file",
+        "change_type": "implementation_and_verification_record"
+      }
+    ],
+    "cascade_scope": "full_reverify",
+    "static_checks": [
+      "No module interface or filelist change.",
+      "Only wb_*_q registers drive PRF WE/WADDR/WDATA and backend completion outputs.",
+      "PRF write, wakeup bypass, completion, ROB completion, and BusyTable ready are cycle-aligned.",
+      "sRAT-derived renamed payload ends at dispatch_buffer_entry_q before ROB or IQ ownership.",
+      "ROB head dynamic select ends at retire_stage_entry_q before Commit/recovery fanout.",
+      "PHT/BTB write address/data are driven by table_update_*_q with same-index forwarding.",
+      "Wide writeback, dispatch, retire, and predictor payload registers use valid/count ownership instead of asynchronous payload reset."
+    ],
+    "verification": [
+      "Final Verilator RV32 model and src model compiled successfully.",
+      "RV32MI 4/4, RV32UI 40/40, and RV32UM 8/8 passed.",
+      "srcSmoke passed at 42,504,434 cycles, 30,758,614 commits, IPC 0.723657.",
+      "srcWithMext 500k correctness window: RV32I=37, fail=0, M=8, 618,633 commits, IPC 1.23727; tool status TIMEOUT at the requested fixed limit.",
+      "srcWithMext 50M performance window: RV32I=37, fail=0, M=8, 60,732,969 commits, IPC 1.21466, branch hit rate 97.5573%; tool status TIMEOUT at the requested fixed limit.",
+      "No Verilator assertion or failure marker occurred in the requested regressions."
+    ],
+    "pending_verification": [
+      "Run a clean Vivado 2023.2 synth/place/route at 100 MHz from the current HEAD.",
+      "Confirm complete_prd_reg, srat_q-to-ROB/IQ, and head_q-to-DCache/DRAM path families are absent.",
+      "Re-export WNS/TNS/all failing endpoints, utilization, high-fanout, congestion, DRC, CDC, hold, and recovery reports.",
+      "Do not claim 100 MHz closure until the new routed CPU setup WNS is non-negative and TNS/failing endpoints are zero."
+    ],
+    "notes": "The final gshare predictor reduces the PC feedback cone but lowers srcSmoke IPC versus the prior tournament predictor; the user explicitly accepted this tradeoff for now. The user also explicitly prohibited invoking Vivado during this repair turn."
+  }
 }

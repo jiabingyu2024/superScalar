@@ -15,6 +15,9 @@
   `clk_out2_pll=100 MHz`。
 - 本次只对已有 routed DCP 执行查询型 `report_*`；没有重新综合、布局、布线、
   physical optimization 或生成 bitstream。
+- 为补足原 top-1000 样本覆盖不足，本目录随后用同一 DCP 只读导出了
+  `setup_violating_endpoints_all.csv`：47,536 行，一行对应一个失败 endpoint 的
+  最差 setup 路径，与 timing summary 的失败 endpoint 总数完全一致。
 - WSL 工作树在归档时另有未提交修改；这些修改晚于 Windows 已生成工程，不能
   视为 checkpoint 内容。后续结论必须绑定上述 Windows HEAD 和 DCP 时间戳。
 
@@ -131,6 +134,7 @@ slack 的 IQ 选择/operand、PRF write enable、PC/BPU、DCache 写地址和 re
 | `setup_violations_top1000.rpt` | 带 input pins/full clock 的 1000 条 setup 违例详情 |
 | `setup_top200.rpt` / `hold_top100.rpt` | 按 path group 排序的 setup/hold 详细路径 |
 | `setup_paths_top1000.csv` / `setup_violations_top1000.csv` | 可程序化聚类的 setup 路径属性 |
+| `setup_violating_endpoints_all.csv` | 全部 47,536 个失败 endpoint 的最差 setup 路径，用于全量模块/路径族聚类 |
 | `hold_paths_top500.csv` | 可程序化检查 hold 裕量与端点 |
 | `design_analysis_timing.rpt` | 最差路径的 logic/net delay、逻辑结构和高扇出特征 |
 | `design_analysis_complexity.rpt` | Rent 指数、层次复杂度、MUXF 与 LUT 结构热点 |
@@ -145,6 +149,9 @@ slack 的 IQ 选择/operand、PRF write enable、PC/BPU、DCache 写地址和 re
 | `original_top_*` | implementation run 自动生成的原始 routed/placed 报告 |
 | `export_metadata.txt` / `archive_context.txt` | DCP、commit、工具、时钟和归档边界 |
 | `export_routed_reports.tcl` | 从 routed DCP 复现全部稳定报告的脚本 |
+| `export_all_setup_endpoints.tcl` | 从 routed DCP 复现全失败 endpoint 索引的只读脚本 |
+| `TIMING_OPTIMIZATION_ANALYSIS.md` | 全量违例定位、RTL 根因、100 MHz 可达性与分阶段优化方案 |
+| [`../065_100mhz_timing_rtl_optimization_implementation.md`](../065_100mhz_timing_rtl_optimization_implementation.md) | 后续 RTL 实施、A/B 性能、RV/src 回归和新 routed 验收清单 |
 | `vivado_congestion_report_crash.log` | congestion report 工具崩溃证据 |
 | `SHA256SUMS` | 归档完整性校验 |
 
@@ -155,3 +162,13 @@ WNS/TNS/failing endpoints、前 5 个路径族、logic/route 占比、level-5 co
 负 slack 高扇出网络、层次 LUT/FF/MUXF、CDC/ignored crossings、DRC，以及相同
 workload 下的 IPC。不能只比较一条 WNS，也不能把 Vivado 自动 QoR suggestion 当作
 RTL 时序修复的替代品。
+
+## 9. 后续 RTL 实施状态
+
+当前工作树已经完成 registered writeback、allocated dispatch buffer、ROB retire
+stage 和 BPU lookup/update 重构，并通过 RV32MI/UI/UM、`srcSmoke` 及指定的
+`srcWithMext` 500k/50M 窗口验证。完整数据见
+[`../065_100mhz_timing_rtl_optimization_implementation.md`](../065_100mhz_timing_rtl_optimization_implementation.md)。
+
+该实施按用户要求没有运行 Vivado；本目录中的 routed WNS/TNS 仍只代表提交
+`4762e003`，不能作为当前 RTL 已达到 100 MHz 的证据。

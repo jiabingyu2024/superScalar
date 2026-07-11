@@ -58,13 +58,6 @@ module CoreBackend (
     output logic perf_muldiv_busy_o
 `endif
 );
-    localparam int DISPATCH_BUFFER_DEPTH = 4;
-    localparam int DISPATCH_BUFFER_COUNT_BITS =
-        $clog2(DISPATCH_BUFFER_DEPTH + 1);
-    localparam logic [DISPATCH_BUFFER_COUNT_BITS-1:0]
-        DISPATCH_BUFFER_DEPTH_COUNT =
-            DISPATCH_BUFFER_COUNT_BITS'(DISPATCH_BUFFER_DEPTH);
-
     logic [RENAME_WIDTH-1:0] free_alloc_req;
     logic [RENAME_WIDTH-1:0] free_alloc_accept;
     logic [RENAME_WIDTH-1:0] free_alloc_valid;
@@ -75,7 +68,6 @@ module CoreBackend (
     logic [RENAME_WIDTH-1:0] rename_valid;
     logic [RENAME_WIDTH-1:0] rename_ready;
     CoreRenamedUop [RENAME_WIDTH-1:0] rename_uop;
-    logic [RENAME_WIDTH-1:0] rename_alloc_valid;
     logic [RENAME_WIDTH-1:0] rob_alloc_valid;
     logic [RENAME_WIDTH-1:0] rob_alloc_ready;
     RobIndexPath [RENAME_WIDTH-1:0] rob_alloc_idx;
@@ -95,17 +87,6 @@ module CoreBackend (
     CoreRenamedUop [DISPATCH_WIDTH-1:0] mem_push_uop;
     CoreRenamedUop [DISPATCH_WIDTH-1:0] mul_push_uop;
     TubeTypePath [DISPATCH_WIDTH-1:0] dispatch_tube;
-
-    CoreRenamedUop dispatch_buffer_entry_q [DISPATCH_BUFFER_DEPTH-1:0];
-    CoreRenamedUop dispatch_buffer_ready_entry [DISPATCH_BUFFER_DEPTH-1:0];
-    CoreRenamedUop dispatch_buffer_next_entry [DISPATCH_BUFFER_DEPTH-1:0];
-    CoreRenamedUop [DISPATCH_WIDTH-1:0] dispatch_buffer_uop;
-    logic [DISPATCH_WIDTH-1:0] dispatch_buffer_valid;
-    logic [DISPATCH_WIDTH-1:0] dispatch_buffer_ready;
-    logic [DISPATCH_WIDTH-1:0] dispatch_buffer_pop_fire;
-    logic [DISPATCH_BUFFER_COUNT_BITS-1:0] dispatch_buffer_count_q;
-    logic [DISPATCH_BUFFER_COUNT_BITS-1:0] dispatch_buffer_next_count;
-    logic [DISPATCH_BUFFER_COUNT_BITS-1:0] dispatch_buffer_pop_count;
 
     logic [INT_ISSUE_WIDTH-1:0] int_issue_ready;
     logic [INT_ISSUE_WIDTH-1:0] int_issue_valid;
@@ -128,6 +109,18 @@ module CoreBackend (
     logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_ready;
     logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_valid;
     CoreRenamedUop [MULDIV_ISSUE_WIDTH-1:0] mul_issue_uop;
+
+    logic [ISSUE_WIDTH-1:0] complete_valid;
+    RobIndexPath [ISSUE_WIDTH-1:0] complete_rob_idx;
+    PhyRegNumPath [ISSUE_WIDTH-1:0] complete_prd;
+    DataPath [ISSUE_WIDTH-1:0] complete_result;
+    logic [ISSUE_WIDTH-1:0] complete_exception;
+    logic [ISSUE_WIDTH-1:0][31:0] complete_exception_cause;
+    logic [ISSUE_WIDTH-1:0] complete_branch_miss;
+    PcPath [ISSUE_WIDTH-1:0] complete_redirect_pc;
+    logic [ISSUE_WIDTH-1:0] complete_csr_write;
+    logic [ISSUE_WIDTH-1:0][11:0] complete_csr_addr;
+    DataPath [ISSUE_WIDTH-1:0] complete_csr_wdata;
 
     logic [ISSUE_WIDTH-1:0] exec_complete_valid;
     RobIndexPath [ISSUE_WIDTH-1:0] exec_complete_rob_idx;
@@ -197,13 +190,13 @@ module CoreBackend (
         decode_ready_o = decode_ready_from_rename;
 
         for (int i = 0; i < DECODE_WIDTH; i = i + 1) begin
+            dispatch_tube[i] = decode_uop_i[i].tube;
             if (serial_block) begin
                 decode_valid_to_rename[i] = 1'b0;
                 decode_ready_o[i] = 1'b0;
             end
             if (decode_valid_i[i] && decode_uop_i[i].is_serial) begin
-                if (serial_block || !rob_empty ||
-                    (dispatch_buffer_count_q != '0) || (i != 0)) begin
+                if (serial_block || !rob_empty || (i != 0)) begin
                     decode_valid_to_rename[i] = 1'b0;
                     decode_ready_o[i] = 1'b0;
                 end
@@ -214,7 +207,7 @@ module CoreBackend (
                     end
                 end
             end
-            if (rename_alloc_valid[i] && rename_uop[i].uop.is_serial) begin
+            if (rob_alloc_valid[i] && rename_uop[i].uop.is_serial) begin
                 serial_alloc = 1'b1;
             end
         end
@@ -222,132 +215,6 @@ module CoreBackend (
         for (int c = 0; c < RETIRE_WIDTH; c = c + 1) begin
             if (commit_valid[c] && retire_entry[c].uop.is_serial) begin
                 serial_retire = 1'b1;
-            end
-        end
-    end
-
-    // Rename owns the PRD and speculative map when an entry crosses this
-    // boundary. ROB ownership is deliberately delayed until the registered
-    // entry can also enter Dispatch, so neither ROB nor an IQ sees the sRAT
-    // combinational cone.
-    always_comb begin
-        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
-            rename_ready[i] = !clear_i && !recover_i &&
-                              ((dispatch_buffer_count_q +
-                                DISPATCH_BUFFER_COUNT_BITS'(i)) <
-                               DISPATCH_BUFFER_DEPTH_COUNT);
-        end
-    end
-
-    // Wakeups must be remembered while an allocated entry is waiting for ROB
-    // and IQ capacity. A one-cycle completion pulse cannot be sampled only at
-    // the eventual dequeue cycle.
-    always_comb begin
-        for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
-            dispatch_buffer_ready_entry[e] = dispatch_buffer_entry_q[e];
-            for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
-                if (exec_complete_valid[w] &&
-                    (exec_complete_prd[w] ==
-                     dispatch_buffer_entry_q[e].prs1)) begin
-                    dispatch_buffer_ready_entry[e].src1_ready = 1'b1;
-                end
-                if (exec_complete_valid[w] &&
-                    (exec_complete_prd[w] ==
-                     dispatch_buffer_entry_q[e].prs2)) begin
-                    dispatch_buffer_ready_entry[e].src2_ready = 1'b1;
-                end
-            end
-        end
-    end
-
-    // ROB allocation, Dispatch acceptance, and buffer removal are one atomic
-    // event. Lane 1 is not even offered until lane 0 is known to fire, which
-    // preserves program order for DispatchUnit outputs that are valid/ready.
-    always_comb begin
-        dispatch_buffer_valid = '0;
-        dispatch_buffer_pop_fire = '0;
-        dispatch_buffer_pop_count = '0;
-
-        for (int i = 0; i < DISPATCH_WIDTH; i = i + 1) begin
-            dispatch_buffer_uop[i] = dispatch_buffer_ready_entry[i];
-            dispatch_buffer_uop[i].rob_idx = rob_alloc_idx[i];
-            dispatch_tube[i] = dispatch_buffer_ready_entry[i].uop.tube;
-
-            dispatch_buffer_valid[i] = !clear_i && !recover_i &&
-                                       (dispatch_buffer_count_q >
-                                        DISPATCH_BUFFER_COUNT_BITS'(i));
-            if (i != 0) begin
-                dispatch_buffer_valid[i] = dispatch_buffer_valid[i] &&
-                                           dispatch_buffer_pop_fire[i-1];
-            end
-
-            dispatch_buffer_valid[i] = dispatch_buffer_valid[i] &&
-                                       rob_alloc_ready[i];
-            dispatch_buffer_pop_fire[i] = dispatch_buffer_valid[i] &&
-                                          dispatch_buffer_ready[i];
-            rob_alloc_valid[i] = dispatch_buffer_pop_fire[i];
-            if (dispatch_buffer_pop_fire[i]) begin
-                dispatch_buffer_pop_count = dispatch_buffer_pop_count + 1'b1;
-            end
-        end
-    end
-
-    always_comb begin
-        dispatch_buffer_next_count = '0;
-        for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
-            dispatch_buffer_next_entry[e] = '0;
-        end
-
-        for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
-            if ((DISPATCH_BUFFER_COUNT_BITS'(e) >=
-                 dispatch_buffer_pop_count) &&
-                (DISPATCH_BUFFER_COUNT_BITS'(e) <
-                 dispatch_buffer_count_q)) begin
-                dispatch_buffer_next_entry[dispatch_buffer_next_count] =
-                    dispatch_buffer_ready_entry[e];
-                dispatch_buffer_next_count =
-                    dispatch_buffer_next_count + 1'b1;
-            end
-        end
-
-        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
-            if (rename_alloc_valid[i]) begin
-                dispatch_buffer_next_entry[dispatch_buffer_next_count] =
-                    rename_uop[i];
-                for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
-                    if (exec_complete_valid[w] &&
-                        (exec_complete_prd[w] == rename_uop[i].prs1)) begin
-                        dispatch_buffer_next_entry[dispatch_buffer_next_count]
-                            .src1_ready = 1'b1;
-                    end
-                    if (exec_complete_valid[w] &&
-                        (exec_complete_prd[w] == rename_uop[i].prs2)) begin
-                        dispatch_buffer_next_entry[dispatch_buffer_next_count]
-                            .src2_ready = 1'b1;
-                    end
-                end
-                dispatch_buffer_next_count =
-                    dispatch_buffer_next_count + 1'b1;
-            end
-        end
-    end
-
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            dispatch_buffer_count_q <= '0;
-        end else if (clear_i || recover_i) begin
-            dispatch_buffer_count_q <= '0;
-        end else begin
-            dispatch_buffer_count_q <= dispatch_buffer_next_count;
-        end
-    end
-
-    // Count owns payload visibility; the wide renamed-uop storage stays off
-    // the asynchronous reset/flush control set.
-    always_ff @(posedge clk) begin
-        if (!rst && !clear_i && !recover_i) begin
-            for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
-                dispatch_buffer_entry_q[e] <= dispatch_buffer_next_entry[e];
             end
         end
     end
@@ -382,8 +249,8 @@ module CoreBackend (
         .free_alloc_accept_o(free_alloc_accept),
         .free_alloc_valid_i(free_alloc_valid),
         .free_alloc_phy_i(free_alloc_phy),
-        .rob_alloc_valid_o(rename_alloc_valid),
-        .rob_alloc_ready_i(rename_ready),
+        .rob_alloc_valid_o(rob_alloc_valid),
+        .rob_alloc_ready_i(rob_alloc_ready),
         .rob_alloc_idx_i(rob_alloc_idx),
         .busy_query_src1_o(busy_src1_phy),
         .busy_query_src1_ready_i(busy_src1_ready),
@@ -411,8 +278,8 @@ module CoreBackend (
         .query_src2_ready_o(busy_src2_ready),
         .mark_busy_i(free_alloc_accept),
         .mark_busy_phy_i(free_alloc_phy),
-        .mark_ready_i(exec_complete_valid),
-        .mark_ready_phy_i(exec_complete_prd)
+        .mark_ready_i(complete_valid),
+        .mark_ready_phy_i(complete_prd)
     );
 
     CoreROB u_rob (
@@ -420,19 +287,19 @@ module CoreBackend (
         .rst(rst),
         .clear_i(clear_i || recover_i),
         .alloc_valid_i(rob_alloc_valid),
-        .alloc_uop_i(dispatch_buffer_uop),
+        .alloc_uop_i(rename_uop),
         .alloc_ready_o(rob_alloc_ready),
         .alloc_idx_o(rob_alloc_idx),
-        .complete_valid_i(exec_complete_valid),
-        .complete_idx_i(exec_complete_rob_idx),
-        .complete_result_i(exec_complete_result),
-        .complete_exception_i(exec_complete_exception),
-        .complete_exception_cause_i(exec_complete_exception_cause),
-        .complete_branch_miss_i(exec_complete_branch_miss),
-        .complete_redirect_pc_i(exec_complete_redirect_pc),
-        .complete_csr_write_i(exec_complete_csr_write),
-        .complete_csr_addr_i(exec_complete_csr_addr),
-        .complete_csr_wdata_i(exec_complete_csr_wdata),
+        .complete_valid_i(complete_valid),
+        .complete_idx_i(complete_rob_idx),
+        .complete_result_i(complete_result),
+        .complete_exception_i(complete_exception),
+        .complete_exception_cause_i(complete_exception_cause),
+        .complete_branch_miss_i(complete_branch_miss),
+        .complete_redirect_pc_i(complete_redirect_pc),
+        .complete_csr_write_i(complete_csr_write),
+        .complete_csr_addr_i(complete_csr_addr),
+        .complete_csr_wdata_i(complete_csr_wdata),
         .store_complete_valid_i(store_complete_valid),
         .store_complete_idx_i(store_complete_rob_idx),
         .store_complete_addr_i(store_complete_addr),
@@ -447,12 +314,12 @@ module CoreBackend (
         .clk(clk),
         .rst(rst),
         .clear_i(clear_i || recover_i),
-        .in_valid_i(dispatch_buffer_valid),
-        .in_uop_i(dispatch_buffer_uop),
+        .in_valid_i(rename_valid),
+        .in_uop_i(rename_uop),
         .in_tube_i(dispatch_tube),
-        .in_ready_o(dispatch_buffer_ready),
-        .wakeup_valid_i(exec_complete_valid),
-        .wakeup_phy_i(exec_complete_prd),
+        .in_ready_o(rename_ready),
+        .wakeup_valid_i(complete_valid),
+        .wakeup_phy_i(complete_prd),
         .int_valid_o(int_push_valid),
         .mem_valid_o(mem_push_valid),
         .mul_valid_o(mul_push_valid),
@@ -471,8 +338,8 @@ module CoreBackend (
         .push_valid_i(int_push_valid),
         .push_uop_i(int_push_uop),
         .push_ready_o(int_push_ready),
-        .wakeup_valid_i(exec_complete_valid),
-        .wakeup_phy_i(exec_complete_prd),
+        .wakeup_valid_i(complete_valid),
+        .wakeup_phy_i(complete_prd),
         .issue_ready_i(int_issue_ready),
         .issue_valid_o(int_issue_valid),
         .issue_uop_o(int_issue_uop)
@@ -485,8 +352,8 @@ module CoreBackend (
         .push_valid_i(mem_push_valid),
         .push_uop_i(mem_push_uop),
         .push_ready_o(mem_push_ready),
-        .wakeup_valid_i(exec_complete_valid),
-        .wakeup_phy_i(exec_complete_prd),
+        .wakeup_valid_i(complete_valid),
+        .wakeup_phy_i(complete_prd),
         .issue_ready_i(mem_issue_ready),
         .issue_valid_o(mem_issue_valid),
         .issue_uop_o(mem_issue_uop),
@@ -513,8 +380,8 @@ module CoreBackend (
         .push_valid_i(mul_push_valid),
         .push_uop_i(mul_push_uop),
         .push_ready_o(mul_push_ready),
-        .wakeup_valid_i(exec_complete_valid),
-        .wakeup_phy_i(exec_complete_prd),
+        .wakeup_valid_i(complete_valid),
+        .wakeup_phy_i(complete_prd),
         .issue_ready_i(mul_issue_ready),
         .issue_valid_o(mul_issue_valid),
         .issue_uop_o(mul_issue_uop)
@@ -530,9 +397,9 @@ module CoreBackend (
         .mem_issue_ready_o(mem_issue_ready),
         .mem_issue_valid_i(mem_issue_valid),
         .mem_issue_uop_i(mem_issue_uop),
-        .wakeup_valid_i(exec_complete_valid),
-        .wakeup_phy_i(exec_complete_prd),
-        .wakeup_result_i(exec_complete_result),
+        .wakeup_valid_i(complete_valid),
+        .wakeup_phy_i(complete_prd),
+        .wakeup_result_i(complete_result),
         .mem_issue_lookahead_i(mem_issue_lookahead),
         .mem_issue_slot_i(mem_issue_slot),
         .mem_issue_age_i(mem_issue_age),
@@ -594,9 +461,9 @@ module CoreBackend (
         .push_data_valid_i(store_push_data_valid),
         .push_data_prd_i(store_push_data_prd),
         .push_ready_o(store_push_ready),
-        .complete_valid_i(exec_complete_valid),
-        .complete_prd_i(exec_complete_prd),
-        .complete_result_i(exec_complete_result),
+        .complete_valid_i(complete_valid),
+        .complete_prd_i(complete_prd),
+        .complete_result_i(complete_result),
         .store_complete_valid_o(store_complete_valid),
         .store_complete_rob_idx_o(store_complete_rob_idx),
         .store_complete_addr_o(store_complete_addr),
@@ -611,6 +478,29 @@ module CoreBackend (
         .empty_o(store_buffer_empty),
         .dmem(dmem)
     );
+
+    // Only valid carries reset/flush state. Completion payload is ignored while
+    // valid is low and is overwritten on the next active cycle. Keeping the
+    // wide payload off reset reduces FPGA control-set and reset-fanout cost.
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            complete_valid <= '0;
+        end else if (clear_i || recover_i) begin
+            complete_valid <= '0;
+        end else begin
+            complete_valid <= exec_complete_valid;
+            complete_rob_idx <= exec_complete_rob_idx;
+            complete_prd <= exec_complete_prd;
+            complete_result <= exec_complete_result;
+            complete_exception <= exec_complete_exception;
+            complete_exception_cause <= exec_complete_exception_cause;
+            complete_branch_miss <= exec_complete_branch_miss;
+            complete_redirect_pc <= exec_complete_redirect_pc;
+            complete_csr_write <= exec_complete_csr_write;
+            complete_csr_addr <= exec_complete_csr_addr;
+            complete_csr_wdata <= exec_complete_csr_wdata;
+        end
+    end
 
     CoreCommitUnit u_commit (
         .clk(clk),
@@ -647,27 +537,6 @@ module CoreBackend (
     end
 
 `ifdef VERILATOR_TB
-    always_ff @(posedge clk) begin
-        if (!rst && !clear_i && !recover_i) begin
-            assert (dispatch_buffer_count_q <=
-                    DISPATCH_BUFFER_DEPTH_COUNT)
-                else $error("allocated dispatch buffer overflow");
-            assert (!(rename_alloc_valid[1] && !rename_alloc_valid[0]))
-                else $error("rename enqueue violated lane prefix");
-            assert (!(dispatch_buffer_pop_fire[1] &&
-                      !dispatch_buffer_pop_fire[0]))
-                else $error("allocated dispatch dequeue violated lane prefix");
-            for (int i = 0; i < DISPATCH_WIDTH; i = i + 1) begin
-                if (rob_alloc_valid[i]) begin
-                    assert (dispatch_buffer_pop_fire[i] &&
-                            (dispatch_buffer_uop[i].rob_idx ==
-                             rob_alloc_idx[i]))
-                        else $error("ROB allocation lost dispatch ownership");
-                end
-            end
-        end
-    end
-
     always_comb begin
         perf_dispatch_count_o = '0;
         perf_issue_count_o = '0;

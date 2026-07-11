@@ -100,37 +100,6 @@ module CoreExecuteCluster (
     DataPath [ISSUE_WIDTH-1:0] prf_wdata;
     PhyRegNumPath [READ_PORTS-1:0] prf_raddr;
     DataPath [READ_PORTS-1:0] prf_rdata;
-    DataPath [READ_PORTS-1:0] prf_rdata_effective;
-
-    // Fixed-throughput writeback boundary. The execute cone produces wb_*_d;
-    // only registered wb_*_q may drive PRF write ports and backend completion.
-    // This cuts completion->IQ->PRF->execute from the distributed PRF CE/D
-    // decode while keeping completion visible on the same edge as the write.
-    logic [ISSUE_WIDTH-1:0] wb_valid_d;
-    logic [ISSUE_WIDTH-1:0] wb_valid_q;
-    RobIndexPath [ISSUE_WIDTH-1:0] wb_rob_idx_d;
-    RobIndexPath [ISSUE_WIDTH-1:0] wb_rob_idx_q;
-    PhyRegNumPath [ISSUE_WIDTH-1:0] wb_prd_d;
-    PhyRegNumPath [ISSUE_WIDTH-1:0] wb_prd_q;
-    DataPath [ISSUE_WIDTH-1:0] wb_result_d;
-    DataPath [ISSUE_WIDTH-1:0] wb_result_q;
-    logic [ISSUE_WIDTH-1:0] wb_exception_d;
-    logic [ISSUE_WIDTH-1:0] wb_exception_q;
-    logic [ISSUE_WIDTH-1:0][31:0] wb_exception_cause_d;
-    logic [ISSUE_WIDTH-1:0][31:0] wb_exception_cause_q;
-    logic [ISSUE_WIDTH-1:0] wb_branch_miss_d;
-    logic [ISSUE_WIDTH-1:0] wb_branch_miss_q;
-    PcPath [ISSUE_WIDTH-1:0] wb_redirect_pc_d;
-    PcPath [ISSUE_WIDTH-1:0] wb_redirect_pc_q;
-    logic [ISSUE_WIDTH-1:0] wb_csr_write_d;
-    logic [ISSUE_WIDTH-1:0] wb_csr_write_q;
-    logic [ISSUE_WIDTH-1:0][11:0] wb_csr_addr_d;
-    logic [ISSUE_WIDTH-1:0][11:0] wb_csr_addr_q;
-    DataPath [ISSUE_WIDTH-1:0] wb_csr_wdata_d;
-    DataPath [ISSUE_WIDTH-1:0] wb_csr_wdata_q;
-    logic [ISSUE_WIDTH-1:0] wb_prf_we_d;
-    logic [ISSUE_WIDTH-1:0] wb_prf_we_q;
-
     logic [MEM_REQ_COUNT_BITS-1:0] mem_req_count_q;
     CoreRenamedUop mem_req_uop_q [MEM_REQ_DEPTH-1:0];
     AddrPath mem_req_addr_q [MEM_REQ_DEPTH-1:0];
@@ -337,41 +306,6 @@ module CoreExecuteCluster (
         end
     endfunction
 
-    assign complete_valid_o = wb_valid_q & {ISSUE_WIDTH{!clear_i}};
-    assign complete_rob_idx_o = wb_rob_idx_q;
-    assign complete_prd_o = wb_prd_q;
-    assign complete_result_o = wb_result_q;
-    assign complete_exception_o = wb_exception_q;
-    assign complete_exception_cause_o = wb_exception_cause_q;
-    assign complete_branch_miss_o = wb_branch_miss_q;
-    assign complete_redirect_pc_o = wb_redirect_pc_q;
-    assign complete_csr_write_o = wb_valid_q & wb_csr_write_q &
-                                  {ISSUE_WIDTH{!clear_i}};
-    assign complete_csr_addr_o = wb_csr_addr_q;
-    assign complete_csr_wdata_o = wb_csr_wdata_q;
-
-    assign prf_we = wb_valid_q & wb_prf_we_q &
-                    {ISSUE_WIDTH{!clear_i}};
-    assign prf_waddr = wb_prd_q;
-    assign prf_wdata = wb_result_q;
-
-    // wb_*_q is a registered producer and therefore cannot recreate the old
-    // IQ->PRF->execute->completion combinational loop. Forward it to every PRF
-    // read port so all consumer classes may use the early registered wakeup in
-    // CoreBackend without observing the pre-write PRF value.
-    always_comb begin
-        for (int r = 0; r < READ_PORTS; r = r + 1) begin
-            prf_rdata_effective[r] = prf_rdata[r];
-            for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
-                if (!clear_i && wb_valid_q[w] && wb_prf_we_q[w] &&
-                    (wb_prd_q[w] != '0) &&
-                    (wb_prd_q[w] == prf_raddr[r])) begin
-                    prf_rdata_effective[r] = wb_result_q[w];
-                end
-            end
-        end
-    end
-
     assign mem_req_valid = (mem_req_count_q != '0);
     assign mem_req_head_uop = mem_req_uop_q[0];
     assign mem_req_head_addr = mem_req_addr_q[0];
@@ -421,10 +355,10 @@ module CoreExecuteCluster (
         mem_enqueue = (mem_issue_fire && !mem_issue_lookahead_i) ||
                       mem_probe_resolve_accept_o;
         mem_enqueue_uop = mem_issue_uop_i[0];
-        mem_enqueue_addr = prf_rdata_effective[2 * MEM_SLOT] +
+        mem_enqueue_addr = prf_rdata[2 * MEM_SLOT] +
             (mem_issue_uop_i[0].uop.is_store ?
              mem_issue_uop_i[0].uop.imm_s : mem_issue_uop_i[0].uop.imm_i);
-        mem_enqueue_store_data = prf_rdata_effective[2 * MEM_SLOT + 1];
+        mem_enqueue_store_data = prf_rdata[2 * MEM_SLOT + 1];
         mem_enqueue_store_mask = store_mask(mem_issue_uop_i[0].uop);
         mem_enqueue_store_data_valid = mem_issue_uop_i[0].src2_ready;
         mem_enqueue_store_data_prd = mem_issue_uop_i[0].prs2;
@@ -562,8 +496,8 @@ module CoreExecuteCluster (
         store_push_data_valid_o = 1'b0;
         store_push_data_prd_o = '0;
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-            src0[i] = prf_rdata_effective[2*i];
-            src1[i] = prf_rdata_effective[2*i + 1];
+            src0[i] = prf_rdata[2*i];
+            src1[i] = prf_rdata[2*i + 1];
             if ((i == MEM_SLOT) && mem_req_valid) begin
                 src1[i] = mem_req_head_store_data;
             end
@@ -668,35 +602,30 @@ module CoreExecuteCluster (
                                              EXC_CAUSE_ECALL_M : EXC_CAUSE_ECALL_U;
             end
 
-            wb_valid_d[i] = issue_valid[i];
-            wb_rob_idx_d[i] = issue_uop[i].rob_idx;
-            wb_prd_d[i] = issue_uop[i].prd;
-            wb_result_d[i] = result[i];
-            wb_exception_d[i] = issue_uop[i].uop.exception ||
-                                dynamic_exception[i];
-            wb_exception_cause_d[i] = dynamic_exception[i] ?
-                                      dynamic_exception_cause[i] :
-                                      issue_uop[i].uop.exception_cause;
-            wb_branch_miss_d[i] = issue_valid[i] &&
-                                  (issue_uop[i].uop.is_branch ||
-                                   issue_uop[i].uop.is_jal ||
-                                   issue_uop[i].uop.is_jalr) &&
-                                  ((branch_taken[i] !=
-                                    issue_uop[i].uop.pred_taken) ||
-                                   (branch_taken[i] &&
-                                    (branch_target[i] !=
-                                     issue_uop[i].uop.pred_target)));
-            wb_redirect_pc_d[i] = branch_target[i];
-            wb_csr_write_d[i] = issue_valid[i] &&
-                                issue_uop[i].uop.is_csr &&
-                                csr_do_write[i] && !csr_fault[i];
-            wb_csr_addr_d[i] = issue_uop[i].uop.csr_addr;
-            wb_csr_wdata_d[i] = csr_new_value[i];
+            complete_valid_o[i] = issue_valid[i];
+            complete_rob_idx_o[i] = issue_uop[i].rob_idx;
+            complete_prd_o[i] = issue_uop[i].prd;
+            complete_result_o[i] = result[i];
+            complete_exception_o[i] = issue_uop[i].uop.exception || dynamic_exception[i];
+            complete_exception_cause_o[i] = dynamic_exception[i] ? dynamic_exception_cause[i] :
+                                            issue_uop[i].uop.exception_cause;
+            complete_branch_miss_o[i] = issue_valid[i] &&
+                                        (issue_uop[i].uop.is_branch ||
+                                         issue_uop[i].uop.is_jal ||
+                                         issue_uop[i].uop.is_jalr) &&
+                                        ((branch_taken[i] != issue_uop[i].uop.pred_taken) ||
+                                         (branch_taken[i] && (branch_target[i] != issue_uop[i].uop.pred_target)));
+            complete_redirect_pc_o[i] = branch_target[i];
+            complete_csr_write_o[i] = issue_valid[i] && issue_uop[i].uop.is_csr &&
+                                      csr_do_write[i] && !csr_fault[i];
+            complete_csr_addr_o[i] = issue_uop[i].uop.csr_addr;
+            complete_csr_wdata_o[i] = csr_new_value[i];
 
-            wb_prf_we_d[i] = issue_valid[i] && issue_uop[i].alloc_prd &&
-                             !issue_uop[i].uop.is_store &&
-                             !(issue_uop[i].uop.exception ||
-                               dynamic_exception[i]);
+            prf_we[i] = issue_valid[i] && issue_uop[i].alloc_prd &&
+                        !issue_uop[i].uop.is_store &&
+                        !(issue_uop[i].uop.exception || dynamic_exception[i]);
+            prf_waddr[i] = issue_uop[i].prd;
+            prf_wdata[i] = result[i];
         end
 
         if (!clear_i && mem_req_valid && !load_resp_complete &&
@@ -712,11 +641,13 @@ module CoreExecuteCluster (
 
         if (mem_req_complete && mem_req_head_uop.uop.is_load &&
             !mem_req_misaligned && load_forward_full_i) begin
-                wb_result_d[INT_ISSUE_WIDTH] =
+                complete_result_o[INT_ISSUE_WIDTH] =
                     load_extend(mem_req_head_uop.uop, load_forward_data_i);
-                wb_prf_we_d[INT_ISSUE_WIDTH] =
-                    mem_req_head_uop.alloc_prd &&
-                    !mem_req_head_uop.uop.exception;
+                prf_we[INT_ISSUE_WIDTH] = mem_req_head_uop.alloc_prd &&
+                                          !mem_req_head_uop.uop.exception;
+                prf_waddr[INT_ISSUE_WIDTH] = mem_req_head_uop.prd;
+                prf_wdata[INT_ISSUE_WIDTH] =
+                    load_extend(mem_req_head_uop.uop, load_forward_data_i);
         end
 
         if (mem_req_load_send) begin
@@ -725,67 +656,43 @@ module CoreExecuteCluster (
         end
 
         if (load_resp_complete) begin
-            wb_valid_d[INT_ISSUE_WIDTH] = 1'b1;
-            wb_rob_idx_d[INT_ISSUE_WIDTH] = load_meta_uop_q[0].rob_idx;
-            wb_prd_d[INT_ISSUE_WIDTH] = load_meta_uop_q[0].prd;
-            wb_result_d[INT_ISSUE_WIDTH] =
+            complete_valid_o[INT_ISSUE_WIDTH] = 1'b1;
+            complete_rob_idx_o[INT_ISSUE_WIDTH] = load_meta_uop_q[0].rob_idx;
+            complete_prd_o[INT_ISSUE_WIDTH] = load_meta_uop_q[0].prd;
+            complete_result_o[INT_ISSUE_WIDTH] =
                 load_extend(load_meta_uop_q[0].uop, dmem.exReadData);
-            wb_exception_d[INT_ISSUE_WIDTH] =
+            complete_exception_o[INT_ISSUE_WIDTH] =
                 load_meta_uop_q[0].uop.exception;
-            wb_exception_cause_d[INT_ISSUE_WIDTH] =
+            complete_exception_cause_o[INT_ISSUE_WIDTH] =
                 load_meta_uop_q[0].uop.exception_cause;
-            wb_branch_miss_d[INT_ISSUE_WIDTH] = 1'b0;
-            wb_redirect_pc_d[INT_ISSUE_WIDTH] = '0;
-            wb_csr_write_d[INT_ISSUE_WIDTH] = 1'b0;
-            wb_csr_addr_d[INT_ISSUE_WIDTH] = '0;
-            wb_csr_wdata_d[INT_ISSUE_WIDTH] = '0;
-            wb_prf_we_d[INT_ISSUE_WIDTH] = load_meta_uop_q[0].alloc_prd;
+            complete_branch_miss_o[INT_ISSUE_WIDTH] = 1'b0;
+            complete_redirect_pc_o[INT_ISSUE_WIDTH] = '0;
+            complete_csr_write_o[INT_ISSUE_WIDTH] = 1'b0;
+            complete_csr_addr_o[INT_ISSUE_WIDTH] = '0;
+            complete_csr_wdata_o[INT_ISSUE_WIDTH] = '0;
+            prf_we[INT_ISSUE_WIDTH] = load_meta_uop_q[0].alloc_prd;
+            prf_waddr[INT_ISSUE_WIDTH] = load_meta_uop_q[0].prd;
+            prf_wdata[INT_ISSUE_WIDTH] =
+                load_extend(load_meta_uop_q[0].uop, dmem.exReadData);
         end
 
-        wb_valid_d[MULDIV_SLOT] = !clear_i && muldiv_complete_valid;
-        wb_rob_idx_d[MULDIV_SLOT] = muldiv_complete_uop.rob_idx;
-        wb_prd_d[MULDIV_SLOT] = muldiv_complete_uop.prd;
-        wb_result_d[MULDIV_SLOT] = muldiv_complete_result;
-        wb_exception_d[MULDIV_SLOT] =
-            muldiv_complete_uop.uop.exception;
-        wb_exception_cause_d[MULDIV_SLOT] =
-            muldiv_complete_uop.uop.exception_cause;
-        wb_branch_miss_d[MULDIV_SLOT] = 1'b0;
-        wb_redirect_pc_d[MULDIV_SLOT] = '0;
-        wb_csr_write_d[MULDIV_SLOT] = 1'b0;
-        wb_csr_addr_d[MULDIV_SLOT] = '0;
-        wb_csr_wdata_d[MULDIV_SLOT] = '0;
-        wb_prf_we_d[MULDIV_SLOT] = !clear_i &&
-                                   muldiv_complete_valid &&
-                                   muldiv_complete_uop.alloc_prd &&
-                                   !muldiv_complete_uop.uop.exception;
-    end
-
-    // Valid owns reset/flush visibility. Wide payload is captured every cycle
-    // without reset or enable so the new boundary does not create another
-    // high-fanout control set across the completion bundle.
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            wb_valid_q <= '0;
-        end else if (clear_i) begin
-            wb_valid_q <= '0;
-        end else begin
-            wb_valid_q <= wb_valid_d;
-        end
-    end
-
-    always_ff @(posedge clk) begin
-        wb_rob_idx_q <= wb_rob_idx_d;
-        wb_prd_q <= wb_prd_d;
-        wb_result_q <= wb_result_d;
-        wb_exception_q <= wb_exception_d;
-        wb_exception_cause_q <= wb_exception_cause_d;
-        wb_branch_miss_q <= wb_branch_miss_d;
-        wb_redirect_pc_q <= wb_redirect_pc_d;
-        wb_csr_write_q <= wb_csr_write_d;
-        wb_csr_addr_q <= wb_csr_addr_d;
-        wb_csr_wdata_q <= wb_csr_wdata_d;
-        wb_prf_we_q <= wb_prf_we_d;
+        complete_valid_o[MULDIV_SLOT] = !clear_i && muldiv_complete_valid;
+        complete_rob_idx_o[MULDIV_SLOT] = muldiv_complete_uop.rob_idx;
+        complete_prd_o[MULDIV_SLOT] = muldiv_complete_uop.prd;
+        complete_result_o[MULDIV_SLOT] = muldiv_complete_result;
+        complete_exception_o[MULDIV_SLOT] = muldiv_complete_uop.uop.exception;
+        complete_exception_cause_o[MULDIV_SLOT] = muldiv_complete_uop.uop.exception_cause;
+        complete_branch_miss_o[MULDIV_SLOT] = 1'b0;
+        complete_redirect_pc_o[MULDIV_SLOT] = '0;
+        complete_csr_write_o[MULDIV_SLOT] = 1'b0;
+        complete_csr_addr_o[MULDIV_SLOT] = '0;
+        complete_csr_wdata_o[MULDIV_SLOT] = '0;
+        prf_we[MULDIV_SLOT] = !clear_i &&
+                              muldiv_complete_valid &&
+                              muldiv_complete_uop.alloc_prd &&
+                              !muldiv_complete_uop.uop.exception;
+        prf_waddr[MULDIV_SLOT] = muldiv_complete_uop.prd;
+        prf_wdata[MULDIV_SLOT] = muldiv_complete_result;
     end
 
     // Present the queue candidate independently of ready.  MulDivPipe forms
@@ -956,10 +863,9 @@ module CoreExecuteCluster (
             mem_probe_valid_q <= mem_issue_fire && mem_issue_lookahead_i;
             if (mem_issue_fire && mem_issue_lookahead_i) begin
                 mem_probe_uop_q <= mem_issue_uop_i[0];
-                mem_probe_addr_q <= prf_rdata_effective[2 * MEM_SLOT] +
+                mem_probe_addr_q <= prf_rdata[2 * MEM_SLOT] +
                                     mem_issue_uop_i[0].uop.imm_i;
-                mem_probe_store_data_q <=
-                    prf_rdata_effective[2 * MEM_SLOT + 1];
+                mem_probe_store_data_q <= prf_rdata[2 * MEM_SLOT + 1];
                 mem_probe_store_mask_q <= store_mask(mem_issue_uop_i[0].uop);
                 mem_probe_slot_q <= mem_issue_slot_i;
                 mem_probe_age_q <= mem_issue_age_i;
@@ -1032,12 +938,6 @@ module CoreExecuteCluster (
             assert (!(dmem.exReadEn && load_forward_hit_i))
                 else $error("load bypassed an older same-word store");
             for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-                if (prf_we[i]) begin
-                    assert (complete_valid_o[i] &&
-                            (complete_prd_o[i] == prf_waddr[i]) &&
-                            (complete_result_o[i] == prf_wdata[i]))
-                        else $error("PRF write and completion lost alignment");
-                end
                 for (int j = i + 1; j < ISSUE_WIDTH; j = j + 1) begin
                     assert (!(prf_we[i] && prf_we[j] &&
                               (prf_waddr[i] != '0) &&

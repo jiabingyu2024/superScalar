@@ -100,7 +100,6 @@ module CoreExecuteCluster (
     DataPath [ISSUE_WIDTH-1:0] prf_wdata;
     PhyRegNumPath [READ_PORTS-1:0] prf_raddr;
     DataPath [READ_PORTS-1:0] prf_rdata;
-    DataPath [READ_PORTS-1:0] prf_rdata_effective;
 
     // Fixed-throughput writeback boundary. The execute cone produces wb_*_d;
     // only registered wb_*_q may drive PRF write ports and backend completion.
@@ -355,23 +354,6 @@ module CoreExecuteCluster (
     assign prf_waddr = wb_prd_q;
     assign prf_wdata = wb_result_q;
 
-    // wb_*_q is a registered producer and therefore cannot recreate the old
-    // IQ->PRF->execute->completion combinational loop. Forward it to every PRF
-    // read port so all consumer classes may use the early registered wakeup in
-    // CoreBackend without observing the pre-write PRF value.
-    always_comb begin
-        for (int r = 0; r < READ_PORTS; r = r + 1) begin
-            prf_rdata_effective[r] = prf_rdata[r];
-            for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
-                if (!clear_i && wb_valid_q[w] && wb_prf_we_q[w] &&
-                    (wb_prd_q[w] != '0) &&
-                    (wb_prd_q[w] == prf_raddr[r])) begin
-                    prf_rdata_effective[r] = wb_result_q[w];
-                end
-            end
-        end
-    end
-
     assign mem_req_valid = (mem_req_count_q != '0);
     assign mem_req_head_uop = mem_req_uop_q[0];
     assign mem_req_head_addr = mem_req_addr_q[0];
@@ -421,10 +403,10 @@ module CoreExecuteCluster (
         mem_enqueue = (mem_issue_fire && !mem_issue_lookahead_i) ||
                       mem_probe_resolve_accept_o;
         mem_enqueue_uop = mem_issue_uop_i[0];
-        mem_enqueue_addr = prf_rdata_effective[2 * MEM_SLOT] +
+        mem_enqueue_addr = prf_rdata[2 * MEM_SLOT] +
             (mem_issue_uop_i[0].uop.is_store ?
              mem_issue_uop_i[0].uop.imm_s : mem_issue_uop_i[0].uop.imm_i);
-        mem_enqueue_store_data = prf_rdata_effective[2 * MEM_SLOT + 1];
+        mem_enqueue_store_data = prf_rdata[2 * MEM_SLOT + 1];
         mem_enqueue_store_mask = store_mask(mem_issue_uop_i[0].uop);
         mem_enqueue_store_data_valid = mem_issue_uop_i[0].src2_ready;
         mem_enqueue_store_data_prd = mem_issue_uop_i[0].prs2;
@@ -562,8 +544,8 @@ module CoreExecuteCluster (
         store_push_data_valid_o = 1'b0;
         store_push_data_prd_o = '0;
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-            src0[i] = prf_rdata_effective[2*i];
-            src1[i] = prf_rdata_effective[2*i + 1];
+            src0[i] = prf_rdata[2*i];
+            src1[i] = prf_rdata[2*i + 1];
             if ((i == MEM_SLOT) && mem_req_valid) begin
                 src1[i] = mem_req_head_store_data;
             end
@@ -956,10 +938,9 @@ module CoreExecuteCluster (
             mem_probe_valid_q <= mem_issue_fire && mem_issue_lookahead_i;
             if (mem_issue_fire && mem_issue_lookahead_i) begin
                 mem_probe_uop_q <= mem_issue_uop_i[0];
-                mem_probe_addr_q <= prf_rdata_effective[2 * MEM_SLOT] +
+                mem_probe_addr_q <= prf_rdata[2 * MEM_SLOT] +
                                     mem_issue_uop_i[0].uop.imm_i;
-                mem_probe_store_data_q <=
-                    prf_rdata_effective[2 * MEM_SLOT + 1];
+                mem_probe_store_data_q <= prf_rdata[2 * MEM_SLOT + 1];
                 mem_probe_store_mask_q <= store_mask(mem_issue_uop_i[0].uop);
                 mem_probe_slot_q <= mem_issue_slot_i;
                 mem_probe_age_q <= mem_issue_age_i;
