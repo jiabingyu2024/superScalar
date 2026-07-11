@@ -90,7 +90,7 @@ module myCPU (
     );
 
     DCache #(
-        .LINE_COUNT      (512),
+        .LINE_COUNT      (256),
         .CACHE_ADDR_START(32'h8010_0000),
         .CACHE_ADDR_END  (32'h8014_0000)
     ) u_dcache (
