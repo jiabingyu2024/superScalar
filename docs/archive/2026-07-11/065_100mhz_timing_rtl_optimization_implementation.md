@@ -4,7 +4,12 @@
 > 时序诊断来源：`061_vivado_100mhz_timing_baseline`  
 > routed 报告版本：`4762e00314f73810344185077f002c4c7db0dea6`  
 > 实施时工作树基线：`78f41bbe0dd0fc799dc16d37feea38b0875d8e20`  
-> 本轮约束：按用户要求不启动 Vivado，仅做 RTL、Verilator 与软件负载验证
+> 初始批次约束：按用户要求不启动 Vivado，仅做 RTL、Verilator 与软件负载验证
+
+> **当前证据边界（23:08 增补）**：第 11～16 节记录了随后实施的 issue elastic
+> stage、ROB completion 字段分组、dispatch ring FIFO 和 recovery payload CE 清理。
+> 这些修改之后按用户要求未编译、未仿真、未调用 Vivado；第 7 节回归数据只属于
+> 四项增补修改之前的 RTL，不可作为当前工作树的验证结果。
 
 ## 1. 结论与证据边界
 
@@ -354,8 +359,331 @@ place/route 命令。因此以下状态均未知：
 | 文件 | 主要修改 | 备份 |
 | --- | --- | --- |
 | `rtl/core/execute/ExecuteCluster.sv` | registered WB、PRF 全读口 bypass | `backup/20260711_201714`, `backup/20260711_203654` |
-| `rtl/core/backend/CoreBackend.sv` | completion 对齐、4-entry allocated dispatch buffer | `backup/20260711_203654`, `backup/20260711_205339` |
-| `rtl/core/dispatch/ROB.sv` | 2-wide retire stage | `backup/20260711_210815` |
+| `rtl/core/backend/CoreBackend.sv` | completion 对齐、allocated dispatch ring、elastic issue stage | `backup/20260711_203654`, `backup/20260711_205339`, `backup/20260711_223858` |
+| `rtl/core/dispatch/ROB.sv` | 2-wide retire stage、allocation/completion 字段分组 | `backup/20260711_210815`, `backup/20260711_223858` |
 | `rtl/core/frontend/BranchPredictor.sv` | gshare lookup、table update RMW stage | `backup/20260711_211752`, `backup/20260711_212655` |
+| `rtl/core/issue/CompressedQueue.sv` | payload recovery CE 清理 | `backup/20260711_223858` |
+| `rtl/core/dispatch/DispatchUnit.sv` | MEM payload recovery CE 清理 | `backup/20260711_223858` |
+| `rtl/core/issue/MemIssueQueue.sv` | stable-slot payload recovery CE 清理 | `backup/20260711_223858` |
+| `rtl/core/execute/MulDivPipe.sv` | MUL/DIV metadata recovery CE 清理 | `backup/20260711_223858` |
+| `rtl/core/common/MultiPushFifo.sv` | FIFO payload recovery CE 清理 | `backup/20260711_223858` |
 | `doc/rtl_changes.json` | 本次 incremental-fix manifest | 不适用 |
 
+## 11. 四项剩余结构优化总览（23:08 增补）
+
+本次在不改变模块接口和 filelist 的前提下，完成以下四项结构修改：
+
+| 项目 | 修改前关键组合路径/物理风险 | 修改后寄存或所有权边界 |
+| --- | --- | --- |
+| IQ grant/issue | completion → wakeup → oldest-ready select → PRF read → execute | completion → IQ select → `*_issue_uop_q`；下一拍才进入 PRF/execute |
+| ROB completion | 4 路动态 ROB index 写整份 `CoreRobEntry` | allocation bank、completion bank、`valid_q/done_q` hot vector 分离 |
+| allocated dispatch buffer | pop 后 survivor 全量搬移，4 份宽 uop 参与 compaction | head/tail/count ring；pop 只移 head，push 只写 tail slot |
+| recovery payload CE | recovery/clear 驱动多个宽 payload 阵列的 CE | recovery 只清 valid/count/state；payload 无 recovery/reset CE |
+
+这四项属于“从 RTL 拓扑上建立时序边界”，不是 routed timing closure 证据。100 MHz
+最终结论仍必须由当前工作树的新 routed DCP 给出。
+
+## 12. IQ grant 到 execute 的真实 elastic 寄存级
+
+### 12.1 实施位置
+
+- 文件：`rtl/core/backend/CoreBackend.sv`
+- 新增 INT：`int_select_* → int_issue_valid_q/int_issue_uop_q`
+- 新增 MEM：`mem_select_* → mem_issue_valid_q/mem_issue_uop_q`
+- 新增 MUL/DIV：`mul_select_* → mul_issue_valid_q/mul_issue_uop_q`
+- MEM 的 `lookahead/slot/age` 与 uop 同拍寄存，不能跨拍错配。
+
+当前周期关系：
+
+```text
+周期 N：completion/wakeup → IQ oldest-ready select → select payload
+边沿 N：select payload 被 issue_q 接收，IQ entry 所有权转移到 stage
+周期 N+1：issue_q → PRF async read/bypass → Execute
+边沿 N+1：Execute 接收；同一边沿 stage 可以 consume + refill
+```
+
+每个 slot 使用标准 elastic 条件：
+
+```text
+slot_available = !issue_valid_q || execute_ready
+IQ ready       = !clear && !recover && slot_available
+```
+
+因此 Execute backpressure 时 payload 和 valid 保持；Execute 消费旧 entry 的同拍可以
+接收新 grant，稳态吞吐仍是 INT 2/cycle、MEM 1/cycle、MUL/DIV 1/cycle。该修改增加
+grant-to-execute 一拍 latency，但不应降低无阻塞稳态 issue bandwidth。
+
+关键正确性约束：
+
+1. recovery 只清 `*_issue_valid_q`，宽 uop 不需要清零；
+2. MEM probe metadata 必须与 `mem_issue_uop_q` 同时装载和保持；
+3. IQ 在 entry 进入 stage 时即可移除，stage 成为唯一所有者；
+4. completion 在周期 N 唤醒并选中的消费者到 N+1 才读 PRF，已越过同拍旧值窗口；
+5. 若删除 stage valid 的 recovery 清除，wrong-path uop 会在恢复后继续执行；若只寄存
+   uop 而不寄存 MEM metadata，会对错误 slot 做 probe resolve。
+
+静态拓扑结论：IQ instance 只连接 `*_select_*`，Execute instance 只连接寄存后的
+`*_issue_*`，原 completion → IQ select → PRF/execute 的单周期组合长环已被切断。
+
+## 13. ROB completion 写入口字段分组
+
+### 13.1 存储拆分
+
+文件：`rtl/core/dispatch/ROB.sv`。原 `CoreRobEntry entry_q[32]` 拆为：
+
+```text
+alloc_payload_q[32]
+  = rob_idx + decode uop + prd + old_prd + alloc_prd
+
+completion_payload_q[32]
+  = result + exception/cause + branch redirect + CSR write payload
+
+valid_q[32] / done_q[32]
+  = 高频所有权/完成状态
+```
+
+两路 allocation 只写 allocation bank；四路 execution completion 与一路 store
+completion 只写 completion bank 和 `done_q`。retire head 处通过 `assemble_entry()`
+组合一次完整 `CoreRobEntry`，并终止在已有的 `retire_stage_entry_q`。
+
+该方案不是声称 RAM 已被物理 floorplan 成 4 个 bank，而是先按“写端口所有者和字段
+热度”拆 bank：动态 completion index 不再译码、选择和写入 PC/inst/PRD/old-PRD
+等 allocation-only 宽字段。新 routed 报告应检查综合后是否保留预期分组，以及 top
+path 是否收敛到 completion bank 的局部 D input。
+
+关键正确性约束：
+
+1. completion 与 store completion 必须在置 `done_q` 的同一边沿写全 completion 字段；
+2. retire 只在旧状态 `valid && done` 时采样，因此不会观察半更新 payload；
+3. entry 移入 retire stage 后立即清 array 的 `valid_q/done_q`，避免重复退休；
+4. `empty_o` 同时检查 array count 和 retire-stage valid；
+5. recovery 只清 ownership，不清两个 payload bank；新 allocation/completion 在重新变
+   valid/done 前会覆盖其拥有的全部字段。
+
+若 allocation 仍初始化 completion 字段，会重新把 allocation 写端扩散到 completion
+bank；若 completion 只置 done 而漏写任一字段，retire 会读到上一代 ROB owner 的陈旧值。
+
+## 14. Allocated dispatch buffer stable-slot ring FIFO
+
+文件：`rtl/core/backend/CoreBackend.sv`。4-entry buffer 现在使用：
+
+```text
+dispatch_buffer_head_q
+dispatch_buffer_tail_q
+dispatch_buffer_count_q
+dispatch_buffer_entry_q[4]
+```
+
+修改前每拍根据 pop 数量压缩 survivor，再把 survivor 和新 push 重写进 4 个宽 slot；
+这会形成“4 个旧 payload → 多级选择/排列 → 4 个寄存器 D”的大 mux。修改后：
+
+```text
+read lane i = entry_q[wrap(head + i)]
+pop         = head  += pop_count
+push lane i = entry_q[wrap(tail + push_offset[i])] <= rename_uop[i]
+              tail += push_count
+count       = count + push_count - pop_count
+```
+
+已有 entry 的完整 payload 不再因队首 pop 而移动。等待期间只允许 completion 累积
+更新每个 slot 的 `src1_ready/src2_ready`；push 同拍也先合并 wakeup，避免单周期
+completion pulse 丢失。
+
+初版 ring 为保持简单的 ready cone，在 full 状态不使用同拍 pop 释放的空间接收
+rename；50M 性能结果证明该取舍会形成周期性 backpressure，现已改为用注册所有权导出的
+`pop_count` 参与容量计算：`free_after_pop = depth - count + pop_count`。full+pop 同拍可
+在 tail/head 重合的刚释放 slot 上完成 push，payload 仍不做 compaction。lane1 offer 继续
+依赖 lane0 fire，ROB allocation、目标 IQ acceptance 和 buffer pop 仍是同一个原子事件。
+
+若 head/tail wrap 错一位会造成覆盖未消费 entry；若 count 与 push/pop 不原子更新会
+出现 PRD 泄漏或同一 uop 重复进入 ROB；若删掉驻留期间 wakeup 累积，等待 IQ 空间的
+依赖 uop 可能永久不 ready。
+
+## 15. Recovery 只清所有权，不控制宽 payload
+
+除上述 backend/ROB 外，本次还移除了以下 payload 进程中的 `!rst && !clear_i` CE：
+
+| 文件 | payload | recovery 后可见性所有者 |
+| --- | --- | --- |
+| `rtl/core/issue/CompressedQueue.sv` | `entry_q[]` | `valid_q/count_q` |
+| `rtl/core/dispatch/DispatchUnit.sv` | MEM buffer `mem_entry_q[]` | `mem_count_q` |
+| `rtl/core/issue/MemIssueQueue.sv` | stable-slot `entry_q[]` | `valid_q/count_q` |
+| `rtl/core/execute/MulDivPipe.sv` | MUL metadata、active DIV metadata | `mul_valid_q/state_q/div_drain_q` |
+| `rtl/core/common/MultiPushFifo.sv` | FIFO `mem_q[]` | `count_q/rd_ptr_q/wr_ptr_q` |
+
+原则是“清 owner，不清 storage”：clear/recovery 边沿后，旧 payload 允许继续保持、移位
+或被局部 push 覆盖，但所有输出必须先由 valid/count/state 判定，不可直接观察无 owner
+的 slot。这样 recovery net 只驱动窄状态寄存器，而不再成为成百上千 payload FF 的
+同步 CE/复位条件。
+
+没有改动 Execute 中已接受 load 的 drain/response 所有权逻辑。cache response 是外部
+事务，不能因为 recovery 简单丢弃握手状态；本次只处理由本地 valid/count 可以完整
+屏蔽的 payload。
+
+若某输出绕过 valid 直接读 stale payload，该模式会产生幽灵指令；若把尚未完成的外部
+事务状态也按此原则盲目清除，会造成 DCache response 无 owner 或总线死锁。
+
+## 16. 本次静态审查与待验证项
+
+### 16.1 已完成的只读/文本静态检查
+
+- `git diff --check`：无空白错误；
+- 无模块端口、参数、filelist 或 memory map 修改；
+- backend 中不存在旧 `dispatch_buffer_next_entry/next_count` compaction 状态；
+- IQ 的 `issue_*` 输出接到 `*_select_*`，Execute 只接 `*_issue_*_q` 派生信号；
+- ROB completion 写块只访问 completion bank，allocation 写块只访问 allocation bank；
+- recovery/clear 对本次目标宽 payload 进程不再形成 CE；剩余 `!rst && !clear_i` 命中
+  是 `VERILATOR_TB` assertion guard，不是综合 payload 寄存器；
+- ring FIFO count、lane prefix、ROB allocation/pop 原子关系保留原 assertion；
+- ROB retire stage 的 program-order prefix、single ownership、empty 语义保持。
+
+### 16.2 本次明确未执行
+
+按用户要求，本次四项修改后：
+
+- 未运行 Verilator build/lint；
+- 未运行 RV32MI/RV32UI/RV32UM；
+- 未运行 `srcSmoke`、`srcWithMext 500k/50M`；
+- 未调用 Vivado，也未运行 synth/place/route。
+
+因此第 7 节只能作为修改前参考。下一次功能验收应先跑全量回归；下一次物理验收必须
+从当前工作树生成新 routed DCP，并重点检查：
+
+1. completion → IQ select 的 endpoint 是否终止在 `*_issue_uop_q`；
+2. `dispatch_buffer_entry_q` 是否只在 tail slot 写完整 payload，不再出现 survivor mux；
+3. ROB completion index 是否只扇出到 `done_q` 和 completion bank；
+4. recovery/clear high-fanout endpoint 是否集中到 valid/count/state；
+5. CPU setup 是否达到 `WNS >= 0`、`TNS = 0`、failing endpoints `= 0`。
+
+## 17. 四项结构修改后的 50M 性能回退分析
+
+### 17.1 对比结果
+
+用户在四项结构修改后完成了正确性回归；最新结果位于
+`build/result/difftest/src/srcWithMext.json`。与修改前同口径
+`build/result/src/srcWithMext.json` 对比如下：
+
+| 指标 | 修改前 | 四项修改后 | 变化/含义 |
+| --- | ---: | ---: | --- |
+| commit | 60,732,969 | 46,962,398 | -22.68% |
+| IPC | 1.214660 | 0.939248 | -22.67% |
+| branch hit rate | 97.5573% | 97.5518% | 基本不变，排除 BPU 主因 |
+| DCache hit rate | 98.3671% | 98.4082% | 基本不变，排除 cache 主因 |
+| average dispatch width | 1.23275 | 0.954724 | 明显下降 |
+| dispatch block cycles | 52,518 | 8,485,308 | ring 容量气泡 |
+| ROB full cycles | 28,350 | 5,158,084 | 下游延迟向 ROB 放大 |
+| free-list empty cycles | 36,955 | 6,885,543 | 退休延迟导致 PRD 回收变慢 |
+| ROB head wait INT | 12,189,335 | 20,859,368 | 固定一拍 INT 依赖延迟 |
+| commit width-0 cycles | 12,362,317 | 20,993,346 | head 等待直接形成空提交周期 |
+
+结论：回退不来自 ROB hot/cold split、recovery CE 清理、BPU 或 DCache，而是两个局部
+微架构取舍叠加：
+
+1. issue elastic stage 把所有 INT producer→consumer 延迟固定增加一拍；
+2. stable-slot ring 初版 full+pop 时仍拒绝 rename，制造了 843 万量级的 dispatch block。
+
+## 18. 性能修复一：result-ready scheduler early wakeup
+
+### 18.1 新周期关系
+
+Execute 在本拍 `wb_valid_d && wb_prf_we_d` 已经确定时提前宣布 PRD：
+
+```text
+周期 N：producer result/exception/PRF-WE 已确定
+        wb_prd_d → scheduler_wakeup → IQ ready/select
+边沿 N：dependent 进入自己的 int/mem/mul issue_q
+周期 N+1：producer result 已在 wb_q；dependent 从 wb_q bypass 取数并执行
+```
+
+这恢复了固定一拍 ALU 的 producer→consumer 启动间隔，同时保留真实寄存切分：
+
+```text
+Execute registered input / registered memory response
+→ wb_valid_d + wb_prf_we_d + wb_prd_d
+→ scheduler wakeup compare / oldest-ready select
+→ dependent issue_uop_q
+```
+
+该路径不携带 result data，也不会穿过 PRF async read 再回到 Execute。真实
+`exec_complete_*` 继续独立驱动 BusyTable、ROB、PRF write 和 Execute result bypass；
+early wakeup 只送到 INT/MEM/MUL 三个 IQ 的 `src_ready` 调度状态，不送 DispatchUnit、
+dispatch buffer、BusyTable 或任何架构状态，以限制扇出和新路径范围。
+
+### 18.2 可变延迟操作为什么仍然安全
+
+- load 未返回时 `wb_valid_d=0`，不会提前宣布；只有 full-forward 或真实 response 到达才宣布；
+- DIV/REM 未完成时 `muldiv_complete_valid=0`，不会提前宣布；
+- store、异常结果和无目标 PRD 的指令使 `wb_prf_we_d=0`，不会宣布；
+- CSR/system 保持原有 serial/异常契约，只有最终确认写 PRF 的 result 才能宣布。
+
+`VERILATOR_TB` 下新增契约：每个 early-announced PRD 必须在下一拍出现在相同
+completion slot。该断言覆盖 INT、load 和 MUL/DIV 四个 completion slot；若 pipeline
+latency 或异常契约以后改变，回归会直接报错，而不是静默产生旧值依赖 bug。
+
+## 19. 性能修复二：ring full+pop 容量旁路
+
+rename ready 从：
+
+```text
+count + lane_index < depth
+```
+
+改为：
+
+```text
+count - pop_count + lane_index < depth
+```
+
+`pop_count` 只由当前注册 head entry、ROB registered occupancy、Dispatch/IQ ready 和
+issue-stage/Execute registered ready 决定，不依赖 rename valid，因此不会形成
+rename-valid→ready 组合环。full 且 pop 1 项时允许 push lane0；pop 2 项时允许 push 两项。
+
+当 full 时 `tail == head`，push 写地址正是同拍已 pop 的旧 head slot。always_ff 中
+完整 push payload 对该 slot 的局部 ready-bit wakeup 写拥有最终优先级；head/tail/count
+分别按 pop/push 原子推进，队列顺序保持为“未 pop survivor → 本拍新 push”。
+
+若容量计算不扣 `pop_count`，每次 ring 填满都至少产生一个 rename bubble；若反过来
+允许超过 `pop_count` 的 push，会覆盖仍有 owner 的 survivor。
+
+## 20. 本次性能修复验证结果与边界
+
+### 20.1 已运行结果
+
+使用 `student_top` difftest 同口径模型。固定周期窗口显示 `TIMEOUT` 是预期终态，不是
+功能失败；判断依据为计数进度、fail counter、assertion 和 IPC。
+
+| 版本 | 500k IPC | 50M IPC | 50M commits | 说明 |
+| --- | ---: | ---: | ---: | --- |
+| 四项结构修改前 | 1.23727 | 1.214660 | 60,732,969 | 目标参考 |
+| 四项结构修改后 | 未单独归档 | 0.939248 | 46,962,398 | 性能回退版本 |
+| INT early wakeup + ring full/pop | 1.13242 | 1.104460 | 55,222,794 | 恢复约 60% 损失 |
+| 通用 result-ready early wakeup + ring full/pop | 1.23197 | 1.206600 | 60,329,924 | 50M 相对回退版 +28.47% |
+| 最终 IQ-only 局部化 early wakeup | 1.23197 | 未重跑 | 未重跑 | 用户要求停止慢仿真 |
+
+通用版本 50M 相对旧目标只低 `0.66%`，同时：
+
+| 指标 | 回退版 | 修复后 50M | 旧目标 |
+| --- | ---: | ---: | ---: |
+| ROB head wait INT | 20,859,368 | 12,383,367 | 12,189,335 |
+| ROB full | 5,158,084 | 187,493 | 28,350 |
+| average dispatch width | 0.954724 | 1.22580 | 1.23275 |
+| average commit width | 0.939248 | 1.20660 | 1.21466 |
+
+最终局部化版本 500k：RV32I `37/0`、M extension `8`、IPC `1.23197`，没有 early-wakeup
+assertion、difftest 或 RTL assertion 失败。局部化前后 500k IPC 完全一致，说明从
+Dispatch/dispatch-buffer 去掉 early wakeup 没有短窗口性能损失。
+
+### 20.2 时序风险控制决策
+
+1. early wakeup 仅扇出到 3 个 IQ，终点为各 `*_issue_uop_q`；
+2. result data 不进入 scheduler wakeup，consumer 下一拍只从 registered `wb_q` bypass；
+3. BusyTable、ROB、PRF 和架构 completion 仍使用 `exec_complete_*`；
+4. 曾评估 FreeList commit-free→same-cycle rename 复用以追最后 `0.66%`，但它会建立
+   Commit/ARAT/live-mask→FreeList priority→Rename 新路径，收益不值得时序风险，已完全撤回；
+5. `rtl/core/rename/FreeList.sv` 与本批修改前备份逐字一致。
+
+### 20.3 尚未执行
+
+按用户最新要求不再等待慢仿真，最终局部化版本未重跑 50M、RV32 全量或 `srcSmoke`；
+也没有调用 Vivado。后续若做物理验收，应确认 scheduler early-wakeup path 终止在 IQ
+issue payload register，且旧 completion→PRF→Execute 长环没有恢复。

@@ -1,5 +1,5 @@
 source_checkpoint=E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/digital_twin.runs/impl_1/top_routed.dcp
-exported_at=2026-07-11T19:36:22+0800
+exported_at=2026-07-11T23:21:37+0800
 vivado_version=2023.2
 design=checkpoint_top_routed
 part=xc7k325tffg900-2

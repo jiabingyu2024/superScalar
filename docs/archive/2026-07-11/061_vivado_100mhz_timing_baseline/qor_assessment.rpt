@@ -1,9 +1,9 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
-| Date         : Sat Jul 11 19:45:20 2026
+| Date         : Sat Jul 11 23:31:34 2026
 | Host         : LAPTOP-6CG4KN49 running 64-bit major release  (build 9200)
-| Command      : report_qor_assessment -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_4762e00314f7_100mhz_routed_20260711/qor_assessment.rpt
+| Command      : report_qor_assessment -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_c24d8588372f_100mhz_routed_20260711/qor_assessment.rpt
 | Design       : top
 | Device       : xc7k325tffg900-2
 | Speed File   : -2
@@ -32,22 +32,23 @@ Table of Contents
 2. QoR Assessment Details
 -------------------------
 
-+-----------------------------------------------+-----------+-------------+------+-----------+-------+--------+
-| Name                                          | Threshold | Actual      | Used | Available | Score | Status |
-+-----------------------------------------------+-----------+-------------+------+-----------+-------+--------+
-| Utilization                                   |           |             |      |           |   5.0 |     OK |
-| Netlist                                       |           |             |      |           |       |        |
-| *  DONT_TOUCH (cells/nets)                    |         0 |           1 |   -  |        -  |       | REVIEW |
-| Clocking                                      |           |             |      |           |   5.0 |     OK |
-| Congestion                                    |           |             |      |           |   4.0 |        |
-|   Number of Level 5 or above regions          |           |             |      |           |       |        |
-|     Global                                    |         0 |           3 |   -  |        -  |       | REVIEW |
-| Timing                                        |           |             |      |           |   2.0 |        |
-|    WNS                                        |     0.000 |      -4.495 |   -  |        -  |       | REVIEW |
-|    TNS                                        |     0.000 | -127382.055 |   -  |        -  |       | REVIEW |
-|    Number of failing endpoints                |      1500 |    47536.00 |   -  |        -  |       | REVIEW |
-|   Number of paths above Max Net/LUT Budgeting |         0 |          93 |   -  |        -  |       | REVIEW |
-+-----------------------------------------------+-----------+-------------+------+-----------+-------+--------+
++-----------------------------------------------+-----------+------------+------+-----------+-------+--------+
+| Name                                          | Threshold | Actual     | Used | Available | Score | Status |
++-----------------------------------------------+-----------+------------+------+-----------+-------+--------+
+| Utilization                                   |           |            |      |           |   5.0 |     OK |
+| Netlist                                       |           |            |      |           |       |        |
+| *  DONT_TOUCH (cells/nets)                    |         0 |          1 |   -  |        -  |       | REVIEW |
+| Clocking                                      |           |            |      |           |   5.0 |     OK |
+| Congestion                                    |           |            |      |           |   3.0 |        |
+|   Number of Level 5 or above regions          |           |            |      |           |       |        |
+|     Global                                    |         0 |          2 |   -  |        -  |       | REVIEW |
+| Timing                                        |           |            |      |           |   2.0 |        |
+|    WNS                                        |     0.000 |     -2.868 |   -  |        -  |       | REVIEW |
+|    TNS                                        |     0.000 | -40279.938 |   -  |        -  |       | REVIEW |
+|    Combined critical path pre/post slack      |      2.92 |       5.36 |   -  |        -  |       | REVIEW |
+|    Number of failing endpoints                |      1500 |   36724.00 |   -  |        -  |       | REVIEW |
+|   Number of paths above Max Net/LUT Budgeting |         0 |         64 |   -  |        -  |       | REVIEW |
++-----------------------------------------------+-----------+------------+------+-----------+-------+--------+
 * Sub-categories with prefix * do not impact score
 
 

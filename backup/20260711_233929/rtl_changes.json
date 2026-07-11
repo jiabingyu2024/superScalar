@@ -1,0 +1,214 @@
+{
+  "timestamp": "2026-07-11T19:45:58+08:00",
+  "trigger": "User-requested MUL/DIV 2/16 latency alignment, INT IQ cold parking capacity, and store address/data split",
+  "backup_dir": "rtl/core/backup/20260711_cold_iq_store_split_muldiv216",
+  "files_modified": [
+    {
+      "path": "rtl/core/execute/MulDivPipe.sv",
+      "lines_changed": "4-6",
+      "change_type": "latency_alignment"
+    },
+    {
+      "path": "rtl/ip/MUL_0.sv",
+      "lines_changed": "3-20",
+      "change_type": "simulation_model_alignment"
+    },
+    {
+      "path": "rtl/ip/DIV_0.sv",
+      "lines_changed": "3-24",
+      "change_type": "simulation_model_alignment"
+    },
+    {
+      "path": "fpga/create_vivado_project.tcl",
+      "lines_changed": "342-364",
+      "change_type": "vivado_ip_configuration"
+    },
+    {
+      "path": "rtl/core/issue/CompressedQueue.sv",
+      "lines_changed": "25-29,155-160",
+      "change_type": "interface_extension"
+    },
+    {
+      "path": "rtl/core/issue/IntIssueQueue.sv",
+      "lines_changed": "4-180",
+      "change_type": "microarchitecture_change"
+    },
+    {
+      "path": "rtl/core/issue/MulDivIssueQueue.sv",
+      "lines_changed": "32-35",
+      "change_type": "port_alignment"
+    },
+    {
+      "path": "rtl/core/issue/MemIssueQueue.sv",
+      "lines_changed": "47-198",
+      "change_type": "store_address_data_split"
+    },
+    {
+      "path": "rtl/core/execute/ExecuteCluster.sv",
+      "lines_changed": "13-950",
+      "change_type": "store_request_owner_tracking"
+    },
+    {
+      "path": "rtl/core/execute/StoreBuffer.sv",
+      "lines_changed": "9-285",
+      "change_type": "store_shell_data_fill_and_completion"
+    },
+    {
+      "path": "rtl/core/dispatch/ROB.sv",
+      "lines_changed": "29-237",
+      "change_type": "store_completion_port"
+    },
+    {
+      "path": "rtl/core/backend/CoreBackend.sv",
+      "lines_changed": "149-479",
+      "change_type": "integration_wiring"
+    }
+  ],
+  "cascade_scope": "full_reverify",
+  "verification": [
+    "Verilator lint passed with no error, LATCH, UNOPTFLAT, or MULTIDRIVEN diagnostics.",
+    "RV32UI 40/40, RV32UM 8/8, and RV32MI 4/4 passed.",
+    "srcSmoke passed at 33,087,618 cycles, 30,758,594 commits, IPC 0.929610.",
+    "srcWithMext 500k reached 593,643 commits, IPC 1.187290, RV32I=37, fail=0, M=8.",
+    "srcWithMext 50M reached 60,789,745 commits, IPC 1.215790, RV32I=37, fail=0, M=8, with no assertion failure.",
+    "AMD PG108/PG151 confirm the requested width and latency parameter ranges.",
+    "Fresh Vivado 2023.2 IP generation accepted MUL Use_Mults/Speed/PipeStages=2 and DIV Radix2/32x32/Remainder/Manual=16."
+  ],
+  "remaining_physical_verification": [
+    "Run clean current-worktree synthesis and route at the target CPU clock.",
+    "Do not use the old 061 checkpoint to claim current WNS/TNS or Fmax.",
+    "Check the two-stage MUL, cold reinject path, and StoreBuffer-to-ROB registered completion in routed top paths."
+  ],
+  "notes": "MUL construction is explicitly frozen to DSP primitives (Use_Mults) with Speed goal; DIV remains Radix2 because High Radix cannot directly return the integer remainder required by REM/REMU.",
+  "latest_incremental_fix": {
+    "timestamp": "2026-07-11T21:45:00+08:00",
+    "trigger": "commit 4762e003 100 MHz routed report: 47,536 failing endpoints dominated by completion/writeback, sRAT dispatch, ROB-head recovery, and BPU/PC path families",
+    "backup_dirs": [
+      "backup/20260711_201714",
+      "backup/20260711_203654",
+      "backup/20260711_205339",
+      "backup/20260711_210815",
+      "backup/20260711_211752",
+      "backup/20260711_212655"
+    ],
+    "files_modified": [
+      {
+        "path": "rtl/core/execute/ExecuteCluster.sv",
+        "lines_changed": "writeback bundle, PRF input mux, completion outputs, assertions",
+        "change_type": "registered_writeback_and_all_read_port_bypass"
+      },
+      {
+        "path": "rtl/core/backend/CoreBackend.sv",
+        "lines_changed": "completion wiring and 4-entry allocated dispatch buffer",
+        "change_type": "timing_pipeline_and_resource_ownership_change"
+      },
+      {
+        "path": "rtl/core/dispatch/ROB.sv",
+        "lines_changed": "retire select, ownership state, output staging, assertions",
+        "change_type": "two_wide_registered_retire_stage"
+      },
+      {
+        "path": "rtl/core/frontend/BranchPredictor.sv",
+        "lines_changed": "direction lookup and PHT/BTB update pipeline",
+        "change_type": "gshare_lookup_and_registered_table_rmw"
+      },
+      {
+        "path": "docs/archive/2026-07-11/065_100mhz_timing_rtl_optimization_implementation.md",
+        "lines_changed": "new file",
+        "change_type": "implementation_and_verification_record"
+      }
+    ],
+    "cascade_scope": "full_reverify",
+    "static_checks": [
+      "No module interface or filelist change.",
+      "Only wb_*_q registers drive PRF WE/WADDR/WDATA and backend completion outputs.",
+      "PRF write, wakeup bypass, completion, ROB completion, and BusyTable ready are cycle-aligned.",
+      "sRAT-derived renamed payload ends at dispatch_buffer_entry_q before ROB or IQ ownership.",
+      "ROB head dynamic select ends at retire_stage_entry_q before Commit/recovery fanout.",
+      "PHT/BTB write address/data are driven by table_update_*_q with same-index forwarding.",
+      "Wide writeback, dispatch, retire, and predictor payload registers use valid/count ownership instead of asynchronous payload reset."
+    ],
+    "verification": [
+      "Final Verilator RV32 model and src model compiled successfully.",
+      "RV32MI 4/4, RV32UI 40/40, and RV32UM 8/8 passed.",
+      "srcSmoke passed at 42,504,434 cycles, 30,758,614 commits, IPC 0.723657.",
+      "srcWithMext 500k correctness window: RV32I=37, fail=0, M=8, 618,633 commits, IPC 1.23727; tool status TIMEOUT at the requested fixed limit.",
+      "srcWithMext 50M performance window: RV32I=37, fail=0, M=8, 60,732,969 commits, IPC 1.21466, branch hit rate 97.5573%; tool status TIMEOUT at the requested fixed limit.",
+      "No Verilator assertion or failure marker occurred in the requested regressions."
+    ],
+    "pending_verification": [
+      "Run a clean Vivado 2023.2 synth/place/route at 100 MHz from the current HEAD.",
+      "Confirm complete_prd_reg, srat_q-to-ROB/IQ, and head_q-to-DCache/DRAM path families are absent.",
+      "Re-export WNS/TNS/all failing endpoints, utilization, high-fanout, congestion, DRC, CDC, hold, and recovery reports.",
+      "Do not claim 100 MHz closure until the new routed CPU setup WNS is non-negative and TNS/failing endpoints are zero."
+    ],
+    "notes": "The final gshare predictor reduces the PC feedback cone but lowers srcSmoke IPC versus the prior tournament predictor; the user explicitly accepted this tradeoff for now. The user also explicitly prohibited invoking Vivado during this repair turn."
+  },
+  "latest_structural_timing_fix": {
+    "timestamp": "2026-07-11T23:08:22+08:00",
+    "trigger": "User-requested completion-loop register cut, ROB completion hot/cold field split, stable-slot dispatch ring, and recovery payload CE removal",
+    "backup_dir": "backup/20260711_223858",
+    "files_modified": [
+      {
+        "path": "rtl/core/backend/CoreBackend.sv",
+        "lines_changed": "dispatch ring state and INT/MEM/MUL elastic issue stages",
+        "change_type": "timing_pipeline_and_stable_slot_fifo"
+      },
+      {
+        "path": "rtl/core/dispatch/ROB.sv",
+        "lines_changed": "ROB storage split, ownership vectors, completion writes, retire assembly",
+        "change_type": "hot_cold_payload_split"
+      },
+      {
+        "path": "rtl/core/issue/CompressedQueue.sv",
+        "lines_changed": "payload register process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "rtl/core/dispatch/DispatchUnit.sv",
+        "lines_changed": "MEM dispatch payload register process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "rtl/core/issue/MemIssueQueue.sv",
+        "lines_changed": "stable-slot payload and wakeup register process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "rtl/core/execute/MulDivPipe.sv",
+        "lines_changed": "MUL and DIV metadata payload process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "rtl/core/common/MultiPushFifo.sv",
+        "lines_changed": "FIFO payload write process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "docs/archive/2026-07-11/065_100mhz_timing_rtl_optimization_implementation.md",
+        "lines_changed": "sections 11-16 and current evidence boundary",
+        "change_type": "implementation_record"
+      }
+    ],
+    "cascade_scope": "full_reverify",
+    "static_checks": [
+      "No module interface, parameter, filelist, or memory-map change.",
+      "IQ grant outputs terminate at issue-stage payload registers before PRF read and Execute.",
+      "Dispatch buffer uses head/tail/count ownership and no wide survivor compaction.",
+      "ROB allocation and completion payloads have disjoint write blocks; valid/done are narrow ownership vectors.",
+      "Target wide payload processes no longer use reset, clear, or recovery as a clock enable.",
+      "git diff --check passed."
+    ],
+    "verification": [
+      "Static RTL review only, per user instruction.",
+      "No compile, lint, simulation, or Vivado command was run after this structural fix."
+    ],
+    "pending_verification": [
+      "Rebuild the Verilator models and run RV32MI, RV32UI, RV32UM, srcSmoke, srcWithMext 500k, and srcWithMext 50M.",
+      "Run a clean Vivado 2023.2 synth/place/route at 100 MHz from the current worktree.",
+      "Confirm setup WNS is non-negative, TNS is zero, and failing endpoint count is zero.",
+      "Inspect new top paths, recovery fanout, congestion, hold, DRC, and CDC before claiming closure."
+    ],
+    "notes": "The ROB change is a write-owner/field split, not a claim of physical floorplan banking. Full-state payload reset is intentionally replaced by valid/count/state ownership."
+  }
+}

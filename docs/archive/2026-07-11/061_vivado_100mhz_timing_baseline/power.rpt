@@ -1,9 +1,9 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version     : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
-| Date             : Sat Jul 11 19:39:44 2026
+| Date             : Sat Jul 11 23:24:59 2026
 | Host             : LAPTOP-6CG4KN49 running 64-bit major release  (build 9200)
-| Command          : report_power -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_4762e00314f7_100mhz_routed_20260711/power.rpt
+| Command          : report_power -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_c24d8588372f_100mhz_routed_20260711/power.rpt
 | Design           : top
 | Device           : xc7k325tffg900-2
 | Design State     : routed
@@ -30,14 +30,14 @@ Table of Contents
 ----------
 
 +--------------------------+--------------+
-| Total On-Chip Power (W)  | 1.064        |
+| Total On-Chip Power (W)  | 1.130        |
 | Design Power Budget (W)  | Unspecified* |
 | Power Budget Margin (W)  | NA           |
-| Dynamic (W)              | 0.893        |
+| Dynamic (W)              | 0.958        |
 | Device Static (W)        | 0.171        |
 | Effective TJA (C/W)      | 1.8          |
-| Max Ambient (C)          | 83.1         |
-| Junction Temperature (C) | 26.9         |
+| Max Ambient (C)          | 83.0         |
+| Junction Temperature (C) | 27.0         |
 | Confidence Level         | Medium       |
 | Setting File             | ---          |
 | Simulation Activity File | ---          |
@@ -52,21 +52,22 @@ Table of Contents
 +--------------------------+-----------+----------+-----------+-----------------+
 | On-Chip                  | Power (W) | Used     | Available | Utilization (%) |
 +--------------------------+-----------+----------+-----------+-----------------+
-| Clocks                   |     0.140 |        6 |       --- |             --- |
-| Slice Logic              |     0.251 |   124556 |       --- |             --- |
-|   LUT as Logic           |     0.241 |    74032 |    203800 |           36.33 |
-|   CARRY4                 |     0.003 |     1017 |     50950 |            2.00 |
-|   Register               |     0.003 |    31544 |    407600 |            7.74 |
-|   F7/F8 Muxes            |     0.002 |     8628 |    203800 |            4.23 |
+| Clocks                   |     0.147 |        6 |       --- |             --- |
+| Slice Logic              |     0.278 |   121742 |       --- |             --- |
+|   LUT as Logic           |     0.269 |    77172 |    203800 |           37.87 |
+|   CARRY4                 |     0.003 |      726 |     50950 |            1.42 |
 |   LUT as Distributed RAM |     0.002 |     2150 |     64000 |            3.36 |
+|   Register               |     0.002 |    27586 |    407600 |            6.77 |
+|   F7/F8 Muxes            |     0.002 |     6409 |    203800 |            3.14 |
 |   LUT as Shift Register  |    <0.001 |        1 |     64000 |           <0.01 |
-|   Others                 |     0.000 |      953 |       --- |             --- |
-| Signals                  |     0.385 |    81376 |       --- |             --- |
-| Block RAM                |     0.005 |       68 |       445 |           15.28 |
+|   Others                 |     0.000 |      675 |       --- |             --- |
+| Signals                  |     0.418 |    84086 |       --- |             --- |
+| Block RAM                |     0.004 |       68 |       445 |           15.28 |
 | MMCM                     |     0.107 |        1 |        10 |           10.00 |
+| DSPs                     |    <0.001 |        4 |       840 |            0.48 |
 | I/O                      |     0.004 |       76 |       500 |           15.20 |
 | Static Power             |     0.171 |          |           |                 |
-| Total                    |     1.064 |          |           |                 |
+| Total                    |     1.130 |          |           |                 |
 +--------------------------+-----------+----------+-----------+-----------------+
 
 
@@ -76,7 +77,7 @@ Table of Contents
 +-----------+-------------+-----------+-------------+------------+-------------+-------------+------------+
 | Source    | Voltage (V) | Total (A) | Dynamic (A) | Static (A) | Powerup (A) | Budget (A)  | Margin (A) |
 +-----------+-------------+-----------+-------------+------------+-------------+-------------+------------+
-| Vccint    |       1.000 |     0.857 |       0.783 |      0.075 |       NA    | Unspecified | NA         |
+| Vccint    |       1.000 |     0.923 |       0.848 |      0.075 |       NA    | Unspecified | NA         |
 | Vccaux    |       1.800 |     0.089 |       0.061 |      0.029 |       NA    | Unspecified | NA         |
 | Vcco33    |       3.300 |     0.001 |       0.000 |      0.001 |       NA    | Unspecified | NA         |
 | Vcco25    |       2.500 |     0.000 |       0.000 |      0.000 |       NA    | Unspecified | NA         |
@@ -149,16 +150,17 @@ Table of Contents
 +--------------------+-----------+
 | Name               | Power (W) |
 +--------------------+-----------+
-| top                |     0.893 |
+| top                |     0.958 |
 |   pll_inst         |     0.113 |
 |     inst           |     0.113 |
-|   student_top_inst |     0.778 |
-|     Core_cpu       |     0.769 |
-|       u_core       |     0.740 |
-|       u_dcache     |     0.029 |
-|     Mem_IROM       |     0.006 |
-|       U0           |     0.006 |
-|     mem_bridge     |     0.002 |
+|   student_top_inst |     0.843 |
+|     Core_cpu       |     0.835 |
+|       u_core       |     0.798 |
+|       u_dcache     |     0.036 |
+|     Mem_IROM       |     0.004 |
+|       U0           |     0.004 |
+|     mem_bridge     |     0.004 |
+|       dram_adapter |     0.002 |
 +--------------------+-----------+
 
 

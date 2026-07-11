@@ -190,10 +190,8 @@ module CoreCompressedQueue #(
     // or compaction overwrites every visible entry before it can be selected,
     // so this storage intentionally has no reset/clear control.
     always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
-            for (int i = 0; i < DEPTH; i = i + 1) begin
-                entry_q[i] <= next_entry[i];
-            end
+        for (int i = 0; i < DEPTH; i = i + 1) begin
+            entry_q[i] <= next_entry[i];
         end
     end
 endmodule : CoreCompressedQueue

@@ -1,9 +1,9 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
-| Date         : Sat Jul 11 19:45:29 2026
+| Date         : Sat Jul 11 23:31:43 2026
 | Host         : LAPTOP-6CG4KN49 running 64-bit major release  (build 9200)
-| Command      : report_qor_suggestions -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_4762e00314f7_100mhz_routed_20260711/qor_suggestions.rpt
+| Command      : report_qor_suggestions -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_c24d8588372f_100mhz_routed_20260711/qor_suggestions.rpt
 | Design       : top
 | Device       : xc7k325t
 | Design State : Routed
@@ -28,6 +28,8 @@ Table of Contents
 +-----------------+---------------+-----------+--------------+----------------+-----------+-------------+----------------------+------------------------------------------------------------------------------------------+-------------+
 | RQS_CONG-2_1-1  | RQS_CONG-2_1  | Generated | route_design | place_design   | Yes       | GLOBALSCOPE | No                   | Congestion due to high MUXF* usage. Map MUXF* logic within congested regions to LUTs     | Current Run |
 |                 |               |           |              |                |           |             |                      | instead of MUXF cells using MUXF_REMAP=1 property.                                       |             |
+| RQS_TIMING-3-1  | RQS_TIMING-3  | Generated | route_design | place_design   | Yes       | GLOBALSCOPE | No                   | Critical nets with loads placed far apart. Apply FORCE_MAX_FANOUT to the critical nets   | Current Run |
+|                 |               |           |              |                |           |             |                      | after synthesis to replicate drivers and improve timing.                                 |             |
 | RQS_TIMING-56-1 | RQS_TIMING-56 | Generated | route_design | place_design   | Yes       | GLOBALSCOPE | No                   | Remappping LUTs in setup critical paths can improve timing                               | Current Run |
 | RQS_TIMING-59-1 | RQS_TIMING-59 | Generated | route_design | place_design   | Yes       | GLOBALSCOPE | No                   | Replicate the nets driven by LUTs in setup critical paths can improve timing             | Current Run |
 | RQS_XDC-1-1     | RQS_XDC-1     | Generated | route_design | synth_design   | No        | GLOBALSCOPE | No                   | Paths above Max Net/LUT budgeting. Review paths and either reduce logic delays, add      | Current Run |
@@ -47,32 +49,33 @@ Table of Contents
 3. QoR Suggestions - Congestion
 -------------------------------
 
-+----------------+-------+--------+-----------+--------------------------------+-------------------------------------------------------------+-------------+
-|      Name      | Level |  Type  | Direction |             Window             |                      Congested Modules                      | High Fanout |
-+----------------+-------+--------+-----------+--------------------------------+-------------------------------------------------------------+-------------+
-| RQS_CONG-2_1-1 | 5     | GLOBAL | West      | (LIOI3_X0Y255,CLBLL_R_X31Y285) | student_top_inst/Core_cpu/u_core/u_backend/u_execute/u_prf  | NA          |
-+----------------+-------+--------+-----------+--------------------------------+-------------------------------------------------------------+-------------+
++----------------+-------+--------+-----------+-----------------------------------+-------------------------------------------------------------+-------------+
+|      Name      | Level |  Type  | Direction |               Window              |                      Congested Modules                      | High Fanout |
++----------------+-------+--------+-----------+-----------------------------------+-------------------------------------------------------------+-------------+
+| RQS_CONG-2_1-1 | 5     | GLOBAL | South     | (CLBLM_L_X16Y222,CLBLL_R_X47Y237) | student_top_inst/Core_cpu/u_core/u_backend/u_execute/u_prf  | NA          |
+|                | 5     | GLOBAL | East      | (CLBLM_L_X16Y222,CLBLL_R_X47Y237) | student_top_inst/Core_cpu/u_core/u_backend/u_execute/u_prf  | NA          |
++----------------+-------+--------+-----------+-----------------------------------+-------------------------------------------------------------+-------------+
 
 
 4. QoR Suggestions - Timing
 ---------------------------
 
-+-----------------+-------------+--------------+--------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------+
-|       Name      | No of Paths | Logic Levels | Routes |  Slack |  Req.  |  Skew  | Fanout | Datapath Delay | Cell% | Route% | Source Clock | Destination Clock |                                Startpoint                               |                                                Endpoint                                                |
-+-----------------+-------------+--------------+--------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------+
-| RQS_TIMING-56-1 | 1           | 29           | 30     | -4.328 | 10.000 | -0.157 | -      | 13.824         | 10.60 | 89.40  | clk_out2_pll | clk_out2_pll      | student_top_inst/Core_cpu/u_core/u_backend/u_rename/srat_q_reg[15][0]/C | student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q_reg[3][uop][exception_cause][22]/R |
-| RQS_TIMING-59-1 | 2           | 29           | 30     | -4.332 | 10.000 | -0.090 | -      | 13.872         | 10.60 | 89.40  | clk_out2_pll | clk_out2_pll      | student_top_inst/Core_cpu/u_core/u_backend/u_rename/srat_q_reg[15][0]/C | student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q_reg[0][uop][imm_u][9]/R            |
-|                 | 2           | 29           | 30     | -4.380 | 10.000 | -0.304 | -      | 13.706         | 10.70 | 89.30  | clk_out2_pll | clk_out2_pll      | student_top_inst/Core_cpu/u_core/u_backend/u_rename/srat_q_reg[15][0]/C | student_top_inst/Core_cpu/u_core/u_backend/u_rob/entry_q_reg[29][exception_cause][10]/R                |
-+-----------------+-------------+--------------+--------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------+
++-----------------+-------------+--------------+--------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------+
+|       Name      | No of Paths | Logic Levels | Routes |  Slack |  Req.  |  Skew  | Fanout | Datapath Delay | Cell% | Route% | Source Clock | Destination Clock |                                   Startpoint                                  |                                         Endpoint                                        |
++-----------------+-------------+--------------+--------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------+
+| RQS_TIMING-3-1  | 2           | 0            | 1      | -0.454 | 10.000 | -0.077 | 4042   | 10.018         | 2.400 | 97.60  | clk_out2_pll | clk_out2_pll      | student_top_inst/cpu_rst_sync_reg/C                                           | student_top_inst/Core_cpu/u_core/u_pc_gen/pc_q_reg[0]/CLR                               |
+| RQS_TIMING-56-1 | 1           | 32           | 33     | -2.522 | 10.000 | -0.132 | -      | 12.390         | 12.90 | 87.10  | clk_out2_pll | clk_out2_pll      | student_top_inst/Core_cpu/u_core/u_backend/u_rename/srat_q_reg[13][2]/C       | student_top_inst/Core_cpu/u_core/u_backend/dispatch_buffer_entry_q_reg[2][src2_ready]/D |
+| RQS_TIMING-59-1 | 1           | 21           | 21     | -2.429 | 10.000 | -0.126 | -      | 11.934         | 14.10 | 85.90  | clk_out2_pll | clk_out2_pll      | student_top_inst/Core_cpu/u_core/u_backend/u_execute/mem_req_count_q_reg[1]/C | student_top_inst/Core_cpu/u_dcache/data_way0_q_reg_832_895_6_8/RAMD/WE                  |
++-----------------+-------------+--------------+--------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------+
 
 
 5. QoR Suggestions - XDC
 ------------------------
 
-+-------------+-------------+--------------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+---------------------------------------------------------------------+----------------------------------------------------------------------------------+---------------------------+---------------------------+-----------------+-----------------+
-|     Name    | No of Paths | Logic Levels | Routes |  Slack |  Req.  |  Skew  | Datapath Delay | Cell% | Route% | Source Clock | Destination Clock |                              Startpoint                             |                                     Endpoint                                     | Path budget for Net check | Path budget for Lut check | Net check slack | LUT check slack |
-+-------------+-------------+--------------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+---------------------------------------------------------------------+----------------------------------------------------------------------------------+---------------------------+---------------------------+-----------------+-----------------+
-| RQS_XDC-1-1 | 93          | 30           | 30     | -4.495 | 10.000 | -0.213 | 14.037         | 14.10 | 85.90  | clk_out2_pll | clk_out2_pll      | student_top_inst/Core_cpu/u_core/u_backend/complete_prd_reg[1][0]/C | student_top_inst/Core_cpu/u_core/u_backend/u_execute/u_prf/regs_q_reg[27][14]/CE | 22                        | 19                        | -1.533          | -3.457          |
-+-------------+-------------+--------------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+---------------------------------------------------------------------+----------------------------------------------------------------------------------+---------------------------+---------------------------+-----------------+-----------------+
++-------------+-------------+--------------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------+---------------------------------------------------------------------------------------------+---------------------------+---------------------------+-----------------+-----------------+
+|     Name    | No of Paths | Logic Levels | Routes |  Slack |  Req.  |  Skew  | Datapath Delay | Cell% | Route% | Source Clock | Destination Clock |                                Startpoint                               |                                           Endpoint                                          | Path budget for Net check | Path budget for Lut check | Net check slack | LUT check slack |
++-------------+-------------+--------------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------+---------------------------------------------------------------------------------------------+---------------------------+---------------------------+-----------------+-----------------+
+| RQS_XDC-1-1 | 64          | 27           | 28     | -2.743 | 10.000 | -0.099 | 12.274         | 11.30 | 88.70  | clk_out2_pll | clk_out2_pll      | student_top_inst/Core_cpu/u_core/u_backend/u_rename/srat_q_reg[21][5]/C | student_top_inst/Core_cpu/u_core/u_backend/dispatch_buffer_entry_q_reg[1][uop][imm_j][30]/S | 24                        | 19                        | -1.653          | -4.469          |
++-------------+-------------+--------------+--------+--------+--------+--------+----------------+-------+--------+--------------+-------------------+-------------------------------------------------------------------------+---------------------------------------------------------------------------------------------+---------------------------+---------------------------+-----------------+-----------------+
 
 

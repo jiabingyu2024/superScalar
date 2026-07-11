@@ -190,10 +190,8 @@ module CoreDispatchUnit #(
     // mem_count_q owns payload visibility. The wide uop storage intentionally
     // has no reset/clear control set.
     always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
-            for (int e = 0; e < MEM_BUFFER_DEPTH; e = e + 1) begin
-                mem_entry_q[e] <= mem_next_entry[e];
-            end
+        for (int e = 0; e < MEM_BUFFER_DEPTH; e = e + 1) begin
+            mem_entry_q[e] <= mem_next_entry[e];
         end
     end
 

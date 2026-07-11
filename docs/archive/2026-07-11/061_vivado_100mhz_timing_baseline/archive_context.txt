@@ -1,8 +1,8 @@
-windows_repo_head=4762e00314f73810344185077f002c4c7db0dea6
+windows_repo_head=c24d8588372f7b5b68c68b4138bc3842c7a0276d
 windows_project=E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/digital_twin.xpr
 source_checkpoint=E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/digital_twin.runs/impl_1/top_routed.dcp
-checkpoint_mtime=2026-07-11T19:08:02+0800
-checkpoint_size_bytes=41339483
-implementation_completed_at=2026-07-11T19:09:48+0800
-reports_exported_at=2026-07-11T19:47:23+0800
-archive_note=WSL worktree contained later uncommitted edits; they are not claimed to be present in this Windows checkpoint.
+checkpoint_mtime=2026-07-11T23:11:19+0800
+checkpoint_size_bytes=41600775
+implementation_completed_at=2026-07-11T23:13:19+0800
+reports_exported_at=2026-07-11T23:33:34+0800
+archive_note=Windows and WSL repositories reported the same committed HEAD at export time.

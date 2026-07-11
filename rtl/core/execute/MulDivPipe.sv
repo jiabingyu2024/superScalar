@@ -245,26 +245,24 @@ module CoreMulDivPipe #(
     // payload lifetime, avoiding an asynchronous reset tree across the
     // multiplier metadata pipeline.
     always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
-            for (int i = 1; i < MUL_LATENCY; i = i + 1) begin
-                mul_uop_q[i] <= mul_uop_q[i-1];
-                mul_op_q[i] <= mul_op_q[i-1];
-            end
-            if (start_mul) begin
-                mul_uop_q[0] <= uop_i;
-                mul_op_q[0] <= uop_i.uop.muldiv_op;
-            end
-            if (start_div) begin
-                active_uop_q <= uop_i;
-                active_op_q <= uop_i.uop.muldiv_op;
-                div_abs_a_q <= div_abs_a;
-                div_abs_b_q <= div_abs_b;
-                div_quot_neg_q <= (uop_i.uop.muldiv_op == MULDIV_OP_DIV) &&
-                                  (src0_i[31] ^ src1_i[31]);
-                div_rem_neg_q <= (uop_i.uop.muldiv_op == MULDIV_OP_REM) &&
-                                 src0_i[31];
-                special_result_q <= div_special_result;
-            end
+        for (int i = 1; i < MUL_LATENCY; i = i + 1) begin
+            mul_uop_q[i] <= mul_uop_q[i-1];
+            mul_op_q[i] <= mul_op_q[i-1];
+        end
+        if (start_mul) begin
+            mul_uop_q[0] <= uop_i;
+            mul_op_q[0] <= uop_i.uop.muldiv_op;
+        end
+        if (start_div) begin
+            active_uop_q <= uop_i;
+            active_op_q <= uop_i.uop.muldiv_op;
+            div_abs_a_q <= div_abs_a;
+            div_abs_b_q <= div_abs_b;
+            div_quot_neg_q <= (uop_i.uop.muldiv_op == MULDIV_OP_DIV) &&
+                              (src0_i[31] ^ src1_i[31]);
+            div_rem_neg_q <= (uop_i.uop.muldiv_op == MULDIV_OP_REM) &&
+                             src0_i[31];
+            special_result_q <= div_special_result;
         end
     end
 

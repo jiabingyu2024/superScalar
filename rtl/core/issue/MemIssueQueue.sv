@@ -262,29 +262,30 @@ module CoreMemIssueQueue (
         end
     end
 
+    // valid_q owns every physical slot. Recovery may update stale ready bits or
+    // payload, but it cannot make them visible and therefore does not belong on
+    // the wide entry array's clock enable.
     always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
-            for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
-                if (valid_q[e]) begin
-                    entry_q[e].src1_ready <=
-                        src_ready_after_wakeup(entry_q[e].prs1,
-                                               entry_q[e].src1_ready);
-                    entry_q[e].src2_ready <=
-                        src_ready_after_wakeup(entry_q[e].prs2,
-                                               entry_q[e].src2_ready);
-                end
+        for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
+            if (valid_q[e]) begin
+                entry_q[e].src1_ready <=
+                    src_ready_after_wakeup(entry_q[e].prs1,
+                                           entry_q[e].src1_ready);
+                entry_q[e].src2_ready <=
+                    src_ready_after_wakeup(entry_q[e].prs2,
+                                           entry_q[e].src2_ready);
             end
-            for (int p = 0; p < DISPATCH_WIDTH; p++) begin
-                if (push_fire[p]) begin
-                    entry_q[push_slot[p]] <= push_uop_i[p];
-                    entry_q[push_slot[p]].valid <= 1'b1;
-                    entry_q[push_slot[p]].src1_ready <=
-                        src_ready_after_wakeup(push_uop_i[p].prs1,
-                                               push_uop_i[p].src1_ready);
-                    entry_q[push_slot[p]].src2_ready <=
-                        src_ready_after_wakeup(push_uop_i[p].prs2,
-                                               push_uop_i[p].src2_ready);
-                end
+        end
+        for (int p = 0; p < DISPATCH_WIDTH; p++) begin
+            if (push_fire[p]) begin
+                entry_q[push_slot[p]] <= push_uop_i[p];
+                entry_q[push_slot[p]].valid <= 1'b1;
+                entry_q[push_slot[p]].src1_ready <=
+                    src_ready_after_wakeup(push_uop_i[p].prs1,
+                                           push_uop_i[p].src1_ready);
+                entry_q[push_slot[p]].src2_ready <=
+                    src_ready_after_wakeup(push_uop_i[p].prs2,
+                                           push_uop_i[p].src2_ready);
             end
         end
     end

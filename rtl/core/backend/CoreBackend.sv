@@ -61,6 +61,8 @@ module CoreBackend (
     localparam int DISPATCH_BUFFER_DEPTH = 4;
     localparam int DISPATCH_BUFFER_COUNT_BITS =
         $clog2(DISPATCH_BUFFER_DEPTH + 1);
+    localparam int DISPATCH_BUFFER_PTR_BITS =
+        (DISPATCH_BUFFER_DEPTH <= 1) ? 1 : $clog2(DISPATCH_BUFFER_DEPTH);
     localparam logic [DISPATCH_BUFFER_COUNT_BITS-1:0]
         DISPATCH_BUFFER_DEPTH_COUNT =
             DISPATCH_BUFFER_COUNT_BITS'(DISPATCH_BUFFER_DEPTH);
@@ -97,25 +99,47 @@ module CoreBackend (
     TubeTypePath [DISPATCH_WIDTH-1:0] dispatch_tube;
 
     CoreRenamedUop dispatch_buffer_entry_q [DISPATCH_BUFFER_DEPTH-1:0];
-    CoreRenamedUop dispatch_buffer_ready_entry [DISPATCH_BUFFER_DEPTH-1:0];
-    CoreRenamedUop dispatch_buffer_next_entry [DISPATCH_BUFFER_DEPTH-1:0];
+    CoreRenamedUop [DISPATCH_WIDTH-1:0] dispatch_buffer_ready_entry;
+    CoreRenamedUop [RENAME_WIDTH-1:0] dispatch_buffer_push_uop;
     CoreRenamedUop [DISPATCH_WIDTH-1:0] dispatch_buffer_uop;
     logic [DISPATCH_WIDTH-1:0] dispatch_buffer_valid;
     logic [DISPATCH_WIDTH-1:0] dispatch_buffer_ready;
     logic [DISPATCH_WIDTH-1:0] dispatch_buffer_pop_fire;
+    logic [DISPATCH_BUFFER_PTR_BITS-1:0] dispatch_buffer_head_q;
+    logic [DISPATCH_BUFFER_PTR_BITS-1:0] dispatch_buffer_tail_q;
     logic [DISPATCH_BUFFER_COUNT_BITS-1:0] dispatch_buffer_count_q;
-    logic [DISPATCH_BUFFER_COUNT_BITS-1:0] dispatch_buffer_next_count;
     logic [DISPATCH_BUFFER_COUNT_BITS-1:0] dispatch_buffer_pop_count;
+    logic [DISPATCH_BUFFER_COUNT_BITS-1:0] dispatch_buffer_push_count;
+    logic [DISPATCH_BUFFER_COUNT_BITS-1:0]
+        dispatch_buffer_push_offset [RENAME_WIDTH-1:0];
 
     logic [INT_ISSUE_WIDTH-1:0] int_issue_ready;
     logic [INT_ISSUE_WIDTH-1:0] int_issue_valid;
     CoreRenamedUop [INT_ISSUE_WIDTH-1:0] int_issue_uop;
+    logic [INT_ISSUE_WIDTH-1:0] int_issue_valid_q;
+    CoreRenamedUop [INT_ISSUE_WIDTH-1:0] int_issue_uop_q;
+    logic [INT_ISSUE_WIDTH-1:0] int_select_ready;
+    logic [INT_ISSUE_WIDTH-1:0] int_select_valid;
+    CoreRenamedUop [INT_ISSUE_WIDTH-1:0] int_select_uop;
+    logic [INT_ISSUE_WIDTH-1:0] int_stage_slot_available;
     logic [MEM_ISSUE_WIDTH-1:0] mem_issue_ready;
     logic [MEM_ISSUE_WIDTH-1:0] mem_issue_valid;
     CoreRenamedUop [MEM_ISSUE_WIDTH-1:0] mem_issue_uop;
+    logic [MEM_ISSUE_WIDTH-1:0] mem_issue_valid_q;
+    CoreRenamedUop [MEM_ISSUE_WIDTH-1:0] mem_issue_uop_q;
+    logic [MEM_ISSUE_WIDTH-1:0] mem_select_ready;
+    logic [MEM_ISSUE_WIDTH-1:0] mem_select_valid;
+    CoreRenamedUop [MEM_ISSUE_WIDTH-1:0] mem_select_uop;
+    logic [MEM_ISSUE_WIDTH-1:0] mem_stage_slot_available;
     logic mem_issue_lookahead;
+    logic mem_issue_lookahead_q;
+    logic mem_select_lookahead;
     logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_slot;
     logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_age;
+    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_slot_q;
+    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_issue_age_q;
+    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_select_slot;
+    logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_select_age;
     logic mem_probe_resolve_valid;
     logic mem_probe_resolve_accept;
     logic [$clog2(MEM_IQ_DEPTH)-1:0] mem_probe_resolve_slot;
@@ -128,10 +152,20 @@ module CoreBackend (
     logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_ready;
     logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_valid;
     CoreRenamedUop [MULDIV_ISSUE_WIDTH-1:0] mul_issue_uop;
+    logic [MULDIV_ISSUE_WIDTH-1:0] mul_issue_valid_q;
+    CoreRenamedUop [MULDIV_ISSUE_WIDTH-1:0] mul_issue_uop_q;
+    logic [MULDIV_ISSUE_WIDTH-1:0] mul_select_ready;
+    logic [MULDIV_ISSUE_WIDTH-1:0] mul_select_valid;
+    CoreRenamedUop [MULDIV_ISSUE_WIDTH-1:0] mul_select_uop;
+    logic [MULDIV_ISSUE_WIDTH-1:0] mul_stage_slot_available;
 
     logic [ISSUE_WIDTH-1:0] exec_complete_valid;
     RobIndexPath [ISSUE_WIDTH-1:0] exec_complete_rob_idx;
     PhyRegNumPath [ISSUE_WIDTH-1:0] exec_complete_prd;
+    logic [ISSUE_WIDTH-1:0] execute_early_wakeup_valid;
+    PhyRegNumPath [ISSUE_WIDTH-1:0] execute_early_wakeup_prd;
+    logic [ISSUE_WIDTH-1:0] scheduler_wakeup_valid;
+    PhyRegNumPath [ISSUE_WIDTH-1:0] scheduler_wakeup_prd;
     DataPath [ISSUE_WIDTH-1:0] exec_complete_result;
     logic [ISSUE_WIDTH-1:0] exec_complete_exception;
     logic [ISSUE_WIDTH-1:0][31:0] exec_complete_exception_cause;
@@ -189,6 +223,25 @@ module CoreBackend (
     PhyRegNumPath [LOGIC_REG_NUM-1:0] srat_map;
     PhyRegNumPath [LOGIC_REG_NUM-1:0] arat_map;
 
+    function automatic logic [DISPATCH_BUFFER_PTR_BITS-1:0]
+        dispatch_buffer_wrap_add(
+            input logic [DISPATCH_BUFFER_PTR_BITS-1:0] base,
+            input logic [DISPATCH_BUFFER_COUNT_BITS-1:0] offset
+        );
+        logic [DISPATCH_BUFFER_COUNT_BITS:0] sum;
+        begin
+            sum = DISPATCH_BUFFER_COUNT_BITS'(base) + offset;
+            if (sum >= DISPATCH_BUFFER_DEPTH) begin
+                sum = sum - DISPATCH_BUFFER_DEPTH;
+            end
+            if (sum >= DISPATCH_BUFFER_DEPTH) begin
+                sum = sum - DISPATCH_BUFFER_DEPTH;
+            end
+            dispatch_buffer_wrap_add =
+                sum[DISPATCH_BUFFER_PTR_BITS-1:0];
+        end
+    endfunction
+
     always_comb begin
         serial_block = serial_inflight_q;
         serial_alloc = 1'b0;
@@ -233,28 +286,51 @@ module CoreBackend (
     always_comb begin
         for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
             rename_ready[i] = !clear_i && !recover_i &&
-                              ((dispatch_buffer_count_q +
+                              ((dispatch_buffer_count_q -
+                                dispatch_buffer_pop_count +
                                 DISPATCH_BUFFER_COUNT_BITS'(i)) <
                                DISPATCH_BUFFER_DEPTH_COUNT);
         end
     end
 
-    // Wakeups must be remembered while an allocated entry is waiting for ROB
-    // and IQ capacity. A one-cycle completion pulse cannot be sampled only at
-    // the eventual dequeue cycle.
+    // Execute announces only results whose wb_valid_d/wb_prf_we_d are already
+    // resolved this cycle. A dependent IQ entry may enter its issue register on
+    // the producer's WB edge and consume wb_q bypass on the next cycle. Each
+    // slot overlays its previous completion announcement because that PRD was
+    // already announced one cycle earlier; architectural state still observes
+    // only exec_complete_* below.
     always_comb begin
-        for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
-            dispatch_buffer_ready_entry[e] = dispatch_buffer_entry_q[e];
+        scheduler_wakeup_valid = exec_complete_valid;
+        scheduler_wakeup_prd = exec_complete_prd;
+        for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
+            if (execute_early_wakeup_valid[i]) begin
+                scheduler_wakeup_valid[i] = 1'b1;
+                scheduler_wakeup_prd[i] = execute_early_wakeup_prd[i];
+            end
+        end
+    end
+
+    // Stable-slot ring read. Payload never shifts after a pop; head/tail/count
+    // alone transfer ownership. Current wakeups are reflected in the offered
+    // entry and are also accumulated into the physical slot below.
+    always_comb begin
+        for (int i = 0; i < DISPATCH_WIDTH; i = i + 1) begin
+            dispatch_buffer_ready_entry[i] = dispatch_buffer_entry_q[
+                dispatch_buffer_wrap_add(
+                    dispatch_buffer_head_q,
+                    DISPATCH_BUFFER_COUNT_BITS'(i)
+                )
+            ];
             for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
                 if (exec_complete_valid[w] &&
                     (exec_complete_prd[w] ==
-                     dispatch_buffer_entry_q[e].prs1)) begin
-                    dispatch_buffer_ready_entry[e].src1_ready = 1'b1;
+                     dispatch_buffer_ready_entry[i].prs1)) begin
+                    dispatch_buffer_ready_entry[i].src1_ready = 1'b1;
                 end
                 if (exec_complete_valid[w] &&
                     (exec_complete_prd[w] ==
-                     dispatch_buffer_entry_q[e].prs2)) begin
-                    dispatch_buffer_ready_entry[e].src2_ready = 1'b1;
+                     dispatch_buffer_ready_entry[i].prs2)) begin
+                    dispatch_buffer_ready_entry[i].src2_ready = 1'b1;
                 end
             end
         end
@@ -292,62 +368,161 @@ module CoreBackend (
         end
     end
 
+    // Build fixed tail writes and apply a same-cycle completion before the new
+    // owner becomes visible. No existing payload participates in this cone.
     always_comb begin
-        dispatch_buffer_next_count = '0;
-        for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
-            dispatch_buffer_next_entry[e] = '0;
-        end
-
-        for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
-            if ((DISPATCH_BUFFER_COUNT_BITS'(e) >=
-                 dispatch_buffer_pop_count) &&
-                (DISPATCH_BUFFER_COUNT_BITS'(e) <
-                 dispatch_buffer_count_q)) begin
-                dispatch_buffer_next_entry[dispatch_buffer_next_count] =
-                    dispatch_buffer_ready_entry[e];
-                dispatch_buffer_next_count =
-                    dispatch_buffer_next_count + 1'b1;
-            end
-        end
-
+        dispatch_buffer_push_count = '0;
         for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
-            if (rename_alloc_valid[i]) begin
-                dispatch_buffer_next_entry[dispatch_buffer_next_count] =
-                    rename_uop[i];
-                for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
-                    if (exec_complete_valid[w] &&
-                        (exec_complete_prd[w] == rename_uop[i].prs1)) begin
-                        dispatch_buffer_next_entry[dispatch_buffer_next_count]
-                            .src1_ready = 1'b1;
-                    end
-                    if (exec_complete_valid[w] &&
-                        (exec_complete_prd[w] == rename_uop[i].prs2)) begin
-                        dispatch_buffer_next_entry[dispatch_buffer_next_count]
-                            .src2_ready = 1'b1;
-                    end
+            dispatch_buffer_push_offset[i] = dispatch_buffer_push_count;
+            dispatch_buffer_push_uop[i] = rename_uop[i];
+            for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
+                if (exec_complete_valid[w] &&
+                    (exec_complete_prd[w] == rename_uop[i].prs1)) begin
+                    dispatch_buffer_push_uop[i].src1_ready = 1'b1;
                 end
-                dispatch_buffer_next_count =
-                    dispatch_buffer_next_count + 1'b1;
+                if (exec_complete_valid[w] &&
+                    (exec_complete_prd[w] == rename_uop[i].prs2)) begin
+                    dispatch_buffer_push_uop[i].src2_ready = 1'b1;
+                end
+            end
+            if (rename_alloc_valid[i]) begin
+                dispatch_buffer_push_count =
+                    dispatch_buffer_push_count + 1'b1;
             end
         end
     end
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
+            dispatch_buffer_head_q <= '0;
+            dispatch_buffer_tail_q <= '0;
             dispatch_buffer_count_q <= '0;
         end else if (clear_i || recover_i) begin
+            dispatch_buffer_head_q <= '0;
+            dispatch_buffer_tail_q <= '0;
             dispatch_buffer_count_q <= '0;
         end else begin
-            dispatch_buffer_count_q <= dispatch_buffer_next_count;
+            dispatch_buffer_head_q <= dispatch_buffer_wrap_add(
+                dispatch_buffer_head_q, dispatch_buffer_pop_count
+            );
+            dispatch_buffer_tail_q <= dispatch_buffer_wrap_add(
+                dispatch_buffer_tail_q, dispatch_buffer_push_count
+            );
+            dispatch_buffer_count_q <= dispatch_buffer_count_q +
+                                       dispatch_buffer_push_count -
+                                       dispatch_buffer_pop_count;
         end
     end
 
-    // Count owns payload visibility; the wide renamed-uop storage stays off
-    // the asynchronous reset/flush control set.
+    // Payload has no reset/recovery CE. Stale slots are invisible outside the
+    // registered head/count window; wakeups update only two ready bits, while a
+    // push writes exactly one stable tail slot.
     always_ff @(posedge clk) begin
-        if (!rst && !clear_i && !recover_i) begin
-            for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
-                dispatch_buffer_entry_q[e] <= dispatch_buffer_next_entry[e];
+        for (int e = 0; e < DISPATCH_BUFFER_DEPTH; e = e + 1) begin
+            for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
+                if (exec_complete_valid[w] &&
+                    (exec_complete_prd[w] ==
+                     dispatch_buffer_entry_q[e].prs1)) begin
+                    dispatch_buffer_entry_q[e].src1_ready <= 1'b1;
+                end
+                if (exec_complete_valid[w] &&
+                    (exec_complete_prd[w] ==
+                     dispatch_buffer_entry_q[e].prs2)) begin
+                    dispatch_buffer_entry_q[e].src2_ready <= 1'b1;
+                end
+            end
+        end
+        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
+            if (rename_alloc_valid[i]) begin
+                dispatch_buffer_entry_q[dispatch_buffer_wrap_add(
+                    dispatch_buffer_tail_q,
+                    dispatch_buffer_push_offset[i]
+                )] <= dispatch_buffer_push_uop[i];
+            end
+        end
+    end
+
+    // Elastic issue boundary. Completion/wakeup and oldest-ready selection end
+    // at these valid/uop registers; PRF read and execution start from registered
+    // issue payload on the following cycle. A consumed entry may be replaced in
+    // the same edge, preserving one-uop-per-port-per-cycle steady-state rate.
+    always_comb begin
+        for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
+            int_stage_slot_available[i] = !int_issue_valid_q[i] ||
+                                          int_issue_ready[i];
+            int_select_ready[i] = !clear_i && !recover_i &&
+                                  int_stage_slot_available[i];
+            int_issue_valid[i] = int_issue_valid_q[i];
+            int_issue_uop[i] = int_issue_uop_q[i];
+        end
+        for (int i = 0; i < MEM_ISSUE_WIDTH; i = i + 1) begin
+            mem_stage_slot_available[i] = !mem_issue_valid_q[i] ||
+                                          mem_issue_ready[i];
+            mem_select_ready[i] = !clear_i && !recover_i &&
+                                  mem_stage_slot_available[i];
+            mem_issue_valid[i] = mem_issue_valid_q[i];
+            mem_issue_uop[i] = mem_issue_uop_q[i];
+        end
+        for (int i = 0; i < MULDIV_ISSUE_WIDTH; i = i + 1) begin
+            mul_stage_slot_available[i] = !mul_issue_valid_q[i] ||
+                                          mul_issue_ready[i];
+            mul_select_ready[i] = !clear_i && !recover_i &&
+                                  mul_stage_slot_available[i];
+            mul_issue_valid[i] = mul_issue_valid_q[i];
+            mul_issue_uop[i] = mul_issue_uop_q[i];
+        end
+        mem_issue_lookahead = mem_issue_lookahead_q;
+        mem_issue_slot = mem_issue_slot_q;
+        mem_issue_age = mem_issue_age_q;
+    end
+
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            int_issue_valid_q <= '0;
+            mem_issue_valid_q <= '0;
+            mul_issue_valid_q <= '0;
+        end else if (clear_i || recover_i) begin
+            int_issue_valid_q <= '0;
+            mem_issue_valid_q <= '0;
+            mul_issue_valid_q <= '0;
+        end else begin
+            for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
+                if (int_stage_slot_available[i]) begin
+                    int_issue_valid_q[i] <= int_select_valid[i];
+                end
+            end
+            for (int i = 0; i < MEM_ISSUE_WIDTH; i = i + 1) begin
+                if (mem_stage_slot_available[i]) begin
+                    mem_issue_valid_q[i] <= mem_select_valid[i];
+                end
+            end
+            for (int i = 0; i < MULDIV_ISSUE_WIDTH; i = i + 1) begin
+                if (mul_stage_slot_available[i]) begin
+                    mul_issue_valid_q[i] <= mul_select_valid[i];
+                end
+            end
+        end
+    end
+
+    // Payload has no recovery/reset control. It changes only when its local
+    // elastic slot accepts a new owner; valid_q alone kills wrong-path data.
+    always_ff @(posedge clk) begin
+        for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
+            if (int_stage_slot_available[i] && int_select_valid[i]) begin
+                int_issue_uop_q[i] <= int_select_uop[i];
+            end
+        end
+        for (int i = 0; i < MEM_ISSUE_WIDTH; i = i + 1) begin
+            if (mem_stage_slot_available[i] && mem_select_valid[i]) begin
+                mem_issue_uop_q[i] <= mem_select_uop[i];
+                mem_issue_lookahead_q <= mem_select_lookahead;
+                mem_issue_slot_q <= mem_select_slot;
+                mem_issue_age_q <= mem_select_age;
+            end
+        end
+        for (int i = 0; i < MULDIV_ISSUE_WIDTH; i = i + 1) begin
+            if (mul_stage_slot_available[i] && mul_select_valid[i]) begin
+                mul_issue_uop_q[i] <= mul_select_uop[i];
             end
         end
     end
@@ -471,11 +646,11 @@ module CoreBackend (
         .push_valid_i(int_push_valid),
         .push_uop_i(int_push_uop),
         .push_ready_o(int_push_ready),
-        .wakeup_valid_i(exec_complete_valid),
-        .wakeup_phy_i(exec_complete_prd),
-        .issue_ready_i(int_issue_ready),
-        .issue_valid_o(int_issue_valid),
-        .issue_uop_o(int_issue_uop)
+        .wakeup_valid_i(scheduler_wakeup_valid),
+        .wakeup_phy_i(scheduler_wakeup_prd),
+        .issue_ready_i(int_select_ready),
+        .issue_valid_o(int_select_valid),
+        .issue_uop_o(int_select_uop)
     );
 
     CoreMemIssueQueue u_mem_iq (
@@ -485,14 +660,14 @@ module CoreBackend (
         .push_valid_i(mem_push_valid),
         .push_uop_i(mem_push_uop),
         .push_ready_o(mem_push_ready),
-        .wakeup_valid_i(exec_complete_valid),
-        .wakeup_phy_i(exec_complete_prd),
-        .issue_ready_i(mem_issue_ready),
-        .issue_valid_o(mem_issue_valid),
-        .issue_uop_o(mem_issue_uop),
-        .issue_lookahead_o(mem_issue_lookahead),
-        .issue_slot_o(mem_issue_slot),
-        .issue_age_o(mem_issue_age),
+        .wakeup_valid_i(scheduler_wakeup_valid),
+        .wakeup_phy_i(scheduler_wakeup_prd),
+        .issue_ready_i(mem_select_ready),
+        .issue_valid_o(mem_select_valid),
+        .issue_uop_o(mem_select_uop),
+        .issue_lookahead_o(mem_select_lookahead),
+        .issue_slot_o(mem_select_slot),
+        .issue_age_o(mem_select_age),
         .probe_resolve_valid_i(mem_probe_resolve_valid),
         .probe_resolve_accept_i(mem_probe_resolve_accept),
         .probe_resolve_slot_i(mem_probe_resolve_slot),
@@ -513,11 +688,11 @@ module CoreBackend (
         .push_valid_i(mul_push_valid),
         .push_uop_i(mul_push_uop),
         .push_ready_o(mul_push_ready),
-        .wakeup_valid_i(exec_complete_valid),
-        .wakeup_phy_i(exec_complete_prd),
-        .issue_ready_i(mul_issue_ready),
-        .issue_valid_o(mul_issue_valid),
-        .issue_uop_o(mul_issue_uop)
+        .wakeup_valid_i(scheduler_wakeup_valid),
+        .wakeup_phy_i(scheduler_wakeup_prd),
+        .issue_ready_i(mul_select_ready),
+        .issue_valid_o(mul_select_valid),
+        .issue_uop_o(mul_select_uop)
     );
 
     CoreExecuteCluster u_execute (
@@ -547,6 +722,8 @@ module CoreBackend (
         .complete_valid_o(exec_complete_valid),
         .complete_rob_idx_o(exec_complete_rob_idx),
         .complete_prd_o(exec_complete_prd),
+        .early_wakeup_valid_o(execute_early_wakeup_valid),
+        .early_wakeup_prd_o(execute_early_wakeup_prd),
         .complete_result_o(exec_complete_result),
         .complete_exception_o(exec_complete_exception),
         .complete_exception_cause_o(exec_complete_exception_cause),
@@ -647,8 +824,13 @@ module CoreBackend (
     end
 
 `ifdef VERILATOR_TB
+    logic [ISSUE_WIDTH-1:0] early_wakeup_valid_prev_q;
+    PhyRegNumPath [ISSUE_WIDTH-1:0] early_wakeup_prd_prev_q;
+
     always_ff @(posedge clk) begin
-        if (!rst && !clear_i && !recover_i) begin
+        if (rst || clear_i || recover_i) begin
+            early_wakeup_valid_prev_q <= '0;
+        end else begin
             assert (dispatch_buffer_count_q <=
                     DISPATCH_BUFFER_DEPTH_COUNT)
                 else $error("allocated dispatch buffer overflow");
@@ -665,6 +847,16 @@ module CoreBackend (
                         else $error("ROB allocation lost dispatch ownership");
                 end
             end
+            for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
+                if (early_wakeup_valid_prev_q[i]) begin
+                    assert (exec_complete_valid[i] &&
+                            (exec_complete_prd[i] ==
+                             early_wakeup_prd_prev_q[i]))
+                        else $error("early wakeup lacked next-cycle completion");
+                end
+            end
+            early_wakeup_valid_prev_q <= execute_early_wakeup_valid;
+            early_wakeup_prd_prev_q <= execute_early_wakeup_prd;
         end
     end
 

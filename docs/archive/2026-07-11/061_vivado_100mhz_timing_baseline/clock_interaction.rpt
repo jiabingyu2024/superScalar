@@ -1,9 +1,9 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
-| Date         : Sat Jul 11 19:36:57 2026
+| Date         : Sat Jul 11 23:22:09 2026
 | Host         : LAPTOP-6CG4KN49 running 64-bit major release  (build 9200)
-| Command      : report_clock_interaction -delay_type min_max -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_4762e00314f7_100mhz_routed_20260711/clock_interaction.rpt
+| Command      : report_clock_interaction -delay_type min_max -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_c24d8588372f_100mhz_routed_20260711/clock_interaction.rpt
 | Design       : top
 | Device       : 7k325t-ffg900
 | Speed File   : -2  PRODUCTION 1.12 2017-02-17
@@ -15,12 +15,12 @@ Clock Interaction Report
 Clock Interaction Table
 -----------------------
 
-                            WNS                               TNS Failing  TNS Total    WNS Path         WHS                            THS Failing  THS Total    WHS Path         Clock-Pair           Inter-Clock          
-From Clock    To Clock      Clock Edges  WNS(ns)     TNS(ns)    Endpoints    Endpoints  Requirement(ns)  Clock Edges  WHS(ns)  THS(ns)    Endpoints    Endpoints  Requirement(ns)  Classification       Constraints          
-------------  ------------  -----------  -------  ----------  -----------  -----------  ---------------  -----------  -------  -------  -----------  -----------  ---------------  -------------------  -------------------  
-clk_out1_pll  clk_out1_pll  rise - rise    16.58        0.00            0         1204            20.00  rise - rise     0.07     0.00            0         1204             0.00  Clean                Timed                
-clk_out1_pll  clk_out2_pll                                              0          104                                                            0          104                   Ignored              Asynchronous Groups  
-clk_out2_pll  clk_out1_pll                                              0           65                                                            0           65                   Ignored              Asynchronous Groups  
-clk_out2_pll  clk_out2_pll  rise - rise    -4.49  -127382.05        47536        81475            10.00  rise - rise     0.06     0.00            0        81475             0.00  Clean                Timed                
+                            WNS                              TNS Failing  TNS Total    WNS Path         WHS                            THS Failing  THS Total    WHS Path         Clock-Pair           Inter-Clock          
+From Clock    To Clock      Clock Edges  WNS(ns)    TNS(ns)    Endpoints    Endpoints  Requirement(ns)  Clock Edges  WHS(ns)  THS(ns)    Endpoints    Endpoints  Requirement(ns)  Classification       Constraints          
+------------  ------------  -----------  -------  ---------  -----------  -----------  ---------------  -----------  -------  -------  -----------  -----------  ---------------  -------------------  -------------------  
+clk_out1_pll  clk_out1_pll  rise - rise    16.65       0.00            0         1204            20.00  rise - rise     0.11     0.00            0         1204             0.00  Clean                Timed                
+clk_out1_pll  clk_out2_pll                                             0          104                                                            0          104                   Ignored              Asynchronous Groups  
+clk_out2_pll  clk_out1_pll                                             0           65                                                            0           65                   Ignored              Asynchronous Groups  
+clk_out2_pll  clk_out2_pll  rise - rise    -2.87  -40279.94        36724        73148            10.00  rise - rise     0.06     0.00            0        73148             0.00  Clean                Timed                
 
 

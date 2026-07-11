@@ -143,5 +143,137 @@
       "Do not claim 100 MHz closure until the new routed CPU setup WNS is non-negative and TNS/failing endpoints are zero."
     ],
     "notes": "The final gshare predictor reduces the PC feedback cone but lowers srcSmoke IPC versus the prior tournament predictor; the user explicitly accepted this tradeoff for now. The user also explicitly prohibited invoking Vivado during this repair turn."
+  },
+  "latest_structural_timing_fix": {
+    "timestamp": "2026-07-11T23:08:22+08:00",
+    "trigger": "User-requested completion-loop register cut, ROB completion hot/cold field split, stable-slot dispatch ring, and recovery payload CE removal",
+    "backup_dir": "backup/20260711_223858",
+    "files_modified": [
+      {
+        "path": "rtl/core/backend/CoreBackend.sv",
+        "lines_changed": "dispatch ring state and INT/MEM/MUL elastic issue stages",
+        "change_type": "timing_pipeline_and_stable_slot_fifo"
+      },
+      {
+        "path": "rtl/core/dispatch/ROB.sv",
+        "lines_changed": "ROB storage split, ownership vectors, completion writes, retire assembly",
+        "change_type": "hot_cold_payload_split"
+      },
+      {
+        "path": "rtl/core/issue/CompressedQueue.sv",
+        "lines_changed": "payload register process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "rtl/core/dispatch/DispatchUnit.sv",
+        "lines_changed": "MEM dispatch payload register process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "rtl/core/issue/MemIssueQueue.sv",
+        "lines_changed": "stable-slot payload and wakeup register process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "rtl/core/execute/MulDivPipe.sv",
+        "lines_changed": "MUL and DIV metadata payload process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "rtl/core/common/MultiPushFifo.sv",
+        "lines_changed": "FIFO payload write process",
+        "change_type": "recovery_ce_removal"
+      },
+      {
+        "path": "docs/archive/2026-07-11/065_100mhz_timing_rtl_optimization_implementation.md",
+        "lines_changed": "sections 11-16 and current evidence boundary",
+        "change_type": "implementation_record"
+      }
+    ],
+    "cascade_scope": "full_reverify",
+    "static_checks": [
+      "No module interface, parameter, filelist, or memory-map change.",
+      "IQ grant outputs terminate at issue-stage payload registers before PRF read and Execute.",
+      "Dispatch buffer uses head/tail/count ownership and no wide survivor compaction.",
+      "ROB allocation and completion payloads have disjoint write blocks; valid/done are narrow ownership vectors.",
+      "Target wide payload processes no longer use reset, clear, or recovery as a clock enable.",
+      "git diff --check passed."
+    ],
+    "verification": [
+      "Static RTL review only, per user instruction.",
+      "No compile, lint, simulation, or Vivado command was run after this structural fix."
+    ],
+    "pending_verification": [
+      "Rebuild the Verilator models and run RV32MI, RV32UI, RV32UM, srcSmoke, srcWithMext 500k, and srcWithMext 50M.",
+      "Run a clean Vivado 2023.2 synth/place/route at 100 MHz from the current worktree.",
+      "Confirm setup WNS is non-negative, TNS is zero, and failing endpoint count is zero.",
+      "Inspect new top paths, recovery fanout, congestion, hold, DRC, and CDC before claiming closure."
+    ],
+    "notes": "The ROB change is a write-owner/field split, not a claim of physical floorplan banking. Full-state payload reset is intentionally replaced by valid/count/state ownership."
+  },
+  "latest_performance_regression_fix": {
+    "timestamp": "2026-07-11T23:39:29+08:00",
+    "trigger": "Post-structural-fix srcWithMext 50M IPC regressed from 1.214660 to 0.939248 while correctness, branch hit rate, and DCache hit rate remained stable",
+    "diagnostic": {
+      "source": "rtl",
+      "file": "rtl/core/backend/CoreBackend.sv",
+      "error_type": "logic_bug",
+      "message": "The elastic issue stage added one cycle to every fixed-latency INT dependency, and the stable-slot dispatch ring rejected rename while full even when a same-cycle pop released capacity.",
+      "cascade_hint": "full_reverify"
+    },
+    "backup_dir": "backup/20260711_233929",
+    "files_modified": [
+      {
+        "path": "rtl/core/backend/CoreBackend.sv",
+        "lines_changed": "IQ-only scheduler wakeup merge, cross-slot early-wakeup contract, and dispatch ring rename capacity",
+        "change_type": "performance_regression_fix"
+      },
+      {
+        "path": "rtl/core/execute/ExecuteCluster.sv",
+        "lines_changed": "result-ready early wakeup valid and PRD outputs",
+        "change_type": "scheduler_early_wakeup_interface"
+      },
+      {
+        "path": "docs/archive/2026-07-11/065_100mhz_timing_rtl_optimization_implementation.md",
+        "lines_changed": "sections 14 and 17-20",
+        "change_type": "performance_root_cause_and_fix_record"
+      },
+      {
+        "path": "doc/rtl_changes.json",
+        "lines_changed": "latest_performance_regression_fix",
+        "change_type": "change_manifest"
+      }
+    ],
+    "cascade_scope": "full_reverify",
+    "evidence": [
+      "IPC fell from 1.214660 and 60,732,969 commits to 0.939248 and 46,962,398 commits.",
+      "Branch hit rate stayed at 97.55% and DCache hit rate stayed near 98.4%, excluding frontend prediction and cache hit behavior as primary causes.",
+      "Dispatch block cycles rose from 52,518 to 8,485,308 and average dispatch width fell from 1.23275 to 0.954724.",
+      "ROB-head INT wait rose from 12,189,335 to 20,859,368 cycles; ROB-full and free-list-empty pressure also rose by two orders of magnitude."
+    ],
+    "fixes": [
+      "Execute announces scheduler-only PRD wakeup only when wb_valid_d and wb_prf_we_d prove the result will enter wb_q on the current edge.",
+      "Variable-latency load and DIV/REM producers announce only when their real response/completion is present; stores, exceptions, and no-PRD results are excluded.",
+      "BusyTable, ROB, PRF write, and Execute result bypass continue to use architectural exec_complete signals only.",
+      "Dispatch ring rename capacity subtracts same-cycle pop_count, allowing full+pop+push without payload compaction.",
+      "Early wakeup is localized to the three IQs and removed from DispatchUnit and dispatch-buffer payload updates to limit fanout.",
+      "A VERILATOR_TB assertion requires every early wakeup to produce the same PRD on the following-cycle completion slot.",
+      "A proposed FreeList commit-free same-cycle allocation bypass was fully reverted because its 0.66% potential IPC benefit did not justify a new Commit-to-Rename timing path."
+    ],
+    "verification": [
+      "student_top difftest model rebuilt successfully; no new combinational-loop diagnostic was introduced.",
+      "Final IQ-only localized version srcWithMext 500k: RV32I=37, fail=0, M=8, IPC=1.23197, no assertion failure.",
+      "Pre-localization general result-ready version srcWithMext 50M: 60,329,924 commits, IPC=1.20660, RV32I=37, fail=0, M=8, no assertion failure.",
+      "The 50M result improves 28.47% over IPC 0.939248 and is 0.66% below the pre-structural target IPC 1.214660.",
+      "FreeList source matches backup/20260711_233929/FreeList.sv byte-for-byte after reverting the timing-risky bypass.",
+      "No Vivado command was run."
+    ],
+    "pending_verification": [
+      "Run full RV32MI, RV32UI, and RV32UM.",
+      "Run srcSmoke when a broader functional regression is desired.",
+      "Optionally rerun srcWithMext 50M on the final IQ-only localized version; its 500k IPC is identical to the measured general-wakeup version.",
+      "After functional acceptance, run a fresh 100 MHz Vivado implementation and confirm the early scheduler path ends at issue payload registers without restoring the old completion long loop."
+    ],
+    "notes": "The final version deliberately accepts the remaining approximately 0.66% gap rather than creating a Commit/FreeList-to-Rename combinational bypass. User requested small simulation only after the final fanout localization."
   }
 }

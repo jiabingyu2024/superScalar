@@ -32,6 +32,8 @@ module CoreExecuteCluster (
     output logic [ISSUE_WIDTH-1:0] complete_valid_o,
     output RobIndexPath [ISSUE_WIDTH-1:0] complete_rob_idx_o,
     output PhyRegNumPath [ISSUE_WIDTH-1:0] complete_prd_o,
+    output logic [ISSUE_WIDTH-1:0] early_wakeup_valid_o,
+    output PhyRegNumPath [ISSUE_WIDTH-1:0] early_wakeup_prd_o,
     output DataPath [ISSUE_WIDTH-1:0] complete_result_o,
     output logic [ISSUE_WIDTH-1:0] complete_exception_o,
     output logic [ISSUE_WIDTH-1:0][31:0] complete_exception_cause_o,
@@ -340,6 +342,9 @@ module CoreExecuteCluster (
     assign complete_valid_o = wb_valid_q & {ISSUE_WIDTH{!clear_i}};
     assign complete_rob_idx_o = wb_rob_idx_q;
     assign complete_prd_o = wb_prd_q;
+    assign early_wakeup_valid_o = wb_valid_d & wb_prf_we_d &
+                                  {ISSUE_WIDTH{!clear_i}};
+    assign early_wakeup_prd_o = wb_prd_d;
     assign complete_result_o = wb_result_q;
     assign complete_exception_o = wb_exception_q;
     assign complete_exception_cause_o = wb_exception_cause_q;

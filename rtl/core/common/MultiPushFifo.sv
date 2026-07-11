@@ -86,13 +86,12 @@ module CoreMultiPushFifo #(
     end
 
     // FIFO pointers/count own the payload. Keeping mem_q in a reset-free
-    // process prevents the payload from inheriting the async reset control set.
+    // process and without a recovery CE keeps global clear off the payload
+    // control pins. A clear only invalidates ownership through count_q.
     always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
-            for (int p = 0; p < PUSH_WIDTH; p = p + 1) begin
-                if (push_valid_i[p] && push_ready_o[p]) begin
-                    mem_q[wrap_add(wr_ptr_q, push_offset[p])] <= push_data_i[p];
-                end
+        for (int p = 0; p < PUSH_WIDTH; p = p + 1) begin
+            if (push_valid_i[p] && push_ready_o[p]) begin
+                mem_q[wrap_add(wr_ptr_q, push_offset[p])] <= push_data_i[p];
             end
         end
     end
