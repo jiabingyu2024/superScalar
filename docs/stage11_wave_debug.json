@@ -100,5 +100,71 @@
     ],
     "not_yet_done": "DRAM_0 regeneration, Vivado synthesis/implementation, current post-implementation trace, and board confirmation"
   },
+  "additional_debug_sessions": [
+    {
+      "timestamp": "2026-07-11T12:35:58+08:00",
+      "name": "p1b_int_rrd_early_wakeup_data_mismatch",
+      "eda_tool": {
+        "waveform_viewer": "GTKWave 3.3.116 available but GUI not opened because DISPLAY is unavailable; FST was inspected through fst2vcd and a signal-selective parser",
+        "waveform_version": "GTKWave package 3.3.116-1build2 / fst2vcd",
+        "dump_simulator": "Verilator 5.046",
+        "dump_format": "fst",
+        "dump_compile_flags": "--trace-fst",
+        "dump_runtime_flags": "--trace --wave=build/wave/rv32/rv32ui-p-st_ld.fst --max-cycles=400",
+        "actual_dump_command": "python3 scripts/run_verilator.py rv32 --test rv32ui-p-st_ld --no-build --trace --max-cycles 400",
+        "actual_wave_open_command": "fst2vcd -f build/wave/rv32/rv32ui-p-st_ld.fst -o /tmp/p1b_st_ld.vcd; GUI alternative: gtkwave build/wave/rv32/rv32ui-p-st_ld.fst",
+        "source": "standalone detection from scripts/run_verilator.py and PATH; stage8_eda_env.json is absent"
+      },
+      "failure_context": {
+        "from_triage": "standalone P1B regression analysis; stage10_debug_triage.json is absent",
+        "failure_class": "data mismatch after adding INT IQ-to-RRD stage and early wakeup",
+        "suspected_area": "producer PRF write versus dependent MEM IQ issue/AGU capture timing"
+      },
+      "dump_status": {
+        "dump_exists": true,
+        "dump_format": "fst",
+        "dump_file": "build/wave/rv32/rv32ui-p-st_ld.fst",
+        "rerun_required": true,
+        "rerun_command": "Rebuild after restricting early wakeup to the INT IQ, then rerun rv32ui-p-st_ld with --trace"
+      },
+      "signals_traced": [
+        {
+          "signal": "int_rrd_valid_q, int_rrd_uop_q.prd, int_early_wakeup_valid/prd",
+          "module": "CoreExecuteCluster / CoreBackend",
+          "reason": "Identify the fixed-latency producer and the cycle its dependency tag is broadcast"
+        },
+        {
+          "signal": "mem_issue_valid, mem_issue_fire, prf_raddr[4:5], prf_rdata[4:5]",
+          "module": "CoreMemIssueQueue / CoreExecuteCluster",
+          "reason": "Determine whether a dependent MEM uop reads the PRF before the producer write edge"
+        },
+        {
+          "signal": "prf_we[1:0], prf_waddr[1:0], prf_wdata[1:0], mem_req_addr_q",
+          "module": "CorePhysRegFile / CoreExecuteCluster",
+          "reason": "Pair the producer's edge write with the address value captured by the dependent AGU"
+        }
+      ],
+      "observations": [
+        "The initial packed exec_complete wakeup implementation produced UNOPTFLAT through MEM IQ -> PRF -> exec_complete vector -> wakeup -> MEM IQ and failed rv32ui-p-st_ld; direct RRD metadata removed UNOPTFLAT but the same functional failure remained.",
+        "At FST timestamp 1950 ps, INT early-wakeup valid is 2'b11 for PRD 27 and 28 while a dependent MEM uop fires with PRF read addresses 27 and 28. Its read data is still 0/0, while the same edge writes PRD27=0x80002000 and PRD28=0xffffffdd. The MEM request therefore captures operands one edge too early.",
+        "The pattern repeats at 2470 ps: a MEM uop reads PRD20 value 0x00000009 in the same edge the INT producer writes PRD20=0x8000103c. At 2770 ps, MEM reads stale PRD20/PRD7 values 8/8 while those producer tags are written with the fail signature/address chain.",
+        "An INT consumer is safe to use this early wakeup because it is captured into its own RRD register and reads the PRF after the producer edge. MEM and MUL consumers have no equivalent RRD operand boundary and consume PRF data in the wakeup cycle."
+      ],
+      "root_cause": {
+        "found": true,
+        "description": "P1B broadcast the INT producer's RRD early-wakeup tag to all issue queues. A dependent MEM/MUL uop can issue immediately and read/capture stale PRF operands in the same edge that the INT producer writes its result. Early wakeup is only timing-correct for the newly registered INT consumer path.",
+        "evidence": "rv32ui-p-st_ld writes tohost=0x0000053d at cycle 279. The FST shows exact tag equality between early producer PRDs and dependent MEM PRF addresses, stale pre-edge PRF data, and the correct producer data arriving on the same write edge.",
+        "affected_module": "rtl/core/backend/CoreBackend.sv wakeup routing; MEM/MUL queue inputs must not use INT RRD early wakeup without operand bypass or their own RRD stage"
+      },
+      "fix_recommendation": {
+        "type": "rtl_fix",
+        "description": "Feed mixed INT-early plus registered MEM/MUL wakeup only to CoreIntIssueQueue. Restore complete_valid/complete_prd for CoreMemIssueQueue and CoreMulDivIssueQueue. Do not add an EXE-to-AGU combinational bypass in this phase; a future MEM RRD/operand queue may safely reintroduce earlier wakeup.",
+        "target_files": [
+          "rtl/core/backend/CoreBackend.sv"
+        ]
+      },
+      "rerun_path": "frontend-compile-sim-run"
+    }
+  ],
   "rerun_path": "frontend-compile-sim-run"
 }

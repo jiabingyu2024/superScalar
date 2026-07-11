@@ -287,15 +287,10 @@ module CoreBackend (
     );
 
     CoreDispatchUnit u_dispatch (
-        .clk(clk),
-        .rst(rst),
-        .clear_i(clear_i || recover_i),
         .in_valid_i(rename_valid),
         .in_uop_i(rename_uop),
         .in_tube_i(dispatch_tube),
         .in_ready_o(rename_ready),
-        .wakeup_valid_i(complete_valid),
-        .wakeup_phy_i(complete_prd),
         .int_valid_o(int_push_valid),
         .mem_valid_o(mem_push_valid),
         .mul_valid_o(mul_push_valid),
@@ -491,7 +486,8 @@ module CoreBackend (
         perf_mul_iq_block_o = |(mul_push_valid & ~mul_push_ready);
         perf_dispatch_block_o = (|decode_valid_i) &&
                                 (rob_full || free_list_empty || serial_block ||
-                                 |(rename_valid & ~rename_ready));
+                                 perf_int_iq_block_o || perf_mem_iq_block_o ||
+                                 perf_mul_iq_block_o);
         perf_issue_block_o = |(int_issue_valid & ~int_issue_ready) ||
                              |(mem_issue_valid & ~mem_issue_ready) ||
                              |(mul_issue_valid & ~mul_issue_ready);

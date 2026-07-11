@@ -60,20 +60,6 @@ module CoreBranchPredictor (
     logic update_global_taken;
     logic update_local_taken;
 
-    // Retirement selects at most one branch update per cycle, so a one-entry
-    // input pipeline preserves full update throughput while cutting the long
-    // ROB/commit -> table read/modify/write path. Keep valid reset ownership
-    // separate from the wide payload registers; payload is ignored unless
-    // update_valid_q is set.
-    logic update_valid_q;
-    PcPath update_pc_q;
-    logic update_taken_q;
-    PcPath update_target_q;
-    logic update_uncond_q;
-    logic update_is_call_q;
-    logic update_is_return_q;
-    PcPath update_return_pc_q;
-
     for (genvar lane = 0; lane < FETCH_WIDTH; lane = lane + 1) begin : gen_predict_lane
         assign pred_base_idx[lane] = pc_i[lane][BHT_INDEX_BITS+1:2];
         assign pred_global_idx[lane] = pred_base_idx[lane] ^ BHT_INDEX_BITS'(ghr_q);
@@ -97,11 +83,11 @@ module CoreBranchPredictor (
                                    btb_return_q[pred_btb_idx[lane]] && ras_top_valid;
     end
 
-    assign update_base_idx = update_pc_q[BHT_INDEX_BITS+1:2];
+    assign update_base_idx = update_pc_i[BHT_INDEX_BITS+1:2];
     assign update_global_idx = update_base_idx ^ BHT_INDEX_BITS'(ghr_q);
     assign update_local_idx = BHT_INDEX_BITS'(local_hist_q[update_base_idx]) ^ update_base_idx;
-    assign update_btb_idx = update_pc_q[BTB_INDEX_BITS+1:2];
-    assign update_btb_tag = update_pc_q[PC_WIDTH-1:BTB_INDEX_BITS+2];
+    assign update_btb_idx = update_pc_i[BTB_INDEX_BITS+1:2];
+    assign update_btb_tag = update_pc_i[PC_WIDTH-1:BTB_INDEX_BITS+2];
     assign update_global_taken = global_pht_q[update_global_idx][1];
     assign update_local_taken = local_pht_q[update_local_idx][1];
 
@@ -120,27 +106,6 @@ module CoreBranchPredictor (
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            update_valid_q <= 1'b0;
-        end else begin
-            update_valid_q <= update_valid_i;
-        end
-    end
-
-    // Payload intentionally has no reset or enable. This avoids adding reset
-    // or commit-valid control paths to every payload bit; update_valid_q owns
-    // visibility and the producer supplies a complete payload every cycle.
-    always_ff @(posedge clk) begin
-        update_pc_q <= update_pc_i;
-        update_taken_q <= update_taken_i;
-        update_target_q <= update_target_i;
-        update_uncond_q <= update_uncond_i;
-        update_is_call_q <= update_is_call_i;
-        update_is_return_q <= update_is_return_i;
-        update_return_pc_q <= update_return_pc_i;
-    end
-
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
             ghr_q <= '0;
             ras_count_q <= '0;
             for (int i = 0; i < BHT_ENTRIES; i = i + 1) begin
@@ -152,15 +117,15 @@ module CoreBranchPredictor (
             for (int b = 0; b < BTB_ENTRIES; b = b + 1) begin
                 btb_valid_q[b] <= 1'b0;
             end
-        end else if (update_valid_q) begin
-            if (update_taken_q) begin
+        end else if (update_valid_i) begin
+            if (update_taken_i) begin
                 btb_valid_q[update_btb_idx] <= 1'b1;
             end
 
             // Direct and indirect jumps are always taken once their BTB entry
             // exists.  Keep them out of the conditional direction tables.
-            if (!update_uncond_q) begin
-                if (update_taken_q) begin
+            if (!update_uncond_i) begin
+                if (update_taken_i) begin
                     if (global_pht_q[update_global_idx] != 2'b11) begin
                         global_pht_q[update_global_idx] <= global_pht_q[update_global_idx] + 2'b01;
                     end
@@ -177,7 +142,7 @@ module CoreBranchPredictor (
                 end
 
                 if (update_global_taken != update_local_taken) begin
-                    if (update_local_taken == update_taken_q) begin
+                    if (update_local_taken == update_taken_i) begin
                         if (choice_pht_q[update_base_idx] != 2'b11) begin
                             choice_pht_q[update_base_idx] <= choice_pht_q[update_base_idx] + 2'b01;
                         end
@@ -187,13 +152,13 @@ module CoreBranchPredictor (
                 end
 
                 local_hist_q[update_base_idx] <= {
-                    local_hist_q[update_base_idx][LOCAL_HISTORY_BITS-2:0], update_taken_q};
-                ghr_q <= {ghr_q[GHR_BITS-2:0], update_taken_q};
+                    local_hist_q[update_base_idx][LOCAL_HISTORY_BITS-2:0], update_taken_i};
+                ghr_q <= {ghr_q[GHR_BITS-2:0], update_taken_i};
             end
 
-            if (update_is_return_q && (ras_count_q != '0)) begin
+            if (update_is_return_i && (ras_count_q != '0)) begin
                 ras_count_q <= ras_count_q - 1'b1;
-            end else if (update_is_call_q) begin
+            end else if (update_is_call_i) begin
                 if (ras_count_q < (RAS_PTR_WIDTH+1)'(RAS_DEPTH)) begin
                     ras_count_q <= ras_count_q + 1'b1;
                 end
@@ -205,16 +170,16 @@ module CoreBranchPredictor (
     // ownership is carried by btb_valid_q and ras_count_q, so invalid payload
     // is never consumed. This also avoids Vivado Synth 8-7137 ambiguity.
     always_ff @(posedge clk) begin
-        if (!rst && update_valid_q && update_taken_q) begin
-            btb_uncond_q[update_btb_idx] <= update_uncond_q;
-            btb_return_q[update_btb_idx] <= update_is_return_q;
+        if (!rst && update_valid_i && update_taken_i) begin
+            btb_uncond_q[update_btb_idx] <= update_uncond_i;
+            btb_return_q[update_btb_idx] <= update_is_return_i;
             btb_tag_q[update_btb_idx] <= update_btb_tag;
-            btb_target_q[update_btb_idx] <= update_target_q;
+            btb_target_q[update_btb_idx] <= update_target_i;
         end
-        if (!rst && update_valid_q && update_is_call_q &&
-            !update_is_return_q &&
+        if (!rst && update_valid_i && update_is_call_i &&
+            !update_is_return_i &&
             (ras_count_q < (RAS_PTR_WIDTH+1)'(RAS_DEPTH))) begin
-            ras_q[ras_count_q[RAS_PTR_WIDTH-1:0]] <= update_return_pc_q;
+            ras_q[ras_count_q[RAS_PTR_WIDTH-1:0]] <= update_return_pc_i;
         end
     end
 endmodule : CoreBranchPredictor

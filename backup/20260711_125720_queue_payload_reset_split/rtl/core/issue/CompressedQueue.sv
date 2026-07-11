@@ -167,10 +167,8 @@ module CoreCompressedQueue #(
         end
     end
 
-    // valid_q/count_q own reset and visibility. Keep them in the asynchronous
-    // reset block, but do not place the wide payload array in that process:
-    // an async-reset event with no payload assignment is otherwise synthesized
-    // into unnecessary control-set/S-pin logic on FPGA.
+    // valid_q/count_q gate every read of entry_q. A push overwrites the full
+    // uop, so clearing the payload array is unnecessary reset fanout on FPGA.
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             valid_q <= '0;
@@ -181,14 +179,6 @@ module CoreCompressedQueue #(
         end else begin
             valid_q <= next_valid;
             count_q <= next_count;
-        end
-    end
-
-    // Payload is architecturally invisible whenever valid_q is clear. A push
-    // or compaction overwrites every visible entry before it can be selected,
-    // so this storage intentionally has no reset/clear control.
-    always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
             for (int i = 0; i < DEPTH; i = i + 1) begin
                 entry_q[i] <= next_entry[i];
             end

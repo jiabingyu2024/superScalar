@@ -682,37 +682,6 @@ backup/20260711_122514_p1b_int_rrd/
 
 结论：P1B 不是永久否决；只有 ROB/BPU、rename/IQ 和 store/DRAM 主路径移除后，新 routed report 再次指向 IQ/PRF/EXE，才重新进入，并且 early-wakeup 必须按 consumer 是否有 RRD/bypass 分域设计。
 
-### 12.4 Phase 1R0：CompressedQueue payload/reset ownership 分离
-
-100 MHz report 中 `sRAT -> MEM IQ entry_q ... /S` 大量进入 top paths，且历史 Synth 8-7137 指向 `CoreCompressedQueue`。原 RTL 把 `valid_q/count_q/entry_q` 放在同一个 `@(posedge clk or posedge rst)` 进程，却不在 reset/clear 分支赋值 `entry_q`；这种“异步事件发生但 payload 保持”会让综合器为宽 payload 引入不必要的 control-set/S-pin 结构。
-
-本批次只修改 `rtl/core/issue/CompressedQueue.sv`：
-
-```text
-valid_q/count_q : 保留 async reset + clear ownership
-entry_q payload : 独立 posedge-only，无 reset/clear
-```
-
-`valid_q` 清零时 payload 不可见；下一次 push/compaction 会在 entry 重新变 valid 前写入完整 `CoreRenamedUop`，所以功能合同不变。备份：
-
-```text
-backup/20260711_125720_queue_payload_reset_split/
-```
-
-验证结果严格要求 cycle-exact，而不只看 PASS：
-
-| 项目 | P1A | P1R0 | 结果 |
-| --- | ---: | ---: | --- |
-| RV32UI/UM/MI | 40/40、8/8、4/4 | 40/40、8/8、4/4 | PASS |
-| full `srcSmoke` cycles | 33,398,117 | 33,398,117 | exact |
-| full `srcSmoke` IPC | 0.920968 | 0.920968 | exact |
-| `srcWithMext` 500k commits | 441,070 | 441,070 | exact |
-| `srcWithMext` 500k IPC | 0.882140 | 0.882140 | exact |
-| difftest commits | 441,075 | 441,075 | exact |
-| 37+8 / fail | 37+8 / 0 | 37+8 / 0 | PASS |
-
-该项已满足 RTL 与动态等价门槛，但 Fmax 收益仍 deferred。下一次用户侧 route 必须检查：`entry_q` 是否不再使用 S/R 控制端、Synth 8-7137 是否归零或显著减少、rename-to-MEM-IQ 的 -4.24 ns path 数是否下降；否则不能仅凭源码结构宣称优化成功。
-
 ## 13. 最终判断
 
 3 秒目标在当前 2-wide 架构上不是理论不可达，但要求从 `34.9 MIPS` 提升到至少 `126.8 MIPS`，属于一次 3.63x 的联合优化，而不是参数微调。

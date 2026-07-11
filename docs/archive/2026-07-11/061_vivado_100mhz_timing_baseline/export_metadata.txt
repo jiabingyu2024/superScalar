@@ -1,0 +1,9 @@
+source_checkpoint=E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/digital_twin.runs/impl_1/top_routed.dcp
+exported_at=2026-07-11T12:48:55+0800
+vivado_version=2023.2
+design=checkpoint_top_routed
+part=xc7k325tffg900-2
+clock=clk_out1_pll period_ns=20.000 waveform=0.000 10.000
+clock=clk_out2_pll period_ns=10.000 waveform=0.000 5.000
+clock=clkfbout_pll period_ns=5.000 waveform=0.000 2.500
+clock=i_sys_clk_p period_ns=5.000 waveform=0.000 2.500

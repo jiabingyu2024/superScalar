@@ -1,0 +1,170 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
+| Date         : Sat Jul 11 12:50:42 2026
+| Host         : LAPTOP-6CG4KN49 running 64-bit major release  (build 9200)
+| Command      : check_timing -verbose -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_66454dd_100mhz_routed_20260711/check_timing.rpt
+| Design       : top
+| Device       : 7k325t-ffg900
+| Speed File   : -2  PRODUCTION 1.12 2017-02-17
+| Design State : Routed
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+check_timing report
+
+Table of Contents
+-----------------
+1. checking no_clock (0)
+2. checking constant_clock (0)
+3. checking pulse_width_clock (0)
+4. checking unconstrained_internal_endpoints (0)
+5. checking no_input_delay (1)
+6. checking no_output_delay (69)
+7. checking multiple_clock (0)
+8. checking generated_clocks (0)
+9. checking loops (0)
+10. checking partial_input_delay (0)
+11. checking partial_output_delay (0)
+12. checking latch_loops (0)
+
+1. checking no_clock (0)
+------------------------
+ There are 0 register/latch pins with no clock.
+
+
+2. checking constant_clock (0)
+------------------------------
+ There are 0 register/latch pins with constant_clock.
+
+
+3. checking pulse_width_clock (0)
+---------------------------------
+ There are 0 register/latch pins which need pulse_width check
+
+
+4. checking unconstrained_internal_endpoints (0)
+------------------------------------------------
+ There are 0 pins that are not constrained for maximum delay.
+
+ There are 0 pins that are not constrained for maximum delay due to constant clock.
+
+
+5. checking no_input_delay (1)
+------------------------------
+ There is 1 input port with no input delay specified. (HIGH)
+
+i_uart_rx
+
+ There are 0 input ports with no input delay but user has a false path constraint.
+
+
+6. checking no_output_delay (69)
+--------------------------------
+ There are 69 ports with no output delay specified. (HIGH)
+
+o_uart_tx
+virtual_led[0]
+virtual_led[10]
+virtual_led[11]
+virtual_led[12]
+virtual_led[13]
+virtual_led[14]
+virtual_led[15]
+virtual_led[16]
+virtual_led[17]
+virtual_led[18]
+virtual_led[19]
+virtual_led[1]
+virtual_led[20]
+virtual_led[21]
+virtual_led[22]
+virtual_led[23]
+virtual_led[24]
+virtual_led[25]
+virtual_led[26]
+virtual_led[27]
+virtual_led[28]
+virtual_led[29]
+virtual_led[2]
+virtual_led[30]
+virtual_led[31]
+virtual_led[3]
+virtual_led[4]
+virtual_led[5]
+virtual_led[6]
+virtual_led[7]
+virtual_led[8]
+virtual_led[9]
+virtual_seg[0]
+virtual_seg[10]
+virtual_seg[11]
+virtual_seg[12]
+virtual_seg[13]
+virtual_seg[14]
+virtual_seg[15]
+virtual_seg[16]
+virtual_seg[18]
+virtual_seg[19]
+virtual_seg[1]
+virtual_seg[20]
+virtual_seg[21]
+virtual_seg[22]
+virtual_seg[23]
+virtual_seg[24]
+virtual_seg[25]
+virtual_seg[26]
+virtual_seg[28]
+virtual_seg[29]
+virtual_seg[2]
+virtual_seg[30]
+virtual_seg[31]
+virtual_seg[32]
+virtual_seg[33]
+virtual_seg[34]
+virtual_seg[35]
+virtual_seg[36]
+virtual_seg[38]
+virtual_seg[39]
+virtual_seg[3]
+virtual_seg[4]
+virtual_seg[5]
+virtual_seg[6]
+virtual_seg[8]
+virtual_seg[9]
+
+ There are 0 ports with no output delay but user has a false path constraint
+
+ There are 0 ports with no output delay but with a timing clock defined on it or propagating through it
+
+
+7. checking multiple_clock (0)
+------------------------------
+ There are 0 register/latch pins with multiple clocks.
+
+
+8. checking generated_clocks (0)
+--------------------------------
+ There are 0 generated clocks that are not connected to a clock source.
+
+
+9. checking loops (0)
+---------------------
+ There are 0 combinational loops in the design.
+
+
+10. checking partial_input_delay (0)
+------------------------------------
+ There are 0 input ports with partial input delay specified.
+
+
+11. checking partial_output_delay (0)
+-------------------------------------
+ There are 0 ports with partial output delay specified.
+
+
+12. checking latch_loops (0)
+----------------------------
+ There are 0 combinational latch loops in the design through latch input
+
+

@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-07-11T11:58:19+08:00",
+  "trigger": "Phase 1A of docs/archive/2026-07-11/061_ipc_fmax_joint_optimization_analysis.md: DCache 8-word refill is serialized request/wait and costs 34.23 stall cycles per miss",
+  "backup_dir": "backup/20260711_115311_p1a_dcache_refill",
+  "files_modified": [
+    {
+      "path": "rtl/core/memory/DCache.sv",
+      "lines_changed": "45-640",
+      "change_type": "internal_logic_and_response_timing_fix",
+      "notes": "Issues the critical word first and then all eight line reads at II=1, tracks accepted requests and ordered responses independently, writes by response word index, exposes the critical load response before line-valid commit, and captures one subsequent read pulse while the blocking fill drains. A held-read replay cannot acknowledge a simultaneous external store. Dirty writeback, uncached access, and the external module interface are unchanged."
+    },
+    {
+      "path": "docs/archive/2026-07-11/061_ipc_fmax_joint_optimization_analysis.md",
+      "lines_changed": "558-620",
+      "change_type": "implementation_record",
+      "notes": "Recorded the exact Phase 1A ownership contract, the one-entry read-hold rationale, assertions, backup, and pending verification matrix."
+    }
+  ],
+  "cascade_scope": "full_reverify",
+  "verification_required": [
+    "COMPLETED: RV32UI 40/40, RV32UM 8/8, and RV32MI 4/4 passed. The repository --all set also contains six unsupported Zb extension tests, which remain outside this core's implemented ISA and are not P1A regressions.",
+    "COMPLETED: partial srcSmoke progressed without assertions and full srcSmoke passed at 33,398,117 cycles with IPC 0.920968.",
+    "COMPLETED: srcWithMext difftest ran for 500,000 cycles, selfchecked 441,075 commits, reached RV32I=37 and M/Z=8 with fail=0, and reported IPC 0.882140.",
+    "COMPLETED: external DRAM read count divided by DCache miss count remained exactly 8.000 in the 500k difftest and 50M performance window.",
+    "COMPLETED: DCache stall per miss measured 17.76 cycles at 500k, 12.24 cycles at 50M, and 11.57 cycles in full srcSmoke, down from the 34.23-cycle complete baseline.",
+    "Run the complete srcWithMext workload only if the bounded checks and performance direction pass.",
+    "Use a user-scheduled clean Vivado implementation later to evaluate routed Fmax; do not infer it from this RTL-only change."
+  ],
+  "notes": "No module port, memory map, black-box IP, Tcl, or filelist change. Dynamic Phase 1A gates passed with zero DCache assertion failures. Complete srcWithMext and routed Fmax remain milestone-level checks. Vivado was not invoked, and fpga/build is absent in this workspace."
+}

@@ -6,7 +6,6 @@ interface DramAccessIF(input logic clk, rst);
     DataPath exReadData;
     logic    exReadReady;
     logic    exReadAccept;
-    logic    exReadCacheable;
 
     logic    storeWriteEn;
     AddrPath storeWriteAddr;
@@ -20,11 +19,9 @@ interface DramAccessIF(input logic clk, rst);
     DataPath writeData;
     logic [3:0] writeMask;
     DataPath readData;
-    logic    readResponseValid;
-    logic    writeRequestReady;
+    logic    accessReady;
 
     logic       exReadPending;
-    logic       exReadPendingCacheable;
     logic       exReadReady_q;
     DataPath    exReadData_q;
     logic       storeWritePending;
@@ -39,18 +36,12 @@ interface DramAccessIF(input logic clk, rst);
     logic       writeDone;
 
     always_comb begin
-        readDone = exReadPending && readResponseValid;
-        // A cacheable DCache response can be replaced in the same cycle: a
-        // hit leaves the cache in IDLE, while a critical-word miss response
-        // has a one-entry read hold. Uncached responses cannot accept a
-        // replacement until the cache returns to IDLE.
-        readGrant = exReadEn && !storeWritePending &&
-                    (!exReadPending ||
-                     (readDone && exReadPendingCacheable));
+        readGrant = exReadEn && !exReadPending && !storeWritePending;
+        readDone = exReadPending && accessReady;
         writeGrant = storeWriteEn && !exReadPending && !storeWritePending &&
                      !storeWriteReady_q && !readGrant;
         writeActive = writeGrant || storeWritePending;
-        writeDone = writeActive && writeRequestReady;
+        writeDone = writeActive && accessReady;
 
         readEn = readGrant;
         writeEn = writeActive;
@@ -68,7 +59,6 @@ interface DramAccessIF(input logic clk, rst);
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             exReadPending <= 1'b0;
-            exReadPendingCacheable <= 1'b0;
             exReadReady_q <= 1'b0;
             exReadData_q <= '0;
             storeWritePending <= 1'b0;
@@ -82,13 +72,10 @@ interface DramAccessIF(input logic clk, rst);
                 exReadData_q <= readData;
             end
             storeWriteReady_q <= writeDone;
-            if (readDone && !readGrant) begin
+            if (readDone) begin
                 exReadPending <= 1'b0;
             end else if (readGrant) begin
                 exReadPending <= 1'b1;
-            end
-            if (readGrant) begin
-                exReadPendingCacheable <= exReadCacheable;
             end
 
             if (writeDone) begin
@@ -109,8 +96,7 @@ interface DramAccessIF(input logic clk, rst);
         input  writeData,
         input  writeMask,
         output readData,
-        output readResponseValid,
-        output writeRequestReady
+        output accessReady
     );
 
     modport ExecuteMemStage(
@@ -118,8 +104,7 @@ interface DramAccessIF(input logic clk, rst);
         input  exReadReady,
         input  exReadAccept,
         output exReadEn,
-        output exReadAddr,
-        output exReadCacheable
+        output exReadAddr
     );
 
     modport StoreBuffer(
@@ -137,7 +122,6 @@ interface DramAccessIF(input logic clk, rst);
         input  writeData,
         input  writeMask,
         output readData,
-        output readResponseValid,
-        output writeRequestReady
+        output accessReady
     );
 endinterface : DramAccessIF

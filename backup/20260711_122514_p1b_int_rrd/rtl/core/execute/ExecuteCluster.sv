@@ -63,10 +63,6 @@ module CoreExecuteCluster (
     localparam int MULDIV_SLOT = INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH;
     localparam AddrPath CACHE_ADDR_START = 32'h8010_0000;
     localparam AddrPath CACHE_ADDR_END = 32'h8014_0000;
-    localparam int MEM_REQ_DEPTH = 2;
-    localparam int MEM_REQ_COUNT_BITS = $clog2(MEM_REQ_DEPTH + 1);
-    localparam int LOAD_META_DEPTH = 2;
-    localparam int LOAD_META_COUNT_BITS = $clog2(LOAD_META_DEPTH + 1);
 
     CoreRenamedUop issue_uop [ISSUE_WIDTH-1:0];
     logic [ISSUE_WIDTH-1:0] issue_valid;
@@ -87,29 +83,19 @@ module CoreExecuteCluster (
     DataPath [ISSUE_WIDTH-1:0] prf_wdata;
     PhyRegNumPath [READ_PORTS-1:0] prf_raddr;
     DataPath [READ_PORTS-1:0] prf_rdata;
-    logic [MEM_REQ_COUNT_BITS-1:0] mem_req_count_q;
-    CoreRenamedUop mem_req_uop_q [MEM_REQ_DEPTH-1:0];
-    AddrPath mem_req_addr_q [MEM_REQ_DEPTH-1:0];
-    DataPath mem_req_store_data_q [MEM_REQ_DEPTH-1:0];
-    logic [3:0] mem_req_store_mask_q [MEM_REQ_DEPTH-1:0];
-    logic mem_req_valid;
-    CoreRenamedUop mem_req_head_uop;
-    AddrPath mem_req_head_addr;
-    DataPath mem_req_head_store_data;
-    logic [3:0] mem_req_head_store_mask;
+    logic mem_req_valid_q;
+    CoreRenamedUop mem_req_uop_q;
+    AddrPath mem_req_addr_q;
+    DataPath mem_req_store_data_q;
+    logic [3:0] mem_req_store_mask_q;
     logic mem_issue_fire;
     logic mem_req_complete;
     logic mem_req_consume;
     logic mem_req_load_send;
     logic mem_req_cacheable;
     logic mem_req_misaligned;
-    logic [LOAD_META_COUNT_BITS-1:0] load_meta_count_q;
-    CoreRenamedUop load_meta_uop_q [LOAD_META_DEPTH-1:0];
-    logic [LOAD_META_DEPTH-1:0] load_meta_killed_q;
-    logic load_meta_space;
-    logic load_meta_push;
-    logic load_meta_pop;
-    logic load_resp_complete;
+    logic mem_load_pending_q;
+    CoreRenamedUop mem_load_uop_q;
     logic store_drain_pending_q;
     logic muldiv_ready;
     logic muldiv_start;
@@ -270,48 +256,31 @@ module CoreExecuteCluster (
         end
     endfunction
 
-    assign mem_req_valid = (mem_req_count_q != '0);
-    assign mem_req_head_uop = mem_req_uop_q[0];
-    assign mem_req_head_addr = mem_req_addr_q[0];
-    assign mem_req_head_store_data = mem_req_store_data_q[0];
-    assign mem_req_head_store_mask = mem_req_store_mask_q[0];
-    assign mem_req_cacheable = (mem_req_head_addr >= CACHE_ADDR_START) &&
-                               (mem_req_head_addr < CACHE_ADDR_END);
-    assign mem_req_misaligned =
-        mem_misaligned(mem_req_head_uop.uop, mem_req_head_addr);
+    assign mem_req_cacheable = (mem_req_addr_q >= CACHE_ADDR_START) &&
+                               (mem_req_addr_q < CACHE_ADDR_END);
+    assign mem_req_misaligned = mem_misaligned(mem_req_uop_q.uop, mem_req_addr_q);
     assign mem_issue_fire = mem_issue_valid_i[0] && mem_issue_ready_o[0];
-    assign load_meta_pop = dmem.exReadReady && (load_meta_count_q != '0);
-    assign load_resp_complete = load_meta_pop &&
-                                !load_meta_killed_q[0] &&
-                                !clear_i;
-    // The registered response may retire the metadata head while the next
-    // cacheable load is accepted. This replacement path is local to the LSU
-    // and never feeds MEM-IQ ready.
-    assign load_meta_space =
-        (load_meta_count_q < LOAD_META_COUNT_BITS'(LOAD_META_DEPTH)) ||
-        load_meta_pop;
 
-    // The ordered request queue owns each payload until the downstream side
-    // accepts it. An uncached/device load remains ordered behind all stores;
+    // The registered request owns its payload until the downstream side
+    // accepts it.  An uncached/device load remains ordered behind all stores;
     // only a cacheable no-alias load may bypass a non-empty StoreBuffer.
     always_comb begin
-        mem_req_load_send = !clear_i && mem_req_valid &&
-                            load_meta_space &&
-                            mem_req_head_uop.uop.is_load &&
+        mem_req_load_send = !clear_i && mem_req_valid_q &&
+                            !mem_load_pending_q &&
+                            mem_req_uop_q.uop.is_load &&
                             !mem_req_misaligned &&
                             !load_forward_hit_i &&
                             (mem_req_cacheable ||
                              (store_buffer_empty_i && !store_drain_pending_q));
 
-        mem_req_complete = !clear_i && mem_req_valid &&
-                           !load_resp_complete &&
+        mem_req_complete = !clear_i && mem_req_valid_q &&
+                           !mem_load_pending_q &&
                            (mem_req_misaligned ||
-                            (mem_req_head_uop.uop.is_store && store_push_ready_i) ||
-                            (mem_req_head_uop.uop.is_load && load_forward_full_i));
+                            (mem_req_uop_q.uop.is_store && store_push_ready_i) ||
+                            (mem_req_uop_q.uop.is_load && load_forward_full_i));
 
         mem_req_consume = mem_req_complete ||
                           (mem_req_load_send && dmem.exReadAccept);
-        load_meta_push = mem_req_load_send && dmem.exReadAccept;
     end
 
     // Arbitration is kept separate from result generation.  MEM ready only
@@ -329,12 +298,8 @@ module CoreExecuteCluster (
             issue_uop[i] = int_issue_uop_i[i];
         end
         for (int m = 0; m < MEM_ISSUE_WIDTH; m = m + 1) begin
-            issue_uop[INT_ISSUE_WIDTH + m] = mem_req_head_uop;
-            // Ready is derived only from registered local occupancy. Do not
-            // include mem_req_consume here: that would reconnect DCache/SB
-            // acceptance into MEM-IQ select in the same cycle.
-            mem_issue_ready_o[m] = !clear_i &&
-                (mem_req_count_q < MEM_REQ_COUNT_BITS'(MEM_REQ_DEPTH));
+            issue_uop[INT_ISSUE_WIDTH + m] = mem_req_uop_q;
+            mem_issue_ready_o[m] = !clear_i && !mem_req_valid_q;
             issue_valid[INT_ISSUE_WIDTH + m] = mem_req_complete;
         end
         for (int u = 0; u < MULDIV_ISSUE_WIDTH; u = u + 1) begin
@@ -371,18 +336,16 @@ module CoreExecuteCluster (
         load_query_valid_o = 1'b0;
         load_query_addr_o = '0;
         load_query_mask_o = '0;
-        if (mem_req_valid && mem_req_head_uop.uop.is_load) begin
-            load_query_addr_o = mem_req_head_addr;
-            load_query_mask_o =
-                load_mask(mem_req_head_uop.uop, mem_req_head_addr);
+        if (mem_req_valid_q && mem_req_uop_q.uop.is_load) begin
+            load_query_addr_o = mem_req_addr_q;
+            load_query_mask_o = load_mask(mem_req_uop_q.uop, mem_req_addr_q);
             load_query_valid_o = !mem_req_misaligned;
         end
     end
 
     always_comb begin
         dmem.exReadEn = 1'b0;
-        dmem.exReadAddr = mem_req_head_addr;
-        dmem.exReadCacheable = mem_req_cacheable;
+        dmem.exReadAddr = mem_req_addr_q;
         store_push_valid_o = 1'b0;
         store_push_rob_idx_o = '0;
         store_push_addr_o = '0;
@@ -391,8 +354,8 @@ module CoreExecuteCluster (
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
             src0[i] = prf_rdata[2*i];
             src1[i] = prf_rdata[2*i + 1];
-            if ((i == MEM_SLOT) && mem_req_valid) begin
-                src1[i] = mem_req_head_store_data;
+            if ((i == MEM_SLOT) && mem_req_valid_q) begin
+                src1[i] = mem_req_store_data_q;
             end
 
             branch_taken[i] = 1'b0;
@@ -432,8 +395,8 @@ module CoreExecuteCluster (
                     result[i] = 32'b0;
                 end
                 TUBE_TYPE_MEM: begin
-                    if ((i == MEM_SLOT) && mem_req_valid) begin
-                        result[i] = mem_req_head_addr;
+                    if ((i == MEM_SLOT) && mem_req_valid_q) begin
+                        result[i] = mem_req_addr_q;
                     end else begin
                         result[i] = src0[i] +
                                     (issue_uop[i].uop.is_store ?
@@ -521,50 +484,46 @@ module CoreExecuteCluster (
             prf_wdata[i] = result[i];
         end
 
-        if (!clear_i && mem_req_valid && !load_resp_complete &&
-            mem_req_head_uop.uop.is_store && !mem_req_misaligned) begin
+        if (!clear_i && mem_req_valid_q && !mem_load_pending_q &&
+            mem_req_uop_q.uop.is_store && !mem_req_misaligned) begin
             store_push_valid_o = 1'b1;
-            store_push_rob_idx_o = mem_req_head_uop.rob_idx;
-            store_push_addr_o = mem_req_head_addr;
-            store_push_data_o = mem_req_head_store_data;
-            store_push_mask_o = mem_req_head_store_mask;
+            store_push_rob_idx_o = mem_req_uop_q.rob_idx;
+            store_push_addr_o = mem_req_addr_q;
+            store_push_data_o = mem_req_store_data_q;
+            store_push_mask_o = mem_req_store_mask_q;
         end
 
-        if (mem_req_complete && mem_req_head_uop.uop.is_load &&
+        if (mem_req_complete && mem_req_uop_q.uop.is_load &&
             !mem_req_misaligned && load_forward_full_i) begin
-                complete_result_o[INT_ISSUE_WIDTH] =
-                    load_extend(mem_req_head_uop.uop, load_forward_data_i);
-                prf_we[INT_ISSUE_WIDTH] = mem_req_head_uop.alloc_prd &&
-                                          !mem_req_head_uop.uop.exception;
-                prf_waddr[INT_ISSUE_WIDTH] = mem_req_head_uop.prd;
-                prf_wdata[INT_ISSUE_WIDTH] =
-                    load_extend(mem_req_head_uop.uop, load_forward_data_i);
+                complete_result_o[INT_ISSUE_WIDTH] = load_extend(mem_req_uop_q.uop,
+                                                                 load_forward_data_i);
+                prf_we[INT_ISSUE_WIDTH] = mem_req_uop_q.alloc_prd &&
+                                          !mem_req_uop_q.uop.exception;
+                prf_waddr[INT_ISSUE_WIDTH] = mem_req_uop_q.prd;
+                prf_wdata[INT_ISSUE_WIDTH] = load_extend(mem_req_uop_q.uop,
+                                                         load_forward_data_i);
         end
 
         if (mem_req_load_send) begin
             dmem.exReadEn = 1'b1;
-            dmem.exReadAddr = mem_req_head_addr;
+            dmem.exReadAddr = mem_req_addr_q;
         end
 
-        if (load_resp_complete) begin
+        if (!clear_i && mem_load_pending_q && dmem.exReadReady) begin
             complete_valid_o[INT_ISSUE_WIDTH] = 1'b1;
-            complete_rob_idx_o[INT_ISSUE_WIDTH] = load_meta_uop_q[0].rob_idx;
-            complete_prd_o[INT_ISSUE_WIDTH] = load_meta_uop_q[0].prd;
-            complete_result_o[INT_ISSUE_WIDTH] =
-                load_extend(load_meta_uop_q[0].uop, dmem.exReadData);
-            complete_exception_o[INT_ISSUE_WIDTH] =
-                load_meta_uop_q[0].uop.exception;
-            complete_exception_cause_o[INT_ISSUE_WIDTH] =
-                load_meta_uop_q[0].uop.exception_cause;
+            complete_rob_idx_o[INT_ISSUE_WIDTH] = mem_load_uop_q.rob_idx;
+            complete_prd_o[INT_ISSUE_WIDTH] = mem_load_uop_q.prd;
+            complete_result_o[INT_ISSUE_WIDTH] = load_extend(mem_load_uop_q.uop, dmem.exReadData);
+            complete_exception_o[INT_ISSUE_WIDTH] = mem_load_uop_q.uop.exception;
+            complete_exception_cause_o[INT_ISSUE_WIDTH] = mem_load_uop_q.uop.exception_cause;
             complete_branch_miss_o[INT_ISSUE_WIDTH] = 1'b0;
             complete_redirect_pc_o[INT_ISSUE_WIDTH] = '0;
             complete_csr_write_o[INT_ISSUE_WIDTH] = 1'b0;
             complete_csr_addr_o[INT_ISSUE_WIDTH] = '0;
             complete_csr_wdata_o[INT_ISSUE_WIDTH] = '0;
-            prf_we[INT_ISSUE_WIDTH] = load_meta_uop_q[0].alloc_prd;
-            prf_waddr[INT_ISSUE_WIDTH] = load_meta_uop_q[0].prd;
-            prf_wdata[INT_ISSUE_WIDTH] =
-                load_extend(load_meta_uop_q[0].uop, dmem.exReadData);
+            prf_we[INT_ISSUE_WIDTH] = mem_load_uop_q.alloc_prd;
+            prf_waddr[INT_ISSUE_WIDTH] = mem_load_uop_q.prd;
+            prf_wdata[INT_ISSUE_WIDTH] = load_extend(mem_load_uop_q.uop, dmem.exReadData);
         end
 
         complete_valid_o[MULDIV_SLOT] = !clear_i && muldiv_complete_valid;
@@ -620,22 +579,27 @@ module CoreExecuteCluster (
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            mem_req_count_q <= '0;
-            load_meta_count_q <= '0;
+            mem_req_valid_q <= 1'b0;
+            mem_load_pending_q <= 1'b0;
             store_drain_pending_q <= 1'b0;
         end else begin
             if (clear_i) begin
-                // Requests not yet accepted by DCache are wrong-path and can
-                // be discarded. Accepted reads retain metadata ownership and
-                // drain in response order; their killed bits are set below.
-                mem_req_count_q <= '0;
+                mem_req_valid_q <= 1'b0;
+                mem_load_pending_q <= 1'b0;
                 store_drain_pending_q <= 1'b0;
             end else begin
-                unique case ({mem_issue_fire, mem_req_consume})
-                    2'b10: mem_req_count_q <= mem_req_count_q + 1'b1;
-                    2'b01: mem_req_count_q <= mem_req_count_q - 1'b1;
-                    default: mem_req_count_q <= mem_req_count_q;
-                endcase
+                if (mem_req_consume) begin
+                    mem_req_valid_q <= 1'b0;
+                end
+                if (mem_issue_fire) begin
+                    mem_req_valid_q <= 1'b1;
+                end
+
+                if (mem_load_pending_q && dmem.exReadReady) begin
+                    mem_load_pending_q <= 1'b0;
+                end else if (mem_req_load_send && dmem.exReadAccept) begin
+                    mem_load_pending_q <= 1'b1;
+                end
 
                 if (store_push_valid_o && store_push_ready_i) begin
                     store_drain_pending_q <= 1'b1;
@@ -643,108 +607,41 @@ module CoreExecuteCluster (
                     store_drain_pending_q <= 1'b0;
                 end
             end
-
-            // Recovery cannot cancel a read already accepted by DCache.
-            // Consume a response that arrives on the recovery edge, then keep
-            // all remaining owners until their in-order responses are drained.
-            if (clear_i) begin
-                if (load_meta_pop) begin
-                    load_meta_count_q <= load_meta_count_q - 1'b1;
-                end else begin
-                    load_meta_count_q <= load_meta_count_q;
-                end
-            end else begin
-                unique case ({load_meta_push, load_meta_pop})
-                    2'b10: load_meta_count_q <= load_meta_count_q + 1'b1;
-                    2'b01: load_meta_count_q <= load_meta_count_q - 1'b1;
-                    default: load_meta_count_q <= load_meta_count_q;
-                endcase
-            end
         end
     end
 
-    // Queue counts own all wide payload. Keeping request and response metadata
-    // in a reset-free process avoids adding uop/address/data bundles to the
-    // global asynchronous reset tree.
+    // Request/load payload is owned by the valid/pending bits above and does
+    // not need reset.  Keeping it in a reset-free process avoids adding the
+    // wide uop/address/data bundle to the global asynchronous reset tree.
     always_ff @(posedge clk) begin
-        if (!rst) begin
-            if (!clear_i) begin
-                if (mem_req_consume && (mem_req_count_q > 1)) begin
-                    mem_req_uop_q[0] <= mem_req_uop_q[1];
-                    mem_req_addr_q[0] <= mem_req_addr_q[1];
-                    mem_req_store_data_q[0] <= mem_req_store_data_q[1];
-                    mem_req_store_mask_q[0] <= mem_req_store_mask_q[1];
-                end
-
-                if (mem_issue_fire) begin
-                    if (mem_req_consume && (mem_req_count_q <= 1)) begin
-                        mem_req_uop_q[0] <= mem_issue_uop_i[0];
-                        mem_req_addr_q[0] <= prf_rdata[2 * MEM_SLOT] +
-                            (mem_issue_uop_i[0].uop.is_store ?
-                             mem_issue_uop_i[0].uop.imm_s :
-                             mem_issue_uop_i[0].uop.imm_i);
-                        mem_req_store_data_q[0] <=
-                            prf_rdata[2 * MEM_SLOT + 1];
-                        mem_req_store_mask_q[0] <=
-                            store_mask(mem_issue_uop_i[0].uop);
-                    end else begin
-                        mem_req_uop_q[mem_req_count_q[0]] <=
-                            mem_issue_uop_i[0];
-                        mem_req_addr_q[mem_req_count_q[0]] <=
-                            prf_rdata[2 * MEM_SLOT] +
-                            (mem_issue_uop_i[0].uop.is_store ?
-                             mem_issue_uop_i[0].uop.imm_s :
-                             mem_issue_uop_i[0].uop.imm_i);
-                        mem_req_store_data_q[mem_req_count_q[0]] <=
-                            prf_rdata[2 * MEM_SLOT + 1];
-                        mem_req_store_mask_q[mem_req_count_q[0]] <=
-                            store_mask(mem_issue_uop_i[0].uop);
-                    end
-                end
+        if (!rst && !clear_i) begin
+            if (mem_issue_fire) begin
+                mem_req_uop_q <= mem_issue_uop_i[0];
+                mem_req_addr_q <= prf_rdata[2 * MEM_SLOT] +
+                                  (mem_issue_uop_i[0].uop.is_store ?
+                                   mem_issue_uop_i[0].uop.imm_s :
+                                   mem_issue_uop_i[0].uop.imm_i);
+                mem_req_store_data_q <= prf_rdata[2 * MEM_SLOT + 1];
+                mem_req_store_mask_q <= store_mask(mem_issue_uop_i[0].uop);
             end
-
-            if (clear_i) begin
-                load_meta_killed_q <= '1;
-                if (load_meta_pop && (load_meta_count_q > 1)) begin
-                    load_meta_uop_q[0] <= load_meta_uop_q[1];
-                end
-            end else begin
-                if (load_meta_pop && (load_meta_count_q > 1)) begin
-                    load_meta_uop_q[0] <= load_meta_uop_q[1];
-                    load_meta_killed_q[0] <= load_meta_killed_q[1];
-                end
-
-                if (load_meta_push) begin
-                    if (load_meta_pop) begin
-                        if (load_meta_count_q > 1) begin
-                            load_meta_uop_q[1] <= mem_req_head_uop;
-                            load_meta_killed_q[1] <= 1'b0;
-                        end else begin
-                            load_meta_uop_q[0] <= mem_req_head_uop;
-                            load_meta_killed_q[0] <= 1'b0;
-                        end
-                    end else begin
-                        load_meta_uop_q[load_meta_count_q[0]] <=
-                            mem_req_head_uop;
-                        load_meta_killed_q[load_meta_count_q[0]] <= 1'b0;
-                    end
-                end
+            if (mem_req_load_send && dmem.exReadAccept) begin
+                mem_load_uop_q <= mem_req_uop_q;
             end
         end
     end
 
-    assign perf_load_pending_o = (load_meta_count_q != '0);
-    assign perf_mem_req_valid_o = mem_req_valid;
-    assign perf_mem_req_partial_alias_o = mem_req_valid &&
-                                          mem_req_head_uop.uop.is_load &&
+    assign perf_load_pending_o = mem_load_pending_q;
+    assign perf_mem_req_valid_o = mem_req_valid_q;
+    assign perf_mem_req_partial_alias_o = mem_req_valid_q &&
+                                          mem_req_uop_q.uop.is_load &&
                                           load_forward_hit_i &&
                                           !load_forward_full_i;
-    assign perf_mem_req_no_alias_o = mem_req_valid &&
-                                     mem_req_head_uop.uop.is_load &&
+    assign perf_mem_req_no_alias_o = mem_req_valid_q &&
+                                     mem_req_uop_q.uop.is_load &&
                                      !load_forward_hit_i &&
                                      !store_buffer_empty_i;
-    assign perf_mem_req_forward_o = mem_req_valid &&
-                                    mem_req_head_uop.uop.is_load &&
+    assign perf_mem_req_forward_o = mem_req_valid_q &&
+                                    mem_req_uop_q.uop.is_load &&
                                     load_forward_full_i;
     assign perf_muldiv_busy_o = !clear_i && !muldiv_ready;
 
@@ -760,26 +657,12 @@ module CoreExecuteCluster (
             mem_req_stalled_prev_q <= 1'b0;
         end else begin
             if (mem_req_stalled_prev_q) begin
-                assert (mem_req_valid &&
-                        (mem_req_head_uop == mem_req_uop_prev_q) &&
-                        (mem_req_head_addr == mem_req_addr_prev_q) &&
-                        (mem_req_head_store_data == mem_req_store_data_prev_q) &&
-                        (mem_req_head_store_mask == mem_req_store_mask_prev_q))
+                assert (mem_req_valid_q &&
+                        (mem_req_uop_q == mem_req_uop_prev_q) &&
+                        (mem_req_addr_q == mem_req_addr_prev_q) &&
+                        (mem_req_store_data_q == mem_req_store_data_prev_q) &&
+                        (mem_req_store_mask_q == mem_req_store_mask_prev_q))
                     else $error("MEM request payload changed while stalled");
-            end
-            assert (mem_req_count_q <=
-                    MEM_REQ_COUNT_BITS'(MEM_REQ_DEPTH))
-                else $error("MEM request queue overflow");
-            assert (load_meta_count_q <=
-                    LOAD_META_COUNT_BITS'(LOAD_META_DEPTH))
-                else $error("load metadata queue overflow");
-            if (dmem.exReadReady) begin
-                assert (load_meta_count_q != '0)
-                    else $error("load response arrived without metadata owner");
-            end
-            if (load_meta_push) begin
-                assert (load_meta_space)
-                    else $error("load metadata pushed while full");
             end
             assert (!(dmem.exReadEn && load_forward_hit_i))
                 else $error("load bypassed an older same-word store");
@@ -791,11 +674,11 @@ module CoreExecuteCluster (
                         else $error("multiple completions wrote the same PRF");
                 end
             end
-            mem_req_stalled_prev_q <= mem_req_valid && !mem_req_consume;
-            mem_req_uop_prev_q <= mem_req_head_uop;
-            mem_req_addr_prev_q <= mem_req_head_addr;
-            mem_req_store_data_prev_q <= mem_req_head_store_data;
-            mem_req_store_mask_prev_q <= mem_req_head_store_mask;
+            mem_req_stalled_prev_q <= mem_req_valid_q && !mem_req_consume;
+            mem_req_uop_prev_q <= mem_req_uop_q;
+            mem_req_addr_prev_q <= mem_req_addr_q;
+            mem_req_store_data_prev_q <= mem_req_store_data_q;
+            mem_req_store_mask_prev_q <= mem_req_store_mask_q;
         end
     end
 `endif

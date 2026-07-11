@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-07-11T12:58:00+08:00",
+  "trigger": "P1B INT RRD A/B candidate rejected after the commit 66454dd 100 MHz routed report showed zero u_execute/u_prf endpoints in the top 600 paths while bounded IPC regressed 7.88%",
+  "backup_dir": "backup/20260711_122514_p1b_int_rrd",
+  "files_modified": [
+    {
+      "path": "rtl/core/execute/ExecuteCluster.sv",
+      "change_type": "candidate_revert",
+      "notes": "Removed the trial INT RRD registers and restored the P1A issue-to-execute behavior from the batch backup."
+    },
+    {
+      "path": "rtl/core/backend/CoreBackend.sv",
+      "change_type": "candidate_revert",
+      "notes": "Removed trial early-wakeup routing and restored registered completion wakeup for all issue queues."
+    }
+  ],
+  "cascade_scope": "full_reverify",
+  "verification_completed_before_revert": [
+    "Trial RTL passed RV32UI 40/40, RV32UM 8/8, RV32MI 4/4, full srcSmoke, and 500k srcWithMext commit selfcheck after waveform-guided correction.",
+    "Trial srcWithMext 500k IPC was 0.812654 versus P1A 0.882140 (-7.88%).",
+    "Trial full srcSmoke was 35,311,884 cycles versus P1A 33,398,117 (+5.73%).",
+    "A trial MEM RRD variant measured srcWithMext 500k IPC 0.812150 and was removed."
+  ],
+  "revert_evidence": {
+    "report": "/mnt/e/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_66454dd_100mhz_routed_20260711/setup_top200.rpt",
+    "cpu_wns_ns": -4.275,
+    "critical_data_path_ns": 13.869,
+    "approx_current_fmax_mhz": 70.08,
+    "top_path_hits": {
+      "u_execute_or_u_prf": 0,
+      "u_bpu": 107,
+      "u_mem_iq": 128,
+      "u_rename": 142,
+      "dram_adapter": 20,
+      "u_dcache": 35,
+      "u_free_list": 40
+    }
+  },
+  "verification_required": [
+    "Rebuild P1A-restored myCPU/student_top models and rerun representative RV plus bounded srcWithMext sanity.",
+    "Prioritize ROB/commit-to-BPU update, rename-to-IQ allocation/compaction, and ROB-to-memory paths from the routed report before reconsidering INT RRD.",
+    "Do not claim 100 MHz: commit 66454dd routed WNS is -4.275 ns at a 10 ns constraint."
+  ],
+  "notes": "The failed early-wakeup experiment and waveform root cause remain documented in docs/stage11_wave_debug.json. P1A DCache changes remain in the working tree. Vivado was not invoked by this agent."
+}

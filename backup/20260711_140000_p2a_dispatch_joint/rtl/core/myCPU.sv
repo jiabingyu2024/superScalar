@@ -171,8 +171,8 @@ module myCPU (
 
     always_comb begin
         dromAccess.readData = cache_cpu_resp_rdata;
-        dromAccess.readResponseValid = cache_cpu_resp_valid;
-        dromAccess.writeRequestReady = cache_cpu_req_ready;
+        dromAccess.accessReady = dromAccess.writeEn ? cache_cpu_req_ready :
+                                 cache_cpu_resp_valid;
     end
 
 `ifdef VERILATOR_TB

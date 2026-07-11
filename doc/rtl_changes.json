@@ -1,43 +1,30 @@
 {
-  "timestamp": "2026-07-11T11:08:00+08:00",
-  "trigger": "Board remains at SEG=0x33800000 after read_valid_d3; PG058 review identified missing BMG primitive-output-register enable phase",
-  "backup_dir": "backup/20260711_110800_bram_regcea_fix",
+  "timestamp": "2026-07-11T12:58:19+08:00",
+  "trigger": "Commit 66454dd 100 MHz routed report: 128 top-path hits terminate in CoreMemIssueQueue payload/control, many at entry_q register S pins, while prior Synth 8-7137 warnings identify CoreCompressedQueue payload ownership",
+  "backup_dir": "backup/20260711_125720_queue_payload_reset_split",
   "files_modified": [
     {
-      "path": "fpga/create_vivado_project.tcl",
-      "lines_changed": "325-340",
-      "change_type": "ip_interface_config",
-      "notes": "Enabled DRAM_0 Use_REGCEA_Pin while retaining the primitive output register and no core output register."
-    },
-    {
-      "path": "rtl/soc/DramBramAdapter.sv",
-      "lines_changed": "19-68",
-      "change_type": "interface_and_logic_fix",
-      "notes": "Drives BMG ENA from the request and independent REGCEA from read_valid_d1; aligns response valid and byte offset at d2 and removes the ineffective d3 delay."
-    },
-    {
-      "path": "rtl/ip/DRAM_0.sv",
-      "lines_changed": "3-58",
-      "change_type": "simulation_model_interface_fix",
-      "notes": "Models the PG058 memory-latch/output-register split: ENA updates the READ_FIRST latch and REGCEA transfers the latch to DOUTA."
-    },
-    {
-      "path": "docs/fpga/ip_timing_alignment.md",
-      "change_type": "documentation",
-      "notes": "Added PG058 source references, detailed BRAM edge behavior, configuration mapping, four fix alternatives, and the adopted independent-REGCEA contract."
-    },
-    {
-      "path": "docs/stage11_wave_debug.json",
-      "change_type": "diagnostic_status_update",
-      "notes": "Changed the recommendation to independent REGCEA and marked the source fix implemented but pending IP regeneration and post-implementation/board verification."
+      "path": "rtl/core/issue/CompressedQueue.sv",
+      "lines_changed": "185-217",
+      "change_type": "reset_control_set_cleanup",
+      "notes": "Split valid/count from payload storage. valid_q/count_q retain async reset and synchronous clear semantics; entry_q moves to a reset-free clocked process and updates only when reset/clear are inactive. Queue selection, wakeup, compaction, push order, ready/valid behavior, and interfaces are unchanged."
     }
   ],
-  "cascade_scope": "full_reverify",
+  "cascade_scope": "compile_and_lint",
   "verification_required": [
-    "Regenerate DRAM_0 and confirm generated XML has C_HAS_ENA=1, C_HAS_MEM_OUTPUT_REGS_A=1, C_HAS_REGCEA=1, and no core output register.",
-    "Rebuild the Verilator model and run RV tests plus srcSmoke; run only a bounded srcWithMext difftest as requested.",
-    "Run current post-implementation functional simulation long enough to observe the final SEG write and pair ENA/REGCEA/read_valid_d1/d2/DOUT with DCache requests.",
-    "Generate and program a new bitstream only after the post-implementation trace no longer shows one-word response lag."
+    "COMPLETED: myCPU and student_top rebuilt with zero MULTIDRIVEN, LATCH, or UNOPTFLAT diagnostics.",
+    "COMPLETED: RV32UI 40/40, RV32UM 8/8, and RV32MI 4/4 passed.",
+    "COMPLETED: full srcSmoke passed at the exact P1A result of 33,398,117 cycles, 30,758,590 commits, IPC 0.920968.",
+    "COMPLETED: srcWithMext 500k regular and difftest retained 441,070 perf commits, IPC 0.882140, RV32I=37, fail=0, M/Z=8; difftest selfchecked 441,075 commits.",
+    "On the next user-scheduled Vivado build, confirm Synth 8-7137 count and entry_q S/R control pins disappear, then compare rename-to-MEM-IQ top paths and control-set utilization.",
+    "Do not infer Fmax improvement until the same 100 MHz routed report is regenerated."
   ],
-  "notes": "Vivado synthesis, implementation, and IP regeneration were intentionally not run in this change. rtl/soc/dram_driver.sv is a legacy path excluded from scripts/filelists/soc.f; if it is re-enabled, its DRAM_0 instance must be migrated to the REGCEA contract first."
+  "routed_evidence": {
+    "report": "/mnt/e/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_66454dd_100mhz_routed_20260711/setup_top200.rpt",
+    "cpu_wns_ns": -4.275,
+    "mem_iq_top_path_hits": 128,
+    "rename_top_path_hits": 142,
+    "execute_or_prf_top_path_hits": 0
+  },
+  "notes": "Dynamic behavior is exactly unchanged versus P1A at both full srcSmoke and 500k srcWithMext. P1A DCache optimization remains in the working tree. Vivado was not invoked by this agent."
 }

@@ -1,0 +1,221 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
+| Date         : Sat Jul 11 12:50:41 2026
+| Host         : LAPTOP-6CG4KN49 running 64-bit major release  (build 9200)
+| Command      : report_high_fanout_nets -timing -max_nets 200 -file E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/exported_reports/commit_66454dd_100mhz_routed_20260711/high_fanout_nets.rpt
+| Design       : top
+| Device       : xc7k325t
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+High Fan-out Nets Information
+
+1. Summary
+----------
+
++----------------------------------------------------------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| Net Name                                                                                                 | Fanout | Driver Type | Worst Slack(ns) | Worst Delay(ns) |
++----------------------------------------------------------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| student_top_inst/cpu_rst_sync                                                                            |   8581 | FDPE        |          -0.589 |          10.176 |
+| student_top_inst/Core_cpu/u_core/bpu_update_valid                                                        |   2377 | LUT5        |          -1.750 |           4.175 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[2]                                                        |   2255 | LUT5        |          -4.198 |           2.141 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[3]                                                        |   2202 | LUT5        |          -4.273 |           2.345 |
+| student_top_inst/Core_cpu/u_core/bpu_update_uncond                                                       |   2129 | LUT5        |          -1.763 |           3.444 |
+| student_top_inst/Core_cpu/u_core/bpu_update_taken                                                        |   1829 | LUT6        |          -3.047 |           1.741 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[7]                                                        |   1644 | LUT5        |          -3.609 |           2.302 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[2][0]                               |   1576 | FDRE        |          -0.045 |           6.987 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[4]                                                        |   1498 | LUT5        |          -4.275 |           2.107 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[0][0]                               |   1372 | FDRE        |           1.646 |           3.699 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[2][1]                               |   1368 | FDRE        |          -1.036 |           5.049 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[2][2]                               |   1368 | FDRE        |           0.247 |           6.008 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[5]                                                        |   1335 | LUT5        |          -4.242 |           1.997 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[0][4]                               |   1257 | FDRE        |           0.850 |           4.183 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[6]                                                        |   1222 | LUT5        |          -3.765 |           2.098 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_commit/recover_valid_o                                      |   1178 | LUT5        |          -4.265 |           3.397 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[0][3]                               |   1145 | FDRE        |           0.713 |           4.381 |
+| student_top_inst/Core_cpu/u_core/u_pc_gen/pc_o[2]                                                        |   1106 | FDCE        |          -2.731 |           2.524 |
+| student_top_inst/Core_cpu/u_core/bpu_lookup_pc[1][2]                                                     |   1061 | CARRY4      |          -2.461 |           1.470 |
+| student_top_inst/Core_cpu/u_core/bpu_lookup_pc[1][3]                                                     |   1060 | CARRY4      |          -2.682 |           1.596 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[8]                                                        |    876 | LUT5        |          -3.358 |           2.230 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[9]                                                        |    872 | LUT5        |          -3.138 |           2.862 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_execute/prf_we[1]                                           |    856 | LUT6        |          -4.096 |           1.193 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[0][2]                               |    811 | FDRE        |           0.567 |           4.777 |
+| student_top_inst/Core_cpu/u_core/bpu_update_pc[10]                                                       |    797 | LUT5        |          -2.933 |           2.260 |
+| student_top_inst/Core_cpu/u_core/u_fetch_buffer/u_fifo/count_q[1]_i_3_n_0                                |    787 | LUT6        |           2.191 |           4.673 |
+| student_top_inst/Core_cpu/u_core/u_fetch_buffer/u_fifo/p_5_out                                           |    776 | LUT2        |          -0.430 |           2.094 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[0][1]                               |    747 | FDRE        |          -1.162 |           5.142 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_valid[1]                                             |    734 | FDCE        |          -3.562 |           8.026 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[1][0]                               |    667 | FDRE        |          -0.771 |           5.463 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[1][1]                               |    667 | FDRE        |          -1.601 |           6.914 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[1][2]                               |    667 | FDRE        |          -0.786 |           4.364 |
+| student_top_inst/Core_cpu/u_core/u_pc_gen/pc_o[4]                                                        |    652 | FDCE        |          -2.632 |           2.235 |
+| student_top_inst/Core_cpu/u_core/bpu_lookup_pc[1][4]                                                     |    644 | CARRY4      |          -2.731 |           1.263 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_valid[0]                                             |    643 | FDCE        |          -3.659 |           6.310 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/next_valid1751_out                           |    638 | LUT2        |          -2.907 |           1.617 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prd][4]                       |    614 | LUT5        |          -2.617 |           4.273 |
+| student_top_inst/Core_cpu/u_dcache/data_write_addr[0]                                                    |    591 | LUT6        |          -3.410 |           1.243 |
+| student_top_inst/Core_cpu/u_dcache/data_write_addr[1]                                                    |    591 | LUT6        |          -3.496 |           1.367 |
+| student_top_inst/Core_cpu/u_dcache/data_write_addr[2]                                                    |    591 | LUT6        |          -3.286 |           1.108 |
+| student_top_inst/Core_cpu/u_dcache/data_write_addr[3]                                                    |    591 | LUT5        |          -3.141 |           1.060 |
+| student_top_inst/Core_cpu/u_dcache/data_write_addr[4]                                                    |    591 | LUT5        |          -3.214 |           1.036 |
+| student_top_inst/Core_cpu/u_dcache/data_write_addr[5]                                                    |    591 | LUT5        |          -3.176 |           0.971 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_global_idx[0]                                              |    587 | LUT2        |          -2.723 |           1.272 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_0_2_i_11_n_0                                     |    585 | LUT5        |          -3.455 |           0.804 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_0_2_i_12_n_0                                     |    585 | LUT5        |          -3.593 |           0.915 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_0_2_i_13_n_0                                     |    585 | LUT5        |          -3.680 |           1.009 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_0_2_i_14_n_0                                     |    585 | LUT6        |          -3.662 |           0.972 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_0_2_i_15_n_0                                     |    585 | LUT6        |          -3.693 |           1.046 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_0_2_i_16_n_0                                     |    585 | LUT6        |          -3.735 |           1.300 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_3_5_i_10_n_0                                     |    585 | LUT5        |          -3.521 |           1.005 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_3_5_i_11_n_0                                     |    585 | LUT5        |          -3.564 |           1.067 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_3_5_i_12_n_0                                     |    585 | LUT5        |          -3.360 |           1.052 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_3_5_i_13_n_0                                     |    585 | LUT6        |          -3.598 |           1.193 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_3_5_i_14_n_0                                     |    585 | LUT6        |          -3.732 |           1.299 |
+| student_top_inst/Core_cpu/u_dcache/data_way1_q_reg_0_63_3_5_i_15_n_0                                     |    585 | LUT6        |          -3.459 |           1.128 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[6][uop][imm_j][31]_i_6_n_0           |    562 | LUT6        |          -2.232 |           1.322 |
+| student_top_inst/Core_cpu/cache_cpu_req_addr[5]                                                          |    544 | LUT6        |          -4.265 |           1.147 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_global_idx[1]                                              |    537 | LUT2        |          -2.583 |           1.235 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prd][5]                       |    514 | LUT5        |          -2.488 |           3.919 |
+| student_top_inst/Core_cpu/cache_cpu_req_addr[6]                                                          |    512 | LUT6        |          -4.173 |           1.148 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[0][prs1][4]                      |    512 | LUT6        |          -3.588 |           0.948 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[0][prs1][5]                      |    512 | LUT6        |          -3.576 |           0.935 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[0][prs2][4]                      |    512 | LUT6        |          -3.947 |           0.886 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[0][prs2][5]                      |    512 | LUT6        |          -4.015 |           0.944 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prs1][4]                      |    512 | LUT5        |          -3.851 |           0.955 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prs1][5]                      |    512 | LUT5        |          -3.784 |           1.081 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prs2][4]                      |    512 | LUT5        |          -3.962 |           0.961 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prs2][5]                      |    512 | LUT5        |          -4.096 |           1.024 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/issue_uop_o[0][prs1][4]                      |    512 | LUT2        |          -3.689 |           1.206 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/issue_uop_o[0][prs1][5]                      |    512 | LUT2        |          -3.531 |           1.348 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/issue_uop_o[0][prs2][4]                      |    512 | LUT2        |          -3.954 |           1.012 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/issue_uop_o[0][prs2][5]                      |    512 | LUT2        |          -3.941 |           1.377 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mul_iq/u_queue/issue_uop_o[0][prs1][4]                      |    512 | LUT2        |          -0.977 |           2.725 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mul_iq/u_queue/issue_uop_o[0][prs1][5]                      |    512 | LUT2        |          -0.944 |           2.828 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mul_iq/u_queue/issue_uop_o[0][prs2][4]                      |    512 | LUT2        |          -1.270 |           2.401 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mul_iq/u_queue/issue_uop_o[0][prs2][5]                      |    512 | LUT2        |          -1.263 |           2.279 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/next_valid1743_out                           |    497 | LUT5        |          -2.167 |           2.462 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/count_q[1]_i_2_n_0                           |    484 | LUT5        |          -3.274 |           1.781 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx[3][4]_i_1_n_0                                |    481 | LUT2        |           1.460 |           2.651 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_local_idx[1]                                               |    475 | LUT2        |          -4.144 |           1.219 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prd][1]                       |    453 | LUT5        |          -2.434 |           4.505 |
+| student_top_inst/Core_cpu/u_core/u_pc_gen/pc_o[5]                                                        |    444 | FDCE        |          -2.349 |           2.946 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_local_idx[0]                                               |    438 | LUT2        |          -4.275 |           1.562 |
+| student_top_inst/Core_cpu/u_core/bpu_lookup_pc[1][5]                                                     |    436 | CARRY4      |          -2.667 |           2.016 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/port_selected_mask1                          |    428 | LUT3        |          -3.947 |           3.059 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[5][uop][imm_j][31]_i_3_n_0           |    413 | LUT5        |          -2.987 |           2.361 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[5][uop][imm_j][31]_i_4_n_0           |    413 | LUT5        |          -3.175 |           1.812 |
+| student_top_inst/Core_cpu/u_core/u_fetch_buffer/u_fifo/pop_data_o[0][64]                                 |    397 | MUXF7       |          -2.019 |           5.463 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_global_idx[4]                                              |    393 | LUT2        |          -2.419 |           1.041 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_global_idx[2]                                              |    390 | LUT2        |          -2.564 |           1.163 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prd][0]                       |    380 | LUT5        |          -2.502 |           3.585 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_execute/mem_req_uop_q                                       |    348 | LUT4        |           1.062 |           1.664 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[1][uop][imm_j][27]_i_1_n_0           |    344 | LUT6        |          -3.796 |           1.319 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[0][uop][imm_j][19]_i_1_n_0           |    341 | LUT6        |          -3.617 |           1.274 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[2][uop][imm_j][19]_i_1_n_0           |    341 | LUT6        |          -3.954 |           1.249 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[3][uop][imm_j][19]_i_1_n_0           |    339 | LUT3        |          -1.629 |           2.372 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[0][uop][rs1][4]_INST_0_i_3_n_0   |    339 | LUT3        |          -3.781 |           2.286 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_valid_o1579_out                        |    339 | LUT3        |          -3.654 |           2.553 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_valid_o1583_out                        |    337 | LUT4        |          -4.096 |           1.974 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_valid_o1609_out                        |    337 | LUT4        |          -3.963 |           0.984 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_valid_o1612_out                        |    337 | LUT5        |          -4.015 |           2.108 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_local_idx[2]                                               |    329 | LUT2        |          -4.138 |           1.283 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[1][3]                               |    316 | FDRE        |          -2.323 |           6.287 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[1][4]                               |    316 | FDRE        |          -1.244 |           4.845 |
+| rst_50m_sync                                                                                             |    314 | FDPE        |          18.084 |           1.360 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[4][uop][imm_j][19]_i_1_n_0           |    313 | LUT4        |          -1.428 |           2.463 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[0][prs2][5]_i_1_n_0                  |    310 | LUT5        |           0.400 |           1.626 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[1][prs2][5]_i_1_n_0                  |    310 | LUT6        |           0.576 |           1.810 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[2][prs2][5]_i_1_n_0                  |    310 | LUT6        |           0.110 |           1.550 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[5][uop][imm_j][31]_i_1_n_0           |    309 | LUT4        |          -1.059 |           1.394 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_execute/u_prf/regs_q[62][31]_i_11_n_0                       |    305 | LUT6        |          -2.511 |           1.553 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[6][uop][imm_j][19]_i_1_n_0           |    302 | LUT5        |          -1.936 |           2.535 |
+| student_top_inst/Core_cpu/u_core/u_pc_gen/pc_o[7]                                                        |    302 | FDCE        |          -1.331 |           2.287 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[0][uop][rs1][4]_i_6_n_0              |    295 | LUT4        |          -0.077 |           1.568 |
+| student_top_inst/Core_cpu/u_core/bpu_lookup_pc[1][7]                                                     |    294 | CARRY4      |          -1.870 |           1.400 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[7][uop][imm_j][31]_i_1_n_0           |    293 | LUT4        |          -1.727 |           1.741 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prd][3]                       |    293 | LUT5        |          -2.427 |           4.087 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[3][prs2][5]_i_1_n_0                  |    293 | LUT5        |           0.608 |           1.535 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[4][prs2][5]_i_1_n_0                  |    293 | LUT6        |           0.348 |           1.871 |
+| student_top_inst/Core_cpu/u_core/u_pc_gen/pc_o[6]                                                        |    288 | FDCE        |          -1.579 |           2.196 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[0][uop][imm_j][0]_i_6_n_0            |    284 | LUT4        |          -3.175 |           1.249 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[3][prs2][2]_i_2_n_0                  |    283 | LUT6        |          -1.354 |           1.559 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[1][uop][pc][31]_i_5_n_0              |    281 | LUT5        |          -0.053 |           1.340 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[1][uop][rs1][4]_i_4_n_0              |    281 | LUT6        |          -0.838 |           1.328 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[2][uop][pc][31]_i_3_n_0              |    281 | LUT5        |          -0.353 |           1.806 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[3][uop][pc][31]_i_2_n_0              |    281 | LUT6        |           0.130 |           1.819 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[3][uop][pc][31]_i_3_n_0              |    281 | LUT6        |          -3.519 |           1.026 |
+| student_top_inst/Core_cpu/u_core/bpu_lookup_pc[1][6]                                                     |    280 | CARRY4      |          -1.959 |           1.222 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[2][uop][imm_j][14]_i_5_n_0           |    270 | LUT4        |          -2.053 |           1.904 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rob/retire_valid_o[0]                                       |    269 | LUT6        |          -4.275 |           0.641 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[3][uop][imm_j][19]_i_3_n_0           |    262 | LUT4        |          -3.282 |           1.980 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[5][uop][imm_u][10]_i_2_n_0           |    258 | LUT6        |          -3.233 |           2.172 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[5][uop][imm_u][10]_i_3_n_0           |    258 | LUT4        |          -3.030 |           1.882 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[5][uop][imm_u][10]_i_4_n_0           |    258 | LUT6        |          -3.507 |           1.915 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[0][prs1][3]                      |    256 | LUT6        |          -3.670 |           1.449 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[0][prs2][3]                      |    256 | LUT6        |          -3.909 |           1.126 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prs1][3]                      |    256 | LUT5        |          -3.761 |           1.499 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prs2][3]                      |    256 | LUT5        |          -3.914 |           1.173 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/issue_uop_o[0][prs1][3]                      |    256 | LUT2        |          -3.474 |           1.369 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/issue_uop_o[0][prs2][3]                      |    256 | LUT2        |          -3.607 |           1.390 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mul_iq/u_queue/issue_uop_o[0][prs1][3]                      |    256 | LUT2        |          -0.667 |           2.924 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mul_iq/u_queue/issue_uop_o[0][prs2][3]                      |    256 | LUT2        |          -1.399 |           2.202 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[0][uop][imm_j][0]_i_5_n_0            |    255 | LUT4        |          -2.061 |           1.735 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[1][prs2][5]_i_3_n_0                  |    252 | LUT6        |          -1.555 |           0.908 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_valid[2]                                             |    247 | FDCE        |          -3.615 |           4.850 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rob/alloc_idx_o[0][0]                                       |    246 | FDCE        |           3.547 |           4.736 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/issue_uop_o[1][prd][2]                       |    237 | LUT5        |          -2.457 |           4.097 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[6][uop][imm_j][12]_i_2_n_0           |    226 | LUT2        |          -3.180 |           1.086 |
+| student_top_inst/Core_cpu/u_core/u_fetch_buffer/u_fifo/pop_data_o[1][64]                                 |    221 | MUXF7       |          -1.780 |           5.748 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_local_idx[3]                                               |    220 | LUT2        |          -4.153 |           1.071 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[3][0]                               |    218 | FDRE        |          -1.495 |           5.315 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[3][1]                               |    218 | FDRE        |          -1.531 |           5.770 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_rob_idx_reg_n_0_[3][2]                               |    218 | FDRE        |          -1.278 |           5.162 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rob/alloc_idx_o[1][3]                                       |    217 | LUT5        |          -2.903 |           2.024 |
+| student_top_inst/Core_cpu/u_core/u_backend/complete_valid[3]                                             |    213 | FDCE        |          -3.529 |           5.965 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[5][uop][imm_j][18]_i_2_n_0           |    213 | LUT4        |          -2.093 |           1.572 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[1][uop][imm_j][27]_i_9_n_0           |    211 | LUT4        |          -2.216 |           1.712 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[0][uop][imm_u][8]_i_4_n_0            |    210 | LUT6        |          -1.640 |           2.178 |
+| student_top_inst/Core_cpu/u_core/u_pc_gen/pc_o[3]_repN_2                                                 |    210 | FDCE        |          -1.431 |           1.222 |
+| student_top_inst/Core_cpu/u_core/u_fetch_buffer/u_fifo/pop_data_o[1][41]                                 |    208 | MUXF7       |          -0.484 |           5.556 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rename/in_ready_o[0]                                        |    206 | LUT5        |          -3.791 |           0.925 |
+| student_top_inst/Core_cpu/u_core/u_fetch_buffer/u_fifo/pop_data_o[1][40]                                 |    205 | MUXF7       |          -0.573 |           5.374 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[1][uop][imm_j][29]_i_6_n_0           |    203 | LUT4        |          -2.952 |           1.881 |
+| student_top_inst/Core_cpu/cache_cpu_req_addr[7]                                                          |    197 | LUT6        |          -4.124 |           0.984 |
+| student_top_inst/Core_cpu/u_core/u_bpu/update_local_idx[4]                                               |    196 | LUT6        |          -3.705 |           0.998 |
+| student_top_inst/Core_cpu/u_core/u_fetch_buffer/u_fifo/pop_data_o[1][43]                                 |    196 | MUXF7       |          -0.694 |           4.476 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[0][uop][imm_j][19]_i_20_n_0          |    193 | LUT6        |          -1.585 |           2.010 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[6][uop][imm_j][19]_i_9_n_0           |    191 | LUT4        |          -3.212 |           2.341 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[1][uop][imm_j][29]_i_5_n_0           |    189 | LUT4        |          -2.747 |           2.344 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rob/entry_q[16][csr_addr][5]_i_3_n_0                        |    189 | LUT3        |           1.270 |           3.594 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[4][uop][imm_j][0]_i_8_n_0            |    187 | LUT3        |          -3.180 |           1.256 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rob/entry_q[15][csr_wdata][31]_i_4_n_0                      |    187 | LUT3        |           0.878 |           3.330 |
+| student_top_inst/Core_cpu/u_dcache/valid_q[1][127]_i_4_n_0                                               |    186 | LUT4        |           3.742 |           2.201 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[2][uop][imm_j][0]_i_5_n_0            |    185 | LUT4        |          -2.165 |           1.318 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[1][uop][imm_j][27]_i_8_n_0           |    183 | LUT4        |          -2.378 |           1.195 |
+| student_top_inst/Core_cpu/u_core/u_fetch_buffer/u_fifo/pop_data_o[1][42]                                 |    183 | MUXF7       |          -0.372 |           5.449 |
+| student_top_inst/Core_cpu/u_dcache/FSM_sequential_state_q_reg[1]_rep__1_n_0                              |    182 | FDCE        |           1.788 |           2.322 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_execute/prf_we[2]                                           |    180 | LUT6        |          -3.954 |           1.309 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/p_0_in736_out                                |    180 | LUT6        |          -2.859 |           2.749 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_execute/u_prf/regs_q[63][31]_i_20_n_0                       |    179 | LUT3        |          -3.972 |           0.725 |
+| student_top_inst/Core_cpu/cache_cpu_req_addr[8]                                                          |    178 | LUT6        |          -3.999 |           1.109 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[0][uop][imm_j][19]_i_22_n_0          |    177 | LUT2        |          -2.159 |           1.903 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/next_valid1741_out                           |    177 | LUT5        |          -2.214 |           0.910 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[2][uop][exception_cause][31]_i_4_n_0 |    176 | LUT4        |          -1.594 |           2.213 |
+| student_top_inst/Core_cpu/u_core/u_pc_gen/pc_o[3]_repN                                                   |    175 | FDCE        |          -2.372 |           0.430 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[3][uop][imm_u][10]_i_5_n_0           |    174 | LUT4        |          -2.898 |           1.856 |
+| student_top_inst/Core_cpu/u_dcache/valid_q[1][87]_i_4_n_0                                                |    174 | LUT3        |           4.689 |           2.146 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rob/entry_q[15][csr_addr][8]_i_2_n_0                        |    173 | LUT3        |          -0.404 |           2.375 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rob/head_q_reg[0]_rep__5_n_0                                |    172 | FDCE        |          -4.275 |           1.804 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[1][uop][imm_u][10]_i_3_n_0           |    171 | LUT4        |          -1.909 |           2.259 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_execute/mem_req_uop_q_reg[uop][alu_op][0]                   |    168 | FDRE        |           2.102 |           2.253 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[4][uop][imm_j][0]_i_12_n_0           |    168 | LUT5        |          -2.779 |           1.976 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_rob/retire_entry_o[0][exception]                            |    168 | LUT6        |          -3.530 |           1.171 |
+| student_top_inst/Core_cpu/u_core/u_pc_gen/pc_o[3]_repN_3                                                 |    168 | FDCE        |          -1.700 |           1.202 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[5][uop][imm_j][31]_i_11_n_0          |    167 | LUT6        |          -2.980 |           1.985 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[2][uop][imm_j][12]_i_3_n_0           |    166 | LUT4        |          -2.035 |           1.533 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[2][prs2][5]_i_3_n_0                  |    166 | LUT6        |          -4.238 |           1.099 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_mem_iq/u_queue/entry_q[2][prs2][5]_i_6_n_0                  |    166 | LUT6        |          -1.756 |           0.976 |
+| student_top_inst/Core_cpu/u_core/u_backend/u_int_iq/u_queue/entry_q[0][uop][imm_j][19]_i_21_n_0          |    165 | LUT4        |          -2.792 |           1.546 |
++----------------------------------------------------------------------------------------------------------+--------+-------------+-----------------+-----------------+
+
+
