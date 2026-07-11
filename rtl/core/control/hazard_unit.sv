@@ -24,9 +24,6 @@ module hazard_unit(
     input  logic  [`RF_BUS]                 i_rd_addr_ex2,
     input  logic                            i_mem_read_ex2,
     input  logic                            i_reg_write_ex2,
-    input  logic  [`RF_BUS]                 i_rd_addr_m,
-    input  logic                            i_mem_read_m,
-    input  logic                            i_reg_write_m,
 
     input  logic                            i_predict_taken,
     input  logic  [`PC_BUS]                 i_predict_target,
@@ -64,9 +61,7 @@ module hazard_unit(
         (i_mem_read_e && i_reg_write_e && (i_rd_addr_e != '0) &&
          ((i_rd_addr_e == i_rs1_addr_d) || (i_rd_addr_e == i_rs2_addr_d))) ||
         (i_mem_read_ex2 && i_reg_write_ex2 && (i_rd_addr_ex2 != '0) &&
-         ((i_rd_addr_ex2 == i_rs1_addr_d) || (i_rd_addr_ex2 == i_rs2_addr_d))) ||
-        (i_mem_read_m && i_reg_write_m && (i_rd_addr_m != '0) &&
-         ((i_rd_addr_m == i_rs1_addr_d) || (i_rd_addr_m == i_rs2_addr_d)));
+         ((i_rd_addr_ex2 == i_rs1_addr_d) || (i_rd_addr_ex2 == i_rs2_addr_d)));
     // Observing both ID/EX and EX1 makes the interlock self-sustaining for the
     // two cycles in which a producer cannot yet be selected from M1/M2.  Do not
     // add a registered hold here: that would release the consumer only after

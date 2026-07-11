@@ -133,7 +133,6 @@ module core(
     logic             load_unsigned_m2;
     logic [`DATA_BUS] mem_data_m2;
     logic [`DATA_BUS] wb_data_m2;
-    logic [`DATA_BUS] m1_m2_data;
 
     logic [`RF_BUS]   rd_addr_w;
     logic             reg_write_w;
@@ -214,9 +213,6 @@ module core(
         .i_rd_addr_ex2   (rd_addr_ex2),
         .i_mem_read_ex2  (mem_read_ex2),
         .i_reg_write_ex2 (reg_write_ex2),
-        .i_rd_addr_m     (rd_addr_m),
-        .i_mem_read_m    (mem_read_m),
-        .i_reg_write_m   (reg_write_m),
         .i_predict_taken (predict_taken_f),
         .i_predict_target(predict_target_f),
         .i_error         (branch_error_m),
@@ -364,7 +360,7 @@ module core(
         .i_pc            (pc_e),
         .i_fwd_e_m       (alu_res_m),
         .i_fwd_m_w       (wb_data_w),
-        .i_fwd_m_m       (m1_m2_data),
+        .i_fwd_m_m       (wb_data_m2),
         .i_fwd_rd_m      (rd_addr_m),
         .i_fwd_reg_write_m(reg_write_m),
         .i_fwd_rd_m2     (rd_addr_m2),
@@ -487,8 +483,6 @@ module core(
         .i_wb_src        (wb_src_m2),
         .o_wb_data       (wb_data_m2)
     );
-
-    assign m1_m2_data = alu_res_m2;
 
     reg_m2_wb u_reg_m2_wb (
         .i_clk           (clk),

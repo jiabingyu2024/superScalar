@@ -10,7 +10,7 @@
 //   is the architectural reset state and masks uninitialized data.
 //------------------------------------------------------------------------------
 module DCacheDataByteBank #(
-    parameter int unsigned LINE_COUNT = 256,
+    parameter int unsigned LINE_COUNT = 1024,
     parameter int unsigned INDEX_W    = $clog2(LINE_COUNT)
 ) (
     input  logic               clk,
@@ -49,7 +49,7 @@ endmodule
 //   changing hit latency or the one-cycle external-memory response contract.
 //------------------------------------------------------------------------------
 module DCache #(
-    parameter int unsigned LINE_COUNT = 256,
+    parameter int unsigned LINE_COUNT = 1024,
     parameter logic [31:0] CACHE_ADDR_START = 32'h8010_0000,
     parameter logic [31:0] CACHE_ADDR_END   = 32'h8014_0000
 ) (
