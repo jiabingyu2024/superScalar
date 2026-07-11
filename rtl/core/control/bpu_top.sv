@@ -37,39 +37,45 @@ module bpu_top (
     localparam int BPU_IDX_W   = 7;
     localparam int BPU_TAG_W   = `PC_WID - BPU_IDX_W - 2;
 
-    logic [BPU_TAG_W-1:0] tag_mem     [0:BPU_ENTRIES-1];
-    logic [`PC_BUS]       target_mem  [0:BPU_ENTRIES-1];
-    logic [1:0]           counter_mem [0:BPU_ENTRIES-1];
-    logic                 valid_mem   [0:BPU_ENTRIES-1];
+    // The payload arrays deliberately have no reset.  Their contents are
+    // architecturally invisible while the corresponding valid bit is clear,
+    // which avoids thousands of asynchronously-reset flops and allows Vivado
+    // to infer distributed RAM for the predictor tables.
+    (* ram_style = "distributed" *) logic [BPU_TAG_W-1:0] tag_mem     [0:BPU_ENTRIES-1];
+    (* ram_style = "distributed" *) logic [`PC_BUS]       target_mem  [0:BPU_ENTRIES-1];
+    (* ram_style = "distributed" *) logic [1:0]           counter_mem [0:BPU_ENTRIES-1];
+    logic [BPU_ENTRIES-1:0] valid_mem;
 
     logic [BPU_IDX_W-1:0] rd_idx;
     logic [BPU_TAG_W-1:0] rd_tag;
     logic [BPU_IDX_W-1:0] wr_idx;
     logic [BPU_TAG_W-1:0] wr_tag;
-    integer idx;
-
     assign rd_idx = i_pc_cur[BPU_IDX_W+1:2];
     assign rd_tag = i_pc_cur[`PC_WID-1:BPU_IDX_W+2];
     assign wr_idx = i_update_pc[BPU_IDX_W+1:2];
     assign wr_tag = i_update_pc[`PC_WID-1:BPU_IDX_W+2];
 
-    // Reset array in blocking style: Verilator does not support non-blocking
-    // assignments to arrays inside for loops.
-    integer i;
+    // Only validity is reset.  Deassertion remains aligned to i_clk by the
+    // student_top reset synchronizer, while uninitialized payload bits remain
+    // masked until their entry receives its first update.
     always_ff @(posedge i_clk or negedge i_rst_n) begin
         if (!i_rst_n) begin
-            for (i = 0; i < BPU_ENTRIES; i = i + 1) begin
-                tag_mem[i]     = '0;
-                target_mem[i]  = '0;
-                counter_mem[i] = 2'b01;
-                valid_mem[i]   = 1'b0;
-            end
+            valid_mem <= '0;
         end else if (i_update_en) begin
-            valid_mem[wr_idx]  <= 1'b1;
+            valid_mem[wr_idx] <= 1'b1;
+        end
+    end
+
+    always_ff @(posedge i_clk) begin
+        if (i_update_en) begin
             tag_mem[wr_idx]    <= wr_tag;
             target_mem[wr_idx] <= i_update_target;
 
-            if (i_update_taken) begin
+            // Match the old reset-to-01 behavior on the first update:
+            // 01 + taken -> 10, 01 + not-taken -> 00.
+            if (!valid_mem[wr_idx]) begin
+                counter_mem[wr_idx] <= i_update_taken ? 2'b10 : 2'b00;
+            end else if (i_update_taken) begin
                 if (counter_mem[wr_idx] != 2'b11) begin
                     counter_mem[wr_idx] <= counter_mem[wr_idx] + 2'b01;
                 end

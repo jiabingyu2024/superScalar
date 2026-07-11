@@ -44,6 +44,9 @@ endmodule
 // - Miss refill uses ordinary 32-bit reads and is fully blocking: fill the whole
 //   line first, then replay the original load to the core. This keeps the M1/M2
 //   timing identical for hit and miss paths on the current five-stage pipeline.
+// - The first cacheable miss request is issued from DC_MISS_REQ one cycle after
+//   lookup.  This cuts the tag-compare-to-DRAM-enable combinational path without
+//   changing hit latency or the one-cycle external-memory response contract.
 //------------------------------------------------------------------------------
 module DCache #(
     parameter int unsigned LINE_COUNT = 256,
@@ -215,12 +218,15 @@ module DCache #(
                         cpu_req_ready    = mem_req_ready;
                     end else if (req_cacheable_c && req_hit_c) begin
                         cpu_req_ready    = 1'b1;
+                    end else if (req_cacheable_c) begin
+                        // Cacheable misses are captured on this edge and issued
+                        // from DC_MISS_REQ on the following cycle.
+                        cpu_req_ready    = 1'b0;
                     end else begin
                         mem_req_valid    = 1'b1;
                         mem_req_write    = 1'b0;
-                        mem_req_addr     = req_cacheable_c ? {cpu_req_addr[31:4], 4'b0000}
-                                                           : cpu_req_addr;
-                        mem_req_uncached = !req_cacheable_c;
+                        mem_req_addr     = cpu_req_addr;
+                        mem_req_uncached = 1'b1;
                         cpu_req_ready    = 1'b0;
                     end
                 end
@@ -284,18 +290,16 @@ module DCache #(
                             perf_dcache_access <= perf_dcache_access + 64'd1;
                             resp_rdata_q <= cache_word_c >> {cpu_req_addr[1:0], 3'b000};
                             resp_valid_q <= 1'b1;
+                        end else if (req_cacheable_c) begin
+                            perf_dcache_access <= perf_dcache_access + 64'd1;
+                            perf_dcache_miss <= perf_dcache_miss + 64'd1;
+                            miss_addr_q <= cpu_req_addr;
+                            miss_target_word_q <= req_word_c;
+                            fill_word_q <= 2'd0;
+                            fill_count_q <= 3'd0;
+                            state_q <= DC_MISS_REQ;
                         end else if (mem_req_ready) begin
-                            if (req_cacheable_c) begin
-                                perf_dcache_access <= perf_dcache_access + 64'd1;
-                                perf_dcache_miss <= perf_dcache_miss + 64'd1;
-                                miss_addr_q <= cpu_req_addr;
-                                miss_target_word_q <= req_word_c;
-                                fill_word_q <= 2'd0;
-                                fill_count_q <= 3'd0;
-                                state_q <= DC_MISS_WAIT;
-                            end else begin
-                                state_q <= DC_UNCACHED_WAIT;
-                            end
+                            state_q <= DC_UNCACHED_WAIT;
                         end
                     end
                 end
