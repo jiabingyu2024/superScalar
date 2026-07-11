@@ -5,7 +5,6 @@ interface DramAccessIF(input logic clk, rst);
     AddrPath exReadAddr;
     DataPath exReadData;
     logic    exReadReady;
-    logic    exReadAccept;
 
     logic    storeWriteEn;
     AddrPath storeWriteAddr;
@@ -52,7 +51,6 @@ interface DramAccessIF(input logic clk, rst);
 
         exReadData = exReadData_q;
         exReadReady = exReadReady_q;
-        exReadAccept = readGrant;
         storeWriteReady = storeWriteReady_q;
     end
 
@@ -102,7 +100,6 @@ interface DramAccessIF(input logic clk, rst);
     modport ExecuteMemStage(
         input  exReadData,
         input  exReadReady,
-        input  exReadAccept,
         output exReadEn,
         output exReadAddr
     );

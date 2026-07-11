@@ -12,7 +12,9 @@ module CoreMemIssueQueue (
     input  PhyRegNumPath [ISSUE_WIDTH-1:0] wakeup_phy_i,
     input  logic [MEM_ISSUE_WIDTH-1:0] issue_ready_i,
     output logic [MEM_ISSUE_WIDTH-1:0] issue_valid_o,
-    output CoreRenamedUop [MEM_ISSUE_WIDTH-1:0] issue_uop_o
+    output CoreRenamedUop [MEM_ISSUE_WIDTH-1:0] issue_uop_o,
+    output logic head_not_ready_o,
+    output logic younger_ready_behind_head_o
 );
     CoreCompressedQueue #(
         .DEPTH(MEM_IQ_DEPTH),
@@ -31,6 +33,8 @@ module CoreMemIssueQueue (
         .issue_valid_o(issue_valid_o),
         .issue_uop_o(issue_uop_o),
         .empty_o(),
-        .full_o()
+        .full_o(),
+        .head_not_ready_o(head_not_ready_o),
+        .younger_ready_behind_head_o(younger_ready_behind_head_o)
     );
 endmodule : CoreMemIssueQueue

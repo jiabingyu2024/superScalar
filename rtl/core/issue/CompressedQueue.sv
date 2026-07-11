@@ -24,7 +24,9 @@ module CoreCompressedQueue #(
     output CoreRenamedUop [ISSUE_PORTS-1:0] issue_uop_o,
 
     output logic empty_o,
-    output logic full_o
+    output logic full_o,
+    output logic head_not_ready_o,
+    output logic younger_ready_behind_head_o
 );
     localparam logic [COUNT_WIDTH-1:0] DEPTH_COUNT = COUNT_WIDTH'(DEPTH);
 
@@ -153,6 +155,17 @@ module CoreCompressedQueue #(
 
     assign empty_o = (count_q == '0);
     assign full_o = (count_q == DEPTH_COUNT);
+
+    always_comb begin
+        head_not_ready_o = valid_q[0] &&
+                           !(ready_entry[0].src1_ready && ready_entry[0].src2_ready);
+        younger_ready_behind_head_o = 1'b0;
+        for (int e = 1; e < DEPTH; e = e + 1) begin
+            if (valid_q[e] && ready_entry[e].src1_ready && ready_entry[e].src2_ready) begin
+                younger_ready_behind_head_o = 1'b1;
+            end
+        end
+    end
 
     // valid_q/count_q gate every read of entry_q. A push overwrites the full
     // uop, so clearing the payload array is unnecessary reset fanout on FPGA.

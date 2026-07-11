@@ -39,6 +39,16 @@ CorePerfSample capture_mycpu_perf(const VmyCPU& top) {
     sample.stall_mem = top.dbg_perf_stall_mem;
     sample.stall_muldiv = top.dbg_perf_stall_muldiv;
     sample.stall_load_use = top.dbg_perf_stall_load_use;
+    sample.mem_req_valid_cycles = top.dbg_perf_mem_req_valid_cycles;
+    sample.mem_partial_alias_cycles = top.dbg_perf_mem_partial_alias_cycles;
+    sample.mem_no_alias_cycles = top.dbg_perf_mem_no_alias_cycles;
+    sample.mem_forward_cycles = top.dbg_perf_mem_forward_cycles;
+    sample.mem_iq_head_not_ready_cycles = top.dbg_perf_mem_iq_head_not_ready_cycles;
+    sample.mem_iq_younger_ready_cycles = top.dbg_perf_mem_iq_younger_ready_cycles;
+    sample.mul_op_count = top.dbg_perf_mul_op_count;
+    sample.div_op_count = top.dbg_perf_div_op_count;
+    sample.rem_op_count = top.dbg_perf_rem_op_count;
+    sample.muldiv_busy_cycles = top.dbg_perf_muldiv_busy_cycles;
     return sample;
 }
 

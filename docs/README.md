@@ -68,6 +68,8 @@
 | `archive/2026-07-10/054_vivado_implfix_phase1_4_execution.md` | 执行计划 Phase 1-4：修复 reset/clear 结构与时钟/CDC 约束，整理 GUI Tcl Console 流程并完成分层 Verilator 回归。 |
 | `archive/2026-07-10/055_fpga_reset_fanout_cleanup.md` | 删除额外 Vivado 启动 Tcl，整理 GUI 文档，并清理 valid/count 已门控 payload 的大范围 reset fanout。 |
 | `archive/2026-07-10/056_dcache_distributed_ram_qor.md` | 将 DCache data/tag 重构为每 way 的 distributed RAM 模板，保持 hit latency 并完成分层回归。 |
+| `archive/2026-07-10/060_nopcore_lsu_muldiv_ipc_timing_optimization.md` | 按 NOP-Core stage contract 落地 LSU request register、no-alias load 放行和 MUL II=1，记录 IPC、回归及 Vivado 待验收项。 |
+| `archive/2026-07-11/061_ipc_fmax_joint_optimization_analysis.md` | 整合 NOP-Core、IPC 与 FPGA 时序计划，以 500k 快速窗口重建基线并给出 IPC × routed Fmax 后续路线。 |
 
 ## 后续维护规则
 

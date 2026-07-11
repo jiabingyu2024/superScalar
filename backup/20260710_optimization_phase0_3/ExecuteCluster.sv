@@ -45,24 +45,13 @@ module CoreExecuteCluster (
     output logic load_query_valid_o,
     output AddrPath load_query_addr_o,
     output logic [3:0] load_query_mask_o,
-    input  logic load_forward_hit_i,
     input  logic load_forward_full_i,
     input  DataPath load_forward_data_i,
-
-    output logic perf_load_pending_o,
-    output logic perf_mem_req_valid_o,
-    output logic perf_mem_req_partial_alias_o,
-    output logic perf_mem_req_no_alias_o,
-    output logic perf_mem_req_forward_o,
-    output logic perf_muldiv_busy_o,
 
     DramAccessIF.ExecuteMemStage dmem
 );
     localparam int READ_PORTS = ISSUE_WIDTH * 2;
-    localparam int MEM_SLOT = INT_ISSUE_WIDTH;
     localparam int MULDIV_SLOT = INT_ISSUE_WIDTH + MEM_ISSUE_WIDTH;
-    localparam AddrPath CACHE_ADDR_START = 32'h8010_0000;
-    localparam AddrPath CACHE_ADDR_END = 32'h8014_0000;
 
     CoreRenamedUop issue_uop [ISSUE_WIDTH-1:0];
     logic [ISSUE_WIDTH-1:0] issue_valid;
@@ -83,19 +72,9 @@ module CoreExecuteCluster (
     DataPath [ISSUE_WIDTH-1:0] prf_wdata;
     PhyRegNumPath [READ_PORTS-1:0] prf_raddr;
     DataPath [READ_PORTS-1:0] prf_rdata;
-    logic mem_req_valid_q;
-    CoreRenamedUop mem_req_uop_q;
-    AddrPath mem_req_addr_q;
-    DataPath mem_req_store_data_q;
-    logic [3:0] mem_req_store_mask_q;
-    logic mem_issue_fire;
-    logic mem_req_complete;
-    logic mem_req_consume;
-    logic mem_req_load_send;
-    logic mem_req_cacheable;
-    logic mem_req_misaligned;
     logic mem_load_pending_q;
     CoreRenamedUop mem_load_uop_q;
+    AddrPath mem_load_addr_q;
     logic store_drain_pending_q;
     logic muldiv_ready;
     logic muldiv_start;
@@ -256,36 +235,8 @@ module CoreExecuteCluster (
         end
     endfunction
 
-    assign mem_req_cacheable = (mem_req_addr_q >= CACHE_ADDR_START) &&
-                               (mem_req_addr_q < CACHE_ADDR_END);
-    assign mem_req_misaligned = mem_misaligned(mem_req_uop_q.uop, mem_req_addr_q);
-    assign mem_issue_fire = mem_issue_valid_i[0] && mem_issue_ready_o[0];
-
-    // The registered request owns its payload until the downstream side
-    // accepts it.  An uncached/device load remains ordered behind all stores;
-    // only a cacheable no-alias load may bypass a non-empty StoreBuffer.
-    always_comb begin
-        mem_req_load_send = !clear_i && mem_req_valid_q &&
-                            !mem_load_pending_q &&
-                            mem_req_uop_q.uop.is_load &&
-                            !mem_req_misaligned &&
-                            !load_forward_hit_i &&
-                            (mem_req_cacheable ||
-                             (store_buffer_empty_i && !store_drain_pending_q));
-
-        mem_req_complete = !clear_i && mem_req_valid_q &&
-                           !mem_load_pending_q &&
-                           (mem_req_misaligned ||
-                            (mem_req_uop_q.uop.is_store && store_push_ready_i) ||
-                            (mem_req_uop_q.uop.is_load && load_forward_full_i));
-
-        mem_req_consume = mem_req_complete ||
-                          (mem_req_load_send && dmem.exReadAccept);
-    end
-
-    // Arbitration is kept separate from result generation.  MEM ready only
-    // observes the request-register valid bit, cutting the former
-    // IQ->PRF->AGU->StoreBuffer/DCache ready path.
+    // Arbitration is kept separate from result generation.  The readiness
+    // outputs only depend on registered resource state and StoreBuffer state.
     always_comb begin
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
             issue_valid[i] = 1'b0;
@@ -293,14 +244,19 @@ module CoreExecuteCluster (
         end
 
         for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
-            int_issue_ready_o[i] = !clear_i;
+            int_issue_ready_o[i] = !clear_i && !mem_load_pending_q;
             issue_valid[i] = int_issue_valid_i[i] && int_issue_ready_o[i];
             issue_uop[i] = int_issue_uop_i[i];
         end
         for (int m = 0; m < MEM_ISSUE_WIDTH; m = m + 1) begin
-            issue_uop[INT_ISSUE_WIDTH + m] = mem_req_uop_q;
-            mem_issue_ready_o[m] = !clear_i && !mem_req_valid_q;
-            issue_valid[INT_ISSUE_WIDTH + m] = mem_req_complete;
+            issue_uop[INT_ISSUE_WIDTH + m] = mem_issue_uop_i[m];
+            mem_issue_ready_o[m] = !clear_i && !mem_load_pending_q &&
+                                   (!mem_issue_valid_i[m] ||
+                                    (mem_issue_uop_i[m].uop.is_store && store_push_ready_i) ||
+                                    (mem_issue_uop_i[m].uop.is_load &&
+                                     (load_forward_full_i ||
+                                      (store_buffer_empty_i && !store_drain_pending_q))));
+            issue_valid[INT_ISSUE_WIDTH + m] = mem_issue_valid_i[m] && mem_issue_ready_o[m];
         end
         for (int u = 0; u < MULDIV_ISSUE_WIDTH; u = u + 1) begin
             mul_issue_ready_o[u] = !clear_i && (u == 0) && muldiv_ready;
@@ -311,15 +267,8 @@ module CoreExecuteCluster (
 
     always_comb begin
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-            if (i == MEM_SLOT) begin
-                // The MEM PRF ports belong to the IQ->request-register input,
-                // not to the request currently being drained.
-                prf_raddr[2*i] = mem_issue_uop_i[0].prs1;
-                prf_raddr[2*i + 1] = mem_issue_uop_i[0].prs2;
-            end else begin
-                prf_raddr[2*i] = issue_uop[i].prs1;
-                prf_raddr[2*i + 1] = issue_uop[i].prs2;
-            end
+            prf_raddr[2*i] = issue_uop[i].prs1;
+            prf_raddr[2*i + 1] = issue_uop[i].prs2;
         end
     end
 
@@ -329,23 +278,25 @@ module CoreExecuteCluster (
         end
     end
 
-    // The StoreBuffer CAM is driven only by the registered address.  Its
-    // result can stall this local request slot, but cannot feed back into the
-    // MEM IQ select/pop path in the same cycle.
+    // Store forwarding must be visible before the load is admitted.  Generate
+    // the query from the selected load and its PRF read address, independently
+    // of the result/writeback combinational block below.
     always_comb begin
         load_query_valid_o = 1'b0;
         load_query_addr_o = '0;
         load_query_mask_o = '0;
-        if (mem_req_valid_q && mem_req_uop_q.uop.is_load) begin
-            load_query_addr_o = mem_req_addr_q;
-            load_query_mask_o = load_mask(mem_req_uop_q.uop, mem_req_addr_q);
-            load_query_valid_o = !mem_req_misaligned;
+        if (mem_issue_valid_i[0] && mem_issue_uop_i[0].uop.is_load) begin
+            load_query_addr_o = prf_rdata[2 * INT_ISSUE_WIDTH] +
+                                mem_issue_uop_i[0].uop.imm_i;
+            load_query_mask_o = load_mask(mem_issue_uop_i[0].uop, load_query_addr_o);
+            load_query_valid_o = !mem_misaligned(mem_issue_uop_i[0].uop,
+                                                  load_query_addr_o);
         end
     end
 
     always_comb begin
         dmem.exReadEn = 1'b0;
-        dmem.exReadAddr = mem_req_addr_q;
+        dmem.exReadAddr = mem_load_addr_q;
         store_push_valid_o = 1'b0;
         store_push_rob_idx_o = '0;
         store_push_addr_o = '0;
@@ -354,9 +305,6 @@ module CoreExecuteCluster (
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
             src0[i] = prf_rdata[2*i];
             src1[i] = prf_rdata[2*i + 1];
-            if ((i == MEM_SLOT) && mem_req_valid_q) begin
-                src1[i] = mem_req_store_data_q;
-            end
 
             branch_taken[i] = 1'b0;
             branch_target[i] = issue_uop[i].uop.pc + 32'd4;
@@ -395,13 +343,7 @@ module CoreExecuteCluster (
                     result[i] = 32'b0;
                 end
                 TUBE_TYPE_MEM: begin
-                    if ((i == MEM_SLOT) && mem_req_valid_q) begin
-                        result[i] = mem_req_addr_q;
-                    end else begin
-                        result[i] = src0[i] +
-                                    (issue_uop[i].uop.is_store ?
-                                     issue_uop[i].uop.imm_s : issue_uop[i].uop.imm_i);
-                    end
+                    result[i] = src0[i] + (issue_uop[i].uop.is_store ? issue_uop[i].uop.imm_s : issue_uop[i].uop.imm_i);
                 end
                 TUBE_TYPE_SYS: begin
                     result[i] = csr_read_data_i[i];
@@ -484,29 +426,33 @@ module CoreExecuteCluster (
             prf_wdata[i] = result[i];
         end
 
-        if (!clear_i && mem_req_valid_q && !mem_load_pending_q &&
-            mem_req_uop_q.uop.is_store && !mem_req_misaligned) begin
+        if (issue_valid[INT_ISSUE_WIDTH] &&
+            issue_uop[INT_ISSUE_WIDTH].uop.is_store &&
+            !mem_align_fault[INT_ISSUE_WIDTH]) begin
             store_push_valid_o = 1'b1;
-            store_push_rob_idx_o = mem_req_uop_q.rob_idx;
-            store_push_addr_o = mem_req_addr_q;
-            store_push_data_o = mem_req_store_data_q;
-            store_push_mask_o = mem_req_store_mask_q;
+            store_push_rob_idx_o = issue_uop[INT_ISSUE_WIDTH].rob_idx;
+            store_push_addr_o = result[INT_ISSUE_WIDTH];
+            store_push_data_o = src1[INT_ISSUE_WIDTH];
+            store_push_mask_o = store_mask(issue_uop[INT_ISSUE_WIDTH].uop);
         end
 
-        if (mem_req_complete && mem_req_uop_q.uop.is_load &&
-            !mem_req_misaligned && load_forward_full_i) begin
-                complete_result_o[INT_ISSUE_WIDTH] = load_extend(mem_req_uop_q.uop,
+        if (issue_valid[INT_ISSUE_WIDTH] &&
+            issue_uop[INT_ISSUE_WIDTH].uop.is_load &&
+            !mem_align_fault[INT_ISSUE_WIDTH]) begin
+            if (load_forward_full_i) begin
+                complete_result_o[INT_ISSUE_WIDTH] = load_extend(issue_uop[INT_ISSUE_WIDTH].uop,
                                                                  load_forward_data_i);
-                prf_we[INT_ISSUE_WIDTH] = mem_req_uop_q.alloc_prd &&
-                                          !mem_req_uop_q.uop.exception;
-                prf_waddr[INT_ISSUE_WIDTH] = mem_req_uop_q.prd;
-                prf_wdata[INT_ISSUE_WIDTH] = load_extend(mem_req_uop_q.uop,
+                prf_we[INT_ISSUE_WIDTH] = issue_uop[INT_ISSUE_WIDTH].alloc_prd &&
+                                          !issue_uop[INT_ISSUE_WIDTH].uop.exception;
+                prf_waddr[INT_ISSUE_WIDTH] = issue_uop[INT_ISSUE_WIDTH].prd;
+                prf_wdata[INT_ISSUE_WIDTH] = load_extend(issue_uop[INT_ISSUE_WIDTH].uop,
                                                          load_forward_data_i);
-        end
-
-        if (mem_req_load_send) begin
-            dmem.exReadEn = 1'b1;
-            dmem.exReadAddr = mem_req_addr_q;
+            end else begin
+                dmem.exReadEn = 1'b1;
+                dmem.exReadAddr = result[INT_ISSUE_WIDTH];
+                complete_valid_o[INT_ISSUE_WIDTH] = 1'b0;
+                prf_we[INT_ISSUE_WIDTH] = 1'b0;
+            end
         end
 
         if (!clear_i && mem_load_pending_q && dmem.exReadReady) begin
@@ -545,11 +491,7 @@ module CoreExecuteCluster (
         prf_wdata[MULDIV_SLOT] = muldiv_complete_result;
     end
 
-    // Present the queue candidate independently of ready.  MulDivPipe forms
-    // its own fire from valid_i && ready_o; feeding the already-gated fire
-    // back as valid would create a ready/valid combinational loop when ready
-    // distinguishes pipelined MUL from non-pipelined DIV/REM.
-    assign muldiv_start = mul_issue_valid_i[0];
+    assign muldiv_start = issue_valid[MULDIV_SLOT];
 
     CoreMulDivPipe u_muldiv (
         .clk(clk),
@@ -577,109 +519,37 @@ module CoreExecuteCluster (
         .wdata_i(prf_wdata)
     );
 
+    logic unused_seq;
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            mem_req_valid_q <= 1'b0;
+            unused_seq <= 1'b0;
             mem_load_pending_q <= 1'b0;
+            mem_load_uop_q <= '0;
+            mem_load_addr_q <= '0;
             store_drain_pending_q <= 1'b0;
         end else begin
+            unused_seq <= clear_i;
             if (clear_i) begin
-                mem_req_valid_q <= 1'b0;
                 mem_load_pending_q <= 1'b0;
+                mem_load_uop_q <= '0;
+                mem_load_addr_q <= '0;
                 store_drain_pending_q <= 1'b0;
-            end else begin
-                if (mem_req_consume) begin
-                    mem_req_valid_q <= 1'b0;
-                end
-                if (mem_issue_fire) begin
-                    mem_req_valid_q <= 1'b1;
-                end
+            end else if (mem_load_pending_q && dmem.exReadReady) begin
+                mem_load_pending_q <= 1'b0;
+            end else if (issue_valid[INT_ISSUE_WIDTH] &&
+                         issue_uop[INT_ISSUE_WIDTH].uop.is_load &&
+                         !mem_align_fault[INT_ISSUE_WIDTH] &&
+                         !load_forward_full_i) begin
+                mem_load_pending_q <= 1'b1;
+                mem_load_uop_q <= issue_uop[INT_ISSUE_WIDTH];
+                mem_load_addr_q <= result[INT_ISSUE_WIDTH];
+            end
 
-                if (mem_load_pending_q && dmem.exReadReady) begin
-                    mem_load_pending_q <= 1'b0;
-                end else if (mem_req_load_send && dmem.exReadAccept) begin
-                    mem_load_pending_q <= 1'b1;
-                end
-
-                if (store_push_valid_o && store_push_ready_i) begin
-                    store_drain_pending_q <= 1'b1;
-                end else if (store_drain_pending_q && store_buffer_empty_i) begin
-                    store_drain_pending_q <= 1'b0;
-                end
+            if (store_push_valid_o && store_push_ready_i) begin
+                store_drain_pending_q <= 1'b1;
+            end else if (store_drain_pending_q && store_buffer_empty_i) begin
+                store_drain_pending_q <= 1'b0;
             end
         end
     end
-
-    // Request/load payload is owned by the valid/pending bits above and does
-    // not need reset.  Keeping it in a reset-free process avoids adding the
-    // wide uop/address/data bundle to the global asynchronous reset tree.
-    always_ff @(posedge clk) begin
-        if (!rst && !clear_i) begin
-            if (mem_issue_fire) begin
-                mem_req_uop_q <= mem_issue_uop_i[0];
-                mem_req_addr_q <= prf_rdata[2 * MEM_SLOT] +
-                                  (mem_issue_uop_i[0].uop.is_store ?
-                                   mem_issue_uop_i[0].uop.imm_s :
-                                   mem_issue_uop_i[0].uop.imm_i);
-                mem_req_store_data_q <= prf_rdata[2 * MEM_SLOT + 1];
-                mem_req_store_mask_q <= store_mask(mem_issue_uop_i[0].uop);
-            end
-            if (mem_req_load_send && dmem.exReadAccept) begin
-                mem_load_uop_q <= mem_req_uop_q;
-            end
-        end
-    end
-
-    assign perf_load_pending_o = mem_load_pending_q;
-    assign perf_mem_req_valid_o = mem_req_valid_q;
-    assign perf_mem_req_partial_alias_o = mem_req_valid_q &&
-                                          mem_req_uop_q.uop.is_load &&
-                                          load_forward_hit_i &&
-                                          !load_forward_full_i;
-    assign perf_mem_req_no_alias_o = mem_req_valid_q &&
-                                     mem_req_uop_q.uop.is_load &&
-                                     !load_forward_hit_i &&
-                                     !store_buffer_empty_i;
-    assign perf_mem_req_forward_o = mem_req_valid_q &&
-                                    mem_req_uop_q.uop.is_load &&
-                                    load_forward_full_i;
-    assign perf_muldiv_busy_o = !clear_i && !muldiv_ready;
-
-`ifdef VERILATOR_TB
-    logic mem_req_stalled_prev_q;
-    CoreRenamedUop mem_req_uop_prev_q;
-    AddrPath mem_req_addr_prev_q;
-    DataPath mem_req_store_data_prev_q;
-    logic [3:0] mem_req_store_mask_prev_q;
-
-    always_ff @(posedge clk) begin
-        if (rst || clear_i) begin
-            mem_req_stalled_prev_q <= 1'b0;
-        end else begin
-            if (mem_req_stalled_prev_q) begin
-                assert (mem_req_valid_q &&
-                        (mem_req_uop_q == mem_req_uop_prev_q) &&
-                        (mem_req_addr_q == mem_req_addr_prev_q) &&
-                        (mem_req_store_data_q == mem_req_store_data_prev_q) &&
-                        (mem_req_store_mask_q == mem_req_store_mask_prev_q))
-                    else $error("MEM request payload changed while stalled");
-            end
-            assert (!(dmem.exReadEn && load_forward_hit_i))
-                else $error("load bypassed an older same-word store");
-            for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-                for (int j = i + 1; j < ISSUE_WIDTH; j = j + 1) begin
-                    assert (!(prf_we[i] && prf_we[j] &&
-                              (prf_waddr[i] != '0) &&
-                              (prf_waddr[i] == prf_waddr[j])))
-                        else $error("multiple completions wrote the same PRF");
-                end
-            end
-            mem_req_stalled_prev_q <= mem_req_valid_q && !mem_req_consume;
-            mem_req_uop_prev_q <= mem_req_uop_q;
-            mem_req_addr_prev_q <= mem_req_addr_q;
-            mem_req_store_data_prev_q <= mem_req_store_data_q;
-            mem_req_store_mask_prev_q <= mem_req_store_mask_q;
-        end
-    end
-`endif
 endmodule : CoreExecuteCluster

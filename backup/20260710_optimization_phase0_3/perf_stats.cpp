@@ -127,16 +127,6 @@ void PerfStats::observe_core(uint64_t cycle, const CorePerfSample& sample) {
     int_issue_count = sample.int_issue_count;
     mem_issue_count = sample.mem_issue_count;
     mul_issue_count = sample.mul_issue_count;
-    mem_req_valid_cycles = sample.mem_req_valid_cycles;
-    mem_partial_alias_cycles = sample.mem_partial_alias_cycles;
-    mem_no_alias_cycles = sample.mem_no_alias_cycles;
-    mem_forward_cycles = sample.mem_forward_cycles;
-    mem_iq_head_not_ready_cycles = sample.mem_iq_head_not_ready_cycles;
-    mem_iq_younger_ready_cycles = sample.mem_iq_younger_ready_cycles;
-    mul_op_count = sample.mul_op_count;
-    div_op_count = sample.div_op_count;
-    rem_op_count = sample.rem_op_count;
-    muldiv_busy_cycles = sample.muldiv_busy_cycles;
 }
 
 void PerfStats::write_json_fields(std::ostream& out) const {
@@ -209,7 +199,7 @@ void PerfStats::write_json_fields(std::ostream& out) const {
         {"dcache_stall", "memory", dcache_stall_cycles,
          "The DCache is busy with lookup miss, refill, writeback, or an uncached access."},
         {"load_pending", "memory", mem_load_return_block_cycles,
-         "A load is outstanding; independent integer issue remains enabled."},
+         "A load is outstanding; this implementation also disables both integer issue lanes."},
         {"mem_issue_block", "memory", mem_load_access_block_cycles,
          "The head memory issue candidate cannot enter the LSU."},
         {"int_issue_blocked_by_load", "issue", store_commit_blocked_by_load_cycles,
@@ -326,26 +316,13 @@ void PerfStats::write_json_fields(std::ostream& out) const {
     out << "      \"load_pending_cycles\": " << mem_load_return_block_cycles << ",\n";
     out << "      \"mem_issue_block_cycles\": " << mem_load_access_block_cycles << ",\n";
     out << "      \"int_issue_blocked_by_load_cycles\": "
-        << store_commit_blocked_by_load_cycles << ",\n";
-    out << "      \"request_stage_valid_cycles\": " << mem_req_valid_cycles << ",\n";
-    out << "      \"partial_alias_block_cycles\": " << mem_partial_alias_cycles << ",\n";
-    out << "      \"store_buffer_nonempty_no_alias_cycles\": "
-        << mem_no_alias_cycles << ",\n";
-    out << "      \"full_forward_cycles\": " << mem_forward_cycles << ",\n";
-    out << "      \"mem_iq_head_not_ready_cycles\": "
-        << mem_iq_head_not_ready_cycles << ",\n";
-    out << "      \"younger_ready_behind_head_cycles\": "
-        << mem_iq_younger_ready_cycles << "\n";
+        << store_commit_blocked_by_load_cycles << "\n";
     out << "    },\n";
     out << "    \"throughput\": {\n";
     out << "      \"issue_mix\": {\n";
     out << "        \"int_uops\": " << int_issue_count << ",\n";
     out << "        \"mem_uops\": " << mem_issue_count << ",\n";
-    out << "        \"mul_uops\": " << mul_issue_count << ",\n";
-    out << "        \"mul_ops\": " << mul_op_count << ",\n";
-    out << "        \"div_ops\": " << div_op_count << ",\n";
-    out << "        \"rem_ops\": " << rem_op_count << ",\n";
-    out << "        \"muldiv_busy_cycles\": " << muldiv_busy_cycles << "\n";
+    out << "        \"mul_uops\": " << mul_issue_count << "\n";
     out << "      },\n";
     out << "      \"dispatch\": {\n";
     out << "        \"w0_cycles\": " << dispatch_width0_cycles << ",\n";

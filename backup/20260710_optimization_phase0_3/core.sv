@@ -70,16 +70,6 @@ module core(
     logic perf_load_pending;
     logic perf_mem_issue_block;
     logic perf_int_blocked_by_load;
-    logic perf_mem_req_valid;
-    logic perf_mem_partial_alias;
-    logic perf_mem_no_alias;
-    logic perf_mem_forward;
-    logic perf_mem_iq_head_not_ready;
-    logic perf_mem_iq_younger_ready;
-    logic perf_mul_op;
-    logic perf_div_op;
-    logic perf_rem_op;
-    logic perf_muldiv_busy;
 `endif
 
     logic [2:0] commit_inc;
@@ -231,17 +221,7 @@ module core(
         .perf_serial_block_o(perf_serial_block),
         .perf_load_pending_o(perf_load_pending),
         .perf_mem_issue_block_o(perf_mem_issue_block),
-        .perf_int_blocked_by_load_o(perf_int_blocked_by_load),
-        .perf_mem_req_valid_o(perf_mem_req_valid),
-        .perf_mem_partial_alias_o(perf_mem_partial_alias),
-        .perf_mem_no_alias_o(perf_mem_no_alias),
-        .perf_mem_forward_o(perf_mem_forward),
-        .perf_mem_iq_head_not_ready_o(perf_mem_iq_head_not_ready),
-        .perf_mem_iq_younger_ready_o(perf_mem_iq_younger_ready),
-        .perf_mul_op_o(perf_mul_op),
-        .perf_div_op_o(perf_div_op),
-        .perf_rem_op_o(perf_rem_op),
-        .perf_muldiv_busy_o(perf_muldiv_busy)
+        .perf_int_blocked_by_load_o(perf_int_blocked_by_load)
 `endif
     );
 
@@ -384,16 +364,6 @@ module core(
         perf.intIssueCount = '0;
         perf.memIssueCount = '0;
         perf.mulIssueCount = '0;
-        perf.memReqValidCycles = '0;
-        perf.memPartialAliasCycles = '0;
-        perf.memNoAliasCycles = '0;
-        perf.memForwardCycles = '0;
-        perf.memIqHeadNotReadyCycles = '0;
-        perf.memIqYoungerReadyCycles = '0;
-        perf.mulOpCount = '0;
-        perf.divOpCount = '0;
-        perf.remOpCount = '0;
-        perf.muldivBusyCycles = '0;
     end
 `endif
 
@@ -460,16 +430,6 @@ module core(
             perf.intIssueCount <= 64'b0;
             perf.memIssueCount <= 64'b0;
             perf.mulIssueCount <= 64'b0;
-            perf.memReqValidCycles <= 64'b0;
-            perf.memPartialAliasCycles <= 64'b0;
-            perf.memNoAliasCycles <= 64'b0;
-            perf.memForwardCycles <= 64'b0;
-            perf.memIqHeadNotReadyCycles <= 64'b0;
-            perf.memIqYoungerReadyCycles <= 64'b0;
-            perf.mulOpCount <= 64'b0;
-            perf.divOpCount <= 64'b0;
-            perf.remOpCount <= 64'b0;
-            perf.muldivBusyCycles <= 64'b0;
 `endif
         end else begin
 `ifdef VERILATOR_TB
@@ -555,23 +515,6 @@ module core(
             perf.intIssueCount <= perf.intIssueCount + 64'(perf_int_issue_count);
             perf.memIssueCount <= perf.memIssueCount + 64'(perf_mem_issue_count);
             perf.mulIssueCount <= perf.mulIssueCount + 64'(perf_mul_issue_count);
-            perf.memReqValidCycles <= perf.memReqValidCycles +
-                                      (perf_mem_req_valid ? 64'd1 : 64'd0);
-            perf.memPartialAliasCycles <= perf.memPartialAliasCycles +
-                                          (perf_mem_partial_alias ? 64'd1 : 64'd0);
-            perf.memNoAliasCycles <= perf.memNoAliasCycles +
-                                     (perf_mem_no_alias ? 64'd1 : 64'd0);
-            perf.memForwardCycles <= perf.memForwardCycles +
-                                     (perf_mem_forward ? 64'd1 : 64'd0);
-            perf.memIqHeadNotReadyCycles <= perf.memIqHeadNotReadyCycles +
-                                            (perf_mem_iq_head_not_ready ? 64'd1 : 64'd0);
-            perf.memIqYoungerReadyCycles <= perf.memIqYoungerReadyCycles +
-                                            (perf_mem_iq_younger_ready ? 64'd1 : 64'd0);
-            perf.mulOpCount <= perf.mulOpCount + (perf_mul_op ? 64'd1 : 64'd0);
-            perf.divOpCount <= perf.divOpCount + (perf_div_op ? 64'd1 : 64'd0);
-            perf.remOpCount <= perf.remOpCount + (perf_rem_op ? 64'd1 : 64'd0);
-            perf.muldivBusyCycles <= perf.muldivBusyCycles +
-                                     (perf_muldiv_busy ? 64'd1 : 64'd0);
             if (!(&fetch_push_ready)) begin
                 perf.frontendStallCycles <= perf.frontendStallCycles + 64'd1;
             end

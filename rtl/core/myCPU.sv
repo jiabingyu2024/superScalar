@@ -84,6 +84,16 @@ module myCPU (
     output logic [63:0] dbg_perf_int_issue_count,
     output logic [63:0] dbg_perf_mem_issue_count,
     output logic [63:0] dbg_perf_mul_issue_count,
+    output logic [63:0] dbg_perf_mem_req_valid_cycles,
+    output logic [63:0] dbg_perf_mem_partial_alias_cycles,
+    output logic [63:0] dbg_perf_mem_no_alias_cycles,
+    output logic [63:0] dbg_perf_mem_forward_cycles,
+    output logic [63:0] dbg_perf_mem_iq_head_not_ready_cycles,
+    output logic [63:0] dbg_perf_mem_iq_younger_ready_cycles,
+    output logic [63:0] dbg_perf_mul_op_count,
+    output logic [63:0] dbg_perf_div_op_count,
+    output logic [63:0] dbg_perf_rem_op_count,
+    output logic [63:0] dbg_perf_muldiv_busy_cycles,
     output logic [RETIRE_WIDTH-1:0]       dbg_commit_valid,
     output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_pc,
     output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_inst,
@@ -224,6 +234,16 @@ module myCPU (
     assign dbg_perf_int_issue_count = perfIF.intIssueCount;
     assign dbg_perf_mem_issue_count = perfIF.memIssueCount;
     assign dbg_perf_mul_issue_count = perfIF.mulIssueCount;
+    assign dbg_perf_mem_req_valid_cycles = perfIF.memReqValidCycles;
+    assign dbg_perf_mem_partial_alias_cycles = perfIF.memPartialAliasCycles;
+    assign dbg_perf_mem_no_alias_cycles = perfIF.memNoAliasCycles;
+    assign dbg_perf_mem_forward_cycles = perfIF.memForwardCycles;
+    assign dbg_perf_mem_iq_head_not_ready_cycles = perfIF.memIqHeadNotReadyCycles;
+    assign dbg_perf_mem_iq_younger_ready_cycles = perfIF.memIqYoungerReadyCycles;
+    assign dbg_perf_mul_op_count = perfIF.mulOpCount;
+    assign dbg_perf_div_op_count = perfIF.divOpCount;
+    assign dbg_perf_rem_op_count = perfIF.remOpCount;
+    assign dbg_perf_muldiv_busy_cycles = perfIF.muldivBusyCycles;
 `endif
 
     core u_core (

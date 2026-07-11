@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-07-11T00:14:58+08:00",
+  "trigger": "docs/archive/2026-07-10/058_fpga_timing_improvement_plan.md and 059_ipc_optimization_plan.md",
+  "files_modified": [
+    {"path": "rtl/core/DramAccessIF.sv", "lines_changed": "5-105", "change_type": "interface_change"},
+    {"path": "rtl/core/PerfIF.sv", "lines_changed": "50-120", "change_type": "simulation_observability"},
+    {"path": "rtl/core/backend/CoreBackend.sv", "lines_changed": "41-563", "change_type": "integration_change"},
+    {"path": "rtl/core/core.sv", "lines_changed": "51-575", "change_type": "simulation_observability"},
+    {"path": "rtl/core/execute/ExecuteCluster.sv", "lines_changed": "45-700", "change_type": "pipeline_and_logic_change"},
+    {"path": "rtl/core/execute/MulDivPipe.sv", "lines_changed": "20-285", "change_type": "pipeline_change"},
+    {"path": "rtl/core/issue/CompressedQueue.sv", "lines_changed": "24-169", "change_type": "simulation_observability"},
+    {"path": "rtl/core/issue/IntIssueQueue.sv", "lines_changed": "34-39", "change_type": "port_connection"},
+    {"path": "rtl/core/issue/MemIssueQueue.sv", "lines_changed": "14-42", "change_type": "simulation_observability"},
+    {"path": "rtl/core/issue/MulDivIssueQueue.sv", "lines_changed": "34-39", "change_type": "port_connection"},
+    {"path": "rtl/core/myCPU.sv", "lines_changed": "80-260", "change_type": "simulation_observability"},
+    {"path": "rtl/soc/student_top.sv", "lines_changed": "80-300", "change_type": "simulation_observability"},
+    {"path": "tb/verilator/dut_mycpu_io.cpp", "lines_changed": "28-52", "change_type": "simulation_observability"},
+    {"path": "tb/verilator/dut_student_top_io.cpp", "lines_changed": "24-94", "change_type": "simulation_observability"},
+    {"path": "tb/verilator/perf_stats.cpp", "lines_changed": "72-350", "change_type": "simulation_observability"},
+    {"path": "tb/verilator/perf_stats.h", "lines_changed": "73-85", "change_type": "simulation_observability"},
+    {"path": "tb/verilator/sim_common.h", "lines_changed": "130-143", "change_type": "simulation_observability"}
+  ],
+  "cascade_scope": "full_reverify",
+  "notes": "Registered LSU request stage, load/INT issue decoupling, cacheable no-alias load bypass, II=1 MUL metadata pipeline, simulation-only assertions/counters. RV32UI/UM/MI and src regressions passed; Vivado synthesis/implementation intentionally not run."
+}

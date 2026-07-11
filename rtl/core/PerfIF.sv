@@ -47,6 +47,16 @@ interface PerfIF(input logic clk, rst);
     logic [63:0] intIssueCount;
     logic [63:0] memIssueCount;
     logic [63:0] mulIssueCount;
+    logic [63:0] memReqValidCycles;
+    logic [63:0] memPartialAliasCycles;
+    logic [63:0] memNoAliasCycles;
+    logic [63:0] memForwardCycles;
+    logic [63:0] memIqHeadNotReadyCycles;
+    logic [63:0] memIqYoungerReadyCycles;
+    logic [63:0] mulOpCount;
+    logic [63:0] divOpCount;
+    logic [63:0] remOpCount;
+    logic [63:0] muldivBusyCycles;
 
     modport core(
         output cycle,
@@ -96,6 +106,16 @@ interface PerfIF(input logic clk, rst);
         output commitWidth2Cycles,
         output intIssueCount,
         output memIssueCount,
-        output mulIssueCount
+        output mulIssueCount,
+        output memReqValidCycles,
+        output memPartialAliasCycles,
+        output memNoAliasCycles,
+        output memForwardCycles,
+        output memIqHeadNotReadyCycles,
+        output memIqYoungerReadyCycles,
+        output mulOpCount,
+        output divOpCount,
+        output remOpCount,
+        output muldivBusyCycles
     );
 endinterface : PerfIF

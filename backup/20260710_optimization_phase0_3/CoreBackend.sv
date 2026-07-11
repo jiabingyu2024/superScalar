@@ -41,17 +41,7 @@ module CoreBackend (
     output logic perf_serial_block_o,
     output logic perf_load_pending_o,
     output logic perf_mem_issue_block_o,
-    output logic perf_int_blocked_by_load_o,
-    output logic perf_mem_req_valid_o,
-    output logic perf_mem_partial_alias_o,
-    output logic perf_mem_no_alias_o,
-    output logic perf_mem_forward_o,
-    output logic perf_mem_iq_head_not_ready_o,
-    output logic perf_mem_iq_younger_ready_o,
-    output logic perf_mul_op_o,
-    output logic perf_div_op_o,
-    output logic perf_rem_op_o,
-    output logic perf_muldiv_busy_o
+    output logic perf_int_blocked_by_load_o
 `endif
 );
     logic [RENAME_WIDTH-1:0] free_alloc_req;
@@ -139,16 +129,9 @@ module CoreBackend (
     AddrPath load_query_addr;
     logic [3:0] load_query_mask;
     logic load_forward_hit;
+    logic unused_load_forward_hit;
     logic load_forward_full;
     DataPath load_forward_data;
-    logic execute_load_pending;
-    logic execute_mem_req_valid;
-    logic execute_mem_partial_alias;
-    logic execute_mem_no_alias;
-    logic execute_mem_forward;
-    logic execute_muldiv_busy;
-    logic mem_iq_head_not_ready;
-    logic mem_iq_younger_ready;
     logic rob_empty;
     logic rob_full;
     logic free_list_empty;
@@ -327,9 +310,7 @@ module CoreBackend (
         .wakeup_phy_i(complete_prd),
         .issue_ready_i(mem_issue_ready),
         .issue_valid_o(mem_issue_valid),
-        .issue_uop_o(mem_issue_uop),
-        .head_not_ready_o(mem_iq_head_not_ready),
-        .younger_ready_behind_head_o(mem_iq_younger_ready)
+        .issue_uop_o(mem_issue_uop)
     );
 
     CoreMulDivIssueQueue u_mul_iq (
@@ -383,15 +364,8 @@ module CoreBackend (
         .load_query_valid_o(load_query_valid),
         .load_query_addr_o(load_query_addr),
         .load_query_mask_o(load_query_mask),
-        .load_forward_hit_i(load_forward_hit),
         .load_forward_full_i(load_forward_full),
         .load_forward_data_i(load_forward_data),
-        .perf_load_pending_o(execute_load_pending),
-        .perf_mem_req_valid_o(execute_mem_req_valid),
-        .perf_mem_req_partial_alias_o(execute_mem_partial_alias),
-        .perf_mem_req_no_alias_o(execute_mem_no_alias),
-        .perf_mem_req_forward_o(execute_mem_forward),
-        .perf_muldiv_busy_o(execute_muldiv_busy),
         .dmem(dmem)
     );
 
@@ -502,25 +476,9 @@ module CoreBackend (
                                     mem_issue_uop[0].uop.is_store &&
                                     !store_push_ready;
         perf_serial_block_o = serial_block;
-        perf_load_pending_o = execute_load_pending;
+        perf_load_pending_o = !clear_i && !recover_i && !int_issue_ready[0];
         perf_mem_issue_block_o = |(mem_issue_valid & ~mem_issue_ready);
-        perf_int_blocked_by_load_o = perf_load_pending_o &&
-                                     |(int_issue_valid & ~int_issue_ready);
-        perf_mem_req_valid_o = execute_mem_req_valid;
-        perf_mem_partial_alias_o = execute_mem_partial_alias;
-        perf_mem_no_alias_o = execute_mem_no_alias;
-        perf_mem_forward_o = execute_mem_forward;
-        perf_mem_iq_head_not_ready_o = mem_iq_head_not_ready;
-        perf_mem_iq_younger_ready_o = mem_iq_head_not_ready && mem_iq_younger_ready;
-        perf_mul_op_o = mul_issue_valid[0] && mul_issue_ready[0] &&
-                        (mul_issue_uop[0].uop.muldiv_op <= MULDIV_OP_MULHU);
-        perf_div_op_o = mul_issue_valid[0] && mul_issue_ready[0] &&
-                        ((mul_issue_uop[0].uop.muldiv_op == MULDIV_OP_DIV) ||
-                         (mul_issue_uop[0].uop.muldiv_op == MULDIV_OP_DIVU));
-        perf_rem_op_o = mul_issue_valid[0] && mul_issue_ready[0] &&
-                        ((mul_issue_uop[0].uop.muldiv_op == MULDIV_OP_REM) ||
-                         (mul_issue_uop[0].uop.muldiv_op == MULDIV_OP_REMU));
-        perf_muldiv_busy_o = execute_muldiv_busy;
+        perf_int_blocked_by_load_o = perf_load_pending_o && |int_issue_valid;
 
         for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
             if (rob_alloc_valid[i]) begin
@@ -563,4 +521,5 @@ module CoreBackend (
 
     assign commit_valid_o = commit_valid;
     assign commit_entry_o = retire_entry;
+    assign unused_load_forward_hit = load_forward_hit;
 endmodule : CoreBackend

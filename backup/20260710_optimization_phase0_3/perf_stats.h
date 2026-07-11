@@ -73,16 +73,6 @@ public:
     uint64_t int_issue_count = 0;
     uint64_t mem_issue_count = 0;
     uint64_t mul_issue_count = 0;
-    uint64_t mem_req_valid_cycles = 0;
-    uint64_t mem_partial_alias_cycles = 0;
-    uint64_t mem_no_alias_cycles = 0;
-    uint64_t mem_forward_cycles = 0;
-    uint64_t mem_iq_head_not_ready_cycles = 0;
-    uint64_t mem_iq_younger_ready_cycles = 0;
-    uint64_t mul_op_count = 0;
-    uint64_t div_op_count = 0;
-    uint64_t rem_op_count = 0;
-    uint64_t muldiv_busy_cycles = 0;
     uint64_t mmio_read_count = 0;
     uint64_t mmio_write_count = 0;
     uint64_t dram_read_count = 0;
