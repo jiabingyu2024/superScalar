@@ -95,6 +95,13 @@ module core(
 
     logic [`DATA_BUS] alu_res_e;
     logic [`DATA_BUS] a2_data_e;
+    logic [`RF_BUS]   rd_addr_ex2;
+    logic             mem_read_ex2;
+    logic             mem_write_ex2;
+    logic             wb_src_ex2;
+    logic             reg_write_ex2;
+    logic [3:0]       mem_mask_ex2;
+    logic             load_unsigned_ex2;
     logic             update_taken_e;
     logic             update_en_e;
     logic [`PC_BUS]   update_pc_e;
@@ -204,6 +211,12 @@ module core(
         .i_rd_addr_e     (rd_addr_e),
         .i_mem_read_e    (mem_read_e),
         .i_reg_write_e   (reg_write_e),
+        .i_rd_addr_ex2   (rd_addr_ex2),
+        .i_mem_read_ex2  (mem_read_ex2),
+        .i_reg_write_ex2 (reg_write_ex2),
+        .i_rd_addr_m     (rd_addr_m),
+        .i_mem_read_m    (mem_read_m),
+        .i_reg_write_m   (reg_write_m),
         .i_predict_taken (predict_taken_f),
         .i_predict_target(predict_target_f),
         .i_error         (branch_error_m),
@@ -345,11 +358,19 @@ module core(
         .i_stall_e       (stall_d_e),
         .i_rs1_data      (rs1_data_e),
         .i_rs2_data      (rs2_data_e),
+        .i_rs1_addr      (rs1_addr_e),
+        .i_rs2_addr      (rs2_addr_e),
         .i_imm           (imm_e),
         .i_pc            (pc_e),
         .i_fwd_e_m       (alu_res_m),
         .i_fwd_m_w       (wb_data_w),
         .i_fwd_m_m       (m1_m2_data),
+        .i_fwd_rd_m      (rd_addr_m),
+        .i_fwd_reg_write_m(reg_write_m),
+        .i_fwd_rd_m2     (rd_addr_m2),
+        .i_fwd_reg_write_m2(reg_write_m2),
+        .i_fwd_rd_w      (rd_addr_w),
+        .i_fwd_reg_write_w(reg_write_w),
         .i_pc_d_e        (pc_e),
         .i_pc_target     (pc_target_e),
         .i_pc_predict    (pc_predict_e),
@@ -363,8 +384,22 @@ module core(
         .i_is_m_ext      (is_m_ext_e),
         .i_m_op          (m_op_e),
         .i_csr_addr      (csr_addr_e),
+        .i_rd_addr       (rd_addr_e),
+        .i_mem_read      (mem_read_e),
+        .i_mem_write     (mem_write_e),
+        .i_wb_src        (wb_src_e),
+        .i_reg_write     (reg_write_e),
+        .i_mem_mask      (mem_mask_e),
+        .i_load_unsigned (load_unsigned_e),
         .o_alu_res       (alu_res_e),
         .o_a2_data       (a2_data_e),
+        .o_rd_addr       (rd_addr_ex2),
+        .o_mem_read      (mem_read_ex2),
+        .o_mem_write     (mem_write_ex2),
+        .o_wb_src        (wb_src_ex2),
+        .o_reg_write     (reg_write_ex2),
+        .o_mem_mask      (mem_mask_ex2),
+        .o_load_unsigned (load_unsigned_ex2),
         .o_update_taken  (update_taken_e),
         .o_update_en     (update_en_e),
         .o_update_pc     (update_pc_e),
@@ -379,15 +414,15 @@ module core(
         .i_rst_n         (rst_n),
         .i_flush         (flush_e_m),
         .i_stall         (stall_e_m),
-        .i_rd_addr       (rd_addr_e),
+        .i_rd_addr       (rd_addr_ex2),
         .i_alu_res       (alu_res_e),
         .i_a2_data       (a2_data_e),
-        .i_mem_read      (mem_read_e),
-        .i_mem_write     (mem_write_e),
-        .i_wb_src        (wb_src_e),
-        .i_reg_write     (reg_write_e),
-        .i_mem_mask      (mem_mask_e),
-        .i_load_unsigned (load_unsigned_e),
+        .i_mem_read      (mem_read_ex2),
+        .i_mem_write     (mem_write_ex2),
+        .i_wb_src        (wb_src_ex2),
+        .i_reg_write     (reg_write_ex2),
+        .i_mem_mask      (mem_mask_ex2),
+        .i_load_unsigned (load_unsigned_ex2),
         .i_update_taken  (update_taken_e),
         .i_update_en     (update_en_e),
         .i_update_pc     (update_pc_e),

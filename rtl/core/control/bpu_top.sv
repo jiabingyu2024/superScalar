@@ -58,7 +58,7 @@ module bpu_top (
     // Only validity is reset.  Deassertion remains aligned to i_clk by the
     // student_top reset synchronizer, while uninitialized payload bits remain
     // masked until their entry receives its first update.
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             valid_mem <= '0;
         end else if (i_update_en) begin

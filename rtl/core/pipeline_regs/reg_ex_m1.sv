@@ -46,7 +46,7 @@ module reg_ex_m1 (
 
 );
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             o_rd_addr       <= '0;
             o_alu_res       <= '0;

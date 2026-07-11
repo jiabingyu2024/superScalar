@@ -47,7 +47,7 @@ module m_unit (
     assign rs1_ip      = start_pulse ? i_rs1 : rs1_q;
     assign rs2_ip      = start_pulse ? i_rs2 : rs2_q;
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             cnt    <= '0;
             o_busy <= 1'b0;
@@ -137,7 +137,7 @@ module m_unit (
     logic        signed_overflow_q;
     logic [31:0] orig_rs1_q;        // 用于除零时 REM 返回被除数
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             sign_rs1_q       <= 1'b0;
             sign_rs2_q       <= 1'b0;

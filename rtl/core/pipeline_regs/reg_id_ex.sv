@@ -87,7 +87,7 @@ module reg_id_ex(
     output logic [11:0]             o_csr_addr
 );
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             o_rs1_data       <= '0;
             o_rs2_data       <= '0;

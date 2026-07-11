@@ -4,10 +4,12 @@
  * @module DRAM
  * @description 32-bit data RAM, depth 65536 words.
  *              Port names match the generated BRAM IP used by the FPGA build.
- *              Single-port RAM with byte write enable. Read cycles update
- *              douta from the requested word on the rising clock edge. Address
- *              alignment and byte lane shifting are handled by the SoC adapter,
- *              so `addra` is already a word address.
+ *              Single-port RAM with byte write enable and the BMG core output
+ *              register enabled. Vivado 2023.2 still reports
+ *              C_READ_LATENCY_A=1 for this configuration, so douta updates on
+ *              the first rising edge after the address/enable are presented.
+ *              Address alignment and byte lane shifting are handled by the SoC
+ *              adapter, so `addra` is already a word address.
  */
 module DRAM_0 #(
     parameter int unsigned ADDR_WIDTH = 16,

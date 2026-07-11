@@ -33,7 +33,7 @@ module reg_if_id(
     output logic [`PC_BUS]   o_pc_predict
 );
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             o_pc_f_d     <= '0;
             o_inst_f_d   <= '0;

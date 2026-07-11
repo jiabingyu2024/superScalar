@@ -38,8 +38,8 @@ module DramBramAdapter #(
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            resp_valid   <= 1'b0;
-            read_offset_q <= 2'd0;
+            resp_valid     <= 1'b0;
+            read_offset_q  <= 2'd0;
         end else begin
             resp_valid <= req_valid && !req_write;
             if (req_valid && !req_write) begin

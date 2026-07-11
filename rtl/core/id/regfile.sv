@@ -23,7 +23,7 @@ module regfile(
     logic [`DATA_BUS] rf_mem [0:`RF_DEPTH-1];
     integer idx;
 
-    always_ff @(negedge i_clk or negedge i_rst_n) begin
+    always_ff @(negedge i_clk) begin
         if (!i_rst_n) begin
             for (idx = 0; idx < `RF_DEPTH; idx = idx + 1) begin
                 rf_mem[idx] <= '0;

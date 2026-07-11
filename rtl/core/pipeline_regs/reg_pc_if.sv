@@ -21,7 +21,7 @@ module reg_pc_if(
     output logic             o_valid          // flush  0 else 1
 );
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             o_pc         <= '0;
             o_pc_predict <= '0;
