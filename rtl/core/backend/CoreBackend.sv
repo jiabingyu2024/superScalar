@@ -82,10 +82,10 @@ module CoreBackend (
     logic [RENAME_WIDTH-1:0] rob_alloc_ready;
     RobIndexPath [RENAME_WIDTH-1:0] rob_alloc_idx;
 
-    PhyRegNumPath [RENAME_WIDTH-1:0] busy_src1_phy;
-    PhyRegNumPath [RENAME_WIDTH-1:0] busy_src2_phy;
-    logic [RENAME_WIDTH-1:0] busy_src1_ready;
-    logic [RENAME_WIDTH-1:0] busy_src2_ready;
+    PhyRegNumPath [DISPATCH_WIDTH-1:0] dispatch_busy_src1_phy;
+    PhyRegNumPath [DISPATCH_WIDTH-1:0] dispatch_busy_src2_phy;
+    logic [DISPATCH_WIDTH-1:0] dispatch_busy_src1_ready;
+    logic [DISPATCH_WIDTH-1:0] dispatch_busy_src2_ready;
 
     logic [DISPATCH_WIDTH-1:0] int_push_valid;
     logic [DISPATCH_WIDTH-1:0] mem_push_valid;
@@ -99,6 +99,7 @@ module CoreBackend (
     TubeTypePath [DISPATCH_WIDTH-1:0] dispatch_tube;
 
     CoreRenamedUop dispatch_buffer_entry_q [DISPATCH_BUFFER_DEPTH-1:0];
+    CoreRenamedUop [DISPATCH_WIDTH-1:0] dispatch_buffer_raw_entry;
     CoreRenamedUop [DISPATCH_WIDTH-1:0] dispatch_buffer_ready_entry;
     CoreRenamedUop [RENAME_WIDTH-1:0] dispatch_buffer_push_uop;
     CoreRenamedUop [DISPATCH_WIDTH-1:0] dispatch_buffer_uop;
@@ -285,8 +286,7 @@ module CoreBackend (
     // combinational cone.
     always_comb begin
         for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
-            rename_ready[i] = !clear_i && !recover_i &&
-                              ((dispatch_buffer_count_q -
+            rename_ready[i] = ((dispatch_buffer_count_q -
                                 dispatch_buffer_pop_count +
                                 DISPATCH_BUFFER_COUNT_BITS'(i)) <
                                DISPATCH_BUFFER_DEPTH_COUNT);
@@ -315,24 +315,19 @@ module CoreBackend (
     // entry and are also accumulated into the physical slot below.
     always_comb begin
         for (int i = 0; i < DISPATCH_WIDTH; i = i + 1) begin
-            dispatch_buffer_ready_entry[i] = dispatch_buffer_entry_q[
+            dispatch_buffer_raw_entry[i] = dispatch_buffer_entry_q[
                 dispatch_buffer_wrap_add(
                     dispatch_buffer_head_q,
                     DISPATCH_BUFFER_COUNT_BITS'(i)
                 )
             ];
-            for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
-                if (exec_complete_valid[w] &&
-                    (exec_complete_prd[w] ==
-                     dispatch_buffer_ready_entry[i].prs1)) begin
-                    dispatch_buffer_ready_entry[i].src1_ready = 1'b1;
-                end
-                if (exec_complete_valid[w] &&
-                    (exec_complete_prd[w] ==
-                     dispatch_buffer_ready_entry[i].prs2)) begin
-                    dispatch_buffer_ready_entry[i].src2_ready = 1'b1;
-                end
-            end
+            dispatch_busy_src1_phy[i] = dispatch_buffer_raw_entry[i].prs1;
+            dispatch_busy_src2_phy[i] = dispatch_buffer_raw_entry[i].prs2;
+            dispatch_buffer_ready_entry[i] = dispatch_buffer_raw_entry[i];
+            dispatch_buffer_ready_entry[i].src1_ready |=
+                dispatch_busy_src1_ready[i];
+            dispatch_buffer_ready_entry[i].src2_ready |=
+                dispatch_busy_src2_ready[i];
         end
     end
 
@@ -349,8 +344,7 @@ module CoreBackend (
             dispatch_buffer_uop[i].rob_idx = rob_alloc_idx[i];
             dispatch_tube[i] = dispatch_buffer_ready_entry[i].uop.tube;
 
-            dispatch_buffer_valid[i] = !clear_i && !recover_i &&
-                                       (dispatch_buffer_count_q >
+            dispatch_buffer_valid[i] = (dispatch_buffer_count_q >
                                         DISPATCH_BUFFER_COUNT_BITS'(i));
             if (i != 0) begin
                 dispatch_buffer_valid[i] = dispatch_buffer_valid[i] &&
@@ -368,23 +362,13 @@ module CoreBackend (
         end
     end
 
-    // Build fixed tail writes and apply a same-cycle completion before the new
-    // owner becomes visible. No existing payload participates in this cone.
+    // Build fixed tail writes without BusyTable/wakeup work in the sRAT capture
+    // cone. Source readiness is reconstructed from the registered slot above.
     always_comb begin
         dispatch_buffer_push_count = '0;
         for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
             dispatch_buffer_push_offset[i] = dispatch_buffer_push_count;
             dispatch_buffer_push_uop[i] = rename_uop[i];
-            for (int w = 0; w < ISSUE_WIDTH; w = w + 1) begin
-                if (exec_complete_valid[w] &&
-                    (exec_complete_prd[w] == rename_uop[i].prs1)) begin
-                    dispatch_buffer_push_uop[i].src1_ready = 1'b1;
-                end
-                if (exec_complete_valid[w] &&
-                    (exec_complete_prd[w] == rename_uop[i].prs2)) begin
-                    dispatch_buffer_push_uop[i].src2_ready = 1'b1;
-                end
-            end
             if (rename_alloc_valid[i]) begin
                 dispatch_buffer_push_count =
                     dispatch_buffer_push_count + 1'b1;
@@ -450,24 +434,21 @@ module CoreBackend (
         for (int i = 0; i < INT_ISSUE_WIDTH; i = i + 1) begin
             int_stage_slot_available[i] = !int_issue_valid_q[i] ||
                                           int_issue_ready[i];
-            int_select_ready[i] = !clear_i && !recover_i &&
-                                  int_stage_slot_available[i];
+            int_select_ready[i] = int_stage_slot_available[i];
             int_issue_valid[i] = int_issue_valid_q[i];
             int_issue_uop[i] = int_issue_uop_q[i];
         end
         for (int i = 0; i < MEM_ISSUE_WIDTH; i = i + 1) begin
             mem_stage_slot_available[i] = !mem_issue_valid_q[i] ||
                                           mem_issue_ready[i];
-            mem_select_ready[i] = !clear_i && !recover_i &&
-                                  mem_stage_slot_available[i];
+            mem_select_ready[i] = mem_stage_slot_available[i];
             mem_issue_valid[i] = mem_issue_valid_q[i];
             mem_issue_uop[i] = mem_issue_uop_q[i];
         end
         for (int i = 0; i < MULDIV_ISSUE_WIDTH; i = i + 1) begin
             mul_stage_slot_available[i] = !mul_issue_valid_q[i] ||
                                           mul_issue_ready[i];
-            mul_select_ready[i] = !clear_i && !recover_i &&
-                                  mul_stage_slot_available[i];
+            mul_select_ready[i] = mul_stage_slot_available[i];
             mul_issue_valid[i] = mul_issue_valid_q[i];
             mul_issue_uop[i] = mul_issue_uop_q[i];
         end
@@ -560,10 +541,6 @@ module CoreBackend (
         .rob_alloc_valid_o(rename_alloc_valid),
         .rob_alloc_ready_i(rename_ready),
         .rob_alloc_idx_i(rob_alloc_idx),
-        .busy_query_src1_o(busy_src1_phy),
-        .busy_query_src1_ready_i(busy_src1_ready),
-        .busy_query_src2_o(busy_src2_phy),
-        .busy_query_src2_ready_i(busy_src2_ready),
         .out_valid_o(rename_valid),
         .out_uop_o(rename_uop),
         .out_ready_i(rename_ready),
@@ -574,16 +551,18 @@ module CoreBackend (
         .arat_map_o(arat_map)
     );
 
-    CoreBusyTable u_busy (
+    CoreBusyTable #(
+        .STABLE_QUERY_WIDTH(DISPATCH_WIDTH)
+    ) u_busy (
         .clk(clk),
         .rst(rst),
         .clear_i(clear_i),
         .recover_i(recover_i),
         .recover_map_i(arat_map),
-        .query_src1_i(busy_src1_phy),
-        .query_src1_ready_o(busy_src1_ready),
-        .query_src2_i(busy_src2_phy),
-        .query_src2_ready_o(busy_src2_ready),
+        .stable_query_src1_i(dispatch_busy_src1_phy),
+        .stable_query_src1_ready_o(dispatch_busy_src1_ready),
+        .stable_query_src2_i(dispatch_busy_src2_phy),
+        .stable_query_src2_ready_o(dispatch_busy_src2_ready),
         .mark_busy_i(free_alloc_accept),
         .mark_busy_phy_i(free_alloc_phy),
         .mark_ready_i(exec_complete_valid),

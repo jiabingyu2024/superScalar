@@ -330,30 +330,34 @@ module CoreDCache #(
     end
 
     always_ff @(posedge clk) begin
-        if (!rst && data_way0_we) begin
-            data_way0_q[data_write_addr] <= data_write_data;
+        if (data_write_valid_q && !data_write_way_q) begin
+            data_way0_q[data_write_addr_q] <= data_write_data_q;
         end
     end
 
     always_ff @(posedge clk) begin
-        if (!rst && data_way1_we) begin
-            data_way1_q[data_write_addr] <= data_write_data;
+        if (data_write_valid_q && data_write_way_q) begin
+            data_way1_q[data_write_addr_q] <= data_write_data_q;
         end
     end
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             data_write_valid_q <= 1'b0;
-            data_write_way_q <= 1'b0;
-            data_write_addr_q <= '0;
-            data_write_data_q <= '0;
         end else begin
             data_write_valid_q <= data_way0_we || data_way1_we;
-            if (data_way0_we || data_way1_we) begin
-                data_write_way_q <= data_way1_we;
-                data_write_addr_q <= data_write_addr;
-                data_write_data_q <= data_write_data;
-            end
+        end
+    end
+
+    // Register the complete write bundle before the distributed-RAM port.
+    // The valid bit owns visibility; payload needs neither reset nor a global
+    // clear. data_way*_effective forwards this bundle during the one cycle in
+    // which the RAM still contains the previous word.
+    always_ff @(posedge clk) begin
+        if (data_way0_we || data_way1_we) begin
+            data_write_way_q <= data_way1_we;
+            data_write_addr_q <= data_write_addr;
+            data_write_data_q <= data_write_data;
         end
     end
 

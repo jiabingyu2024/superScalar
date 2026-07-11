@@ -20,11 +20,6 @@ module CoreRenameUnit (
     input  logic [RENAME_WIDTH-1:0] rob_alloc_ready_i,
     input  RobIndexPath [RENAME_WIDTH-1:0] rob_alloc_idx_i,
 
-    output PhyRegNumPath [RENAME_WIDTH-1:0] busy_query_src1_o,
-    input  logic [RENAME_WIDTH-1:0] busy_query_src1_ready_i,
-    output PhyRegNumPath [RENAME_WIDTH-1:0] busy_query_src2_o,
-    input  logic [RENAME_WIDTH-1:0] busy_query_src2_ready_i,
-
     output logic [RENAME_WIDTH-1:0] out_valid_o,
     output CoreRenamedUop [RENAME_WIDTH-1:0] out_uop_o,
     input  logic [RENAME_WIDTH-1:0] out_ready_i,
@@ -102,16 +97,12 @@ module CoreRenameUnit (
 
     always_comb begin
         for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
-            busy_query_src1_o[i] = mapped_uop[i].prs1;
-            busy_query_src2_o[i] = mapped_uop[i].prs2;
-        end
-    end
-
-    always_comb begin
-        for (int i = 0; i < RENAME_WIDTH; i = i + 1) begin
             out_uop_o[i] = mapped_uop[i];
-            out_uop_o[i].src1_ready = busy_query_src1_ready_i[i] || (mapped_uop[i].prs1 == '0);
-            out_uop_o[i].src2_ready = busy_query_src2_ready_i[i] || (mapped_uop[i].prs2 == '0);
+            // Ready state is resolved from the registered dispatch-buffer slot
+            // on the following cycle. Only x0 is intrinsic to this payload;
+            // carrying BusyTable here recreates sRAT->ready->buffer capture.
+            out_uop_o[i].src1_ready = (mapped_uop[i].prs1 == '0);
+            out_uop_o[i].src2_ready = (mapped_uop[i].prs2 == '0);
         end
     end
 

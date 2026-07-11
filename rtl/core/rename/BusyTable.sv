@@ -2,7 +2,7 @@ import CoreConfigPkg::*;
 import CoreTypesPkg::*;
 
 module CoreBusyTable #(
-    parameter int QUERY_WIDTH = RENAME_WIDTH,
+    parameter int STABLE_QUERY_WIDTH = DISPATCH_WIDTH,
     parameter int MARK_BUSY_WIDTH = RENAME_WIDTH,
     parameter int MARK_READY_WIDTH = ISSUE_WIDTH
 ) (
@@ -12,10 +12,10 @@ module CoreBusyTable #(
     input  logic recover_i,
     input  PhyRegNumPath [LOGIC_REG_NUM-1:0] recover_map_i,
 
-    input  PhyRegNumPath [QUERY_WIDTH-1:0] query_src1_i,
-    output logic [QUERY_WIDTH-1:0] query_src1_ready_o,
-    input  PhyRegNumPath [QUERY_WIDTH-1:0] query_src2_i,
-    output logic [QUERY_WIDTH-1:0] query_src2_ready_o,
+    input  PhyRegNumPath [STABLE_QUERY_WIDTH-1:0] stable_query_src1_i,
+    output logic [STABLE_QUERY_WIDTH-1:0] stable_query_src1_ready_o,
+    input  PhyRegNumPath [STABLE_QUERY_WIDTH-1:0] stable_query_src2_i,
+    output logic [STABLE_QUERY_WIDTH-1:0] stable_query_src2_ready_o,
 
     input  logic [MARK_BUSY_WIDTH-1:0] mark_busy_i,
     input  PhyRegNumPath [MARK_BUSY_WIDTH-1:0] mark_busy_phy_i,
@@ -25,7 +25,13 @@ module CoreBusyTable #(
 );
     logic ready_q [PHY_REG_NUM-1:0];
 
-    function automatic logic ready_with_forward(input PhyRegNumPath phy);
+    // Registered dispatch-buffer owners cannot depend on a younger same-cycle
+    // allocation, so their query needs completion forwarding but not the
+    // rename mark-busy overlay. Keeping this as a separate cone also avoids a
+    // dispatch-pop -> rename-fire -> BusyTable -> dispatch combinational loop.
+    function automatic logic stable_ready_with_forward(
+        input PhyRegNumPath phy
+    );
         logic ready;
         begin
             ready = (phy == '0) || ready_q[phy];
@@ -34,19 +40,16 @@ module CoreBusyTable #(
                     ready = 1'b1;
                 end
             end
-            for (int b = 0; b < MARK_BUSY_WIDTH; b = b + 1) begin
-                if (mark_busy_i[b] && (mark_busy_phy_i[b] == phy) && (phy != '0)) begin
-                    ready = 1'b0;
-                end
-            end
-            ready_with_forward = ready;
+            stable_ready_with_forward = ready;
         end
     endfunction
 
     always_comb begin
-        for (int q = 0; q < QUERY_WIDTH; q = q + 1) begin
-            query_src1_ready_o[q] = ready_with_forward(query_src1_i[q]);
-            query_src2_ready_o[q] = ready_with_forward(query_src2_i[q]);
+        for (int q = 0; q < STABLE_QUERY_WIDTH; q = q + 1) begin
+            stable_query_src1_ready_o[q] =
+                stable_ready_with_forward(stable_query_src1_i[q]);
+            stable_query_src2_ready_o[q] =
+                stable_ready_with_forward(stable_query_src2_i[q]);
         end
     end
 
