@@ -18,7 +18,6 @@ module core(
     output logic                                     irom_ena,   // assign irom_ena = stall_p_f;
 
     input  logic  [`DATA_BUS]                        dram_rdata,
-    input  logic                                     dram_fast_valid,
     input  logic  [`DATA_BUS]                        dram_fast_rdata,
     input  logic                                     dram_req_ready,
     output logic                                     dram_wen,
@@ -98,6 +97,7 @@ module core(
     logic [1:0]       rs2_fwd_sel_e;
 
     logic [`DATA_BUS] alu_res_e;
+    logic [`DATA_BUS] mem_addr_e;
     logic [`DATA_BUS] a2_data_e;
     logic [`RF_BUS]   rd_addr_ex2;
     logic             mem_read_ex2;
@@ -118,6 +118,7 @@ module core(
 
     logic [`RF_BUS]   rd_addr_m;
     logic [`DATA_BUS] alu_res_m;
+    logic [`DATA_BUS] mem_addr_m;
     logic [`DATA_BUS] a2_data_m;
     logic             mem_read_m;
     logic             mem_write_m;
@@ -229,6 +230,12 @@ module core(
         .i_rs2_addr_f    (inst_f[24:20]),
         .i_rs1_addr_d    (rs1_addr_d),
         .i_rs2_addr_d    (rs2_addr_d),
+        .i_mem_read_d    (mem_read_d),
+        .i_mem_write_d   (mem_write_d),
+        .i_is_branch_d   (is_branch_d),
+        .i_is_m_ext_d    (is_m_ext_d),
+        .i_is_rs2_imm_d  (is_rs2_imm_d),
+        .i_inst_spec_d   (inst_spec_d),
         .i_rd_addr_e     (rd_addr_e),
         .i_mem_read_e    (mem_read_e),
         .i_reg_write_e   (reg_write_e),
@@ -384,7 +391,6 @@ module core(
         .i_pc            (pc_e),
         .i_fwd_e_m       (alu_res_m),
         .i_fwd_mem_read_m(mem_read_m),
-        .i_fwd_load_m_valid(dram_fast_valid),
         .i_fwd_load_m    (load_data_m_fast),
         .i_fwd_m_w       (wb_data_arch),
         .i_fwd_m_m       (wb_data_m2),
@@ -415,6 +421,7 @@ module core(
         .i_mem_mask      (mem_mask_e),
         .i_load_unsigned (load_unsigned_e),
         .o_alu_res       (alu_res_e),
+        .o_mem_addr      (mem_addr_e),
         .o_a2_data       (a2_data_e),
         .o_rd_addr       (rd_addr_ex2),
         .o_mem_read      (mem_read_ex2),
@@ -442,6 +449,7 @@ module core(
         .i_stall         (stall_e_m),
         .i_rd_addr       (rd_addr_ex2),
         .i_alu_res       (alu_res_e),
+        .i_mem_addr      (mem_addr_e),
         .i_a2_data       (a2_data_e),
         .i_mem_read      (mem_read_ex2),
         .i_mem_write     (mem_write_ex2),
@@ -458,6 +466,7 @@ module core(
         .i_branch_error  (error_e),
         .o_rd_addr       (rd_addr_m),
         .o_alu_res       (alu_res_m),
+        .o_mem_addr      (mem_addr_m),
         .o_cache_tag_indices(dram_tag_indices),
         .o_cache_data_indices(dram_data_indices),
         .o_a2_data       (a2_data_m),
@@ -478,7 +487,7 @@ module core(
 
     assign dram_wen   = mem_write_m;
     assign dram_ren   = mem_read_m;
-    assign dram_addr  = alu_res_m[`RAM_ADDR_BUS];
+    assign dram_addr  = mem_addr_m[`RAM_ADDR_BUS];
     assign dram_wdata = a2_data_m;
     assign dram_mask  = mem_mask_m;
 

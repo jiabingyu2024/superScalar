@@ -22,7 +22,6 @@ module stage_ex(
     input  logic  [`PC_BUS]                 i_pc,
     input  logic  [`DATA_BUS]               i_fwd_e_m,
     input  logic                            i_fwd_mem_read_m,
-    input  logic                            i_fwd_load_m_valid,
     input  logic  [`DATA_BUS]               i_fwd_load_m,
     input  logic  [`DATA_BUS]               i_fwd_m_w,
     input  logic  [`DATA_BUS]               i_fwd_m_m,
@@ -61,6 +60,7 @@ module stage_ex(
     input  logic                            i_load_unsigned,
 
     output logic  [`DATA_BUS]               o_alu_res,
+    output logic  [`DATA_BUS]               o_mem_addr,
     output logic  [`DATA_BUS]               o_a2_data,
 
     output logic  [`RF_BUS]                 o_rd_addr,
@@ -99,6 +99,8 @@ module stage_ex(
     // high-fanout result across the whole execute region.
     (* max_fanout = 16 *) logic [`DATA_BUS] rs1_exec_final;
     (* max_fanout = 16 *) logic [`DATA_BUS] rs2_exec_final;
+    logic [`DATA_BUS] rs1_exec_registered;
+    logic [`DATA_BUS] rs2_exec_registered;
     logic [`RF_BUS]   rs1_addr_q;
     logic [`RF_BUS]   rs2_addr_q;
     logic [`DATA_BUS] imm_q;
@@ -126,14 +128,11 @@ module stage_ex(
 
     // ---- Forwarding mux ----
     always_comb begin
-        // EX2 may forward only into the EX1 operand registers.  This keeps the
-        // consumer ALU behind a register boundary while avoiding conservative
-        // ALU-to-ALU dependency stalls. Loads are excluded because their final
-        // value is not available until the memory pipeline.
-        if (reg_write_q && !mem_read_q && (rd_addr_q != '0) &&
-            (rd_addr_q == i_rs1_addr)) begin
-            rs1_exec_mux = o_alu_res;
-        end else if (i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+        // EX1 captures only registered producer values.  The immediately
+        // preceding EX2 result is forwarded one cycle later from M1 by the
+        // late mux below, preserving zero-bubble ALU dependencies without a
+        // combinational EX2-to-EX1 chain.
+        if (i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
                      (i_fwd_rd_m == i_rs1_addr)) begin
             rs1_exec_mux = i_fwd_e_m;
         end else if (i_fwd_reg_write_m2 && (i_fwd_rd_m2 != '0) &&
@@ -145,10 +144,7 @@ module stage_ex(
         end else begin
             rs1_exec_mux = stalled_operands_valid_q ? stalled_rs1_q : i_rs1_data;
         end
-        if (reg_write_q && !mem_read_q && (rd_addr_q != '0) &&
-            (rd_addr_q == i_rs2_addr)) begin
-            rs2_exec_mux = o_alu_res;
-        end else if (i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+        if (i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
                      (i_fwd_rd_m == i_rs2_addr)) begin
             rs2_exec_mux = i_fwd_e_m;
         end else if (i_fwd_reg_write_m2 && (i_fwd_rd_m2 != '0) &&
@@ -165,42 +161,54 @@ module stage_ex(
         // that the producer's registered response is present in M2.  Override
         // the EX1-captured operand here.  A matching M1 producer is younger
         // than M2 and therefore suppresses the override.
-        rs1_exec_final = rs1_exec_q;
-        if (i_fwd_load_m_valid && i_fwd_mem_read_m &&
-            i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
-            (i_fwd_rd_m == rs1_addr_q)) begin
-            rs1_exec_final = i_fwd_load_m;
+        rs1_exec_registered = rs1_exec_q;
+        if (!i_fwd_mem_read_m && i_fwd_reg_write_m &&
+                     (i_fwd_rd_m != '0) &&
+                     (i_fwd_rd_m == rs1_addr_q)) begin
+            rs1_exec_registered = i_fwd_e_m;
         end else if (i_fwd_reg_write_m2 && (i_fwd_rd_m2 != '0) &&
             (i_fwd_rd_m2 == rs1_addr_q) &&
             !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
               (i_fwd_rd_m == rs1_addr_q))) begin
-            rs1_exec_final = i_fwd_m_m;
+            rs1_exec_registered = i_fwd_m_m;
         end else if (i_fwd_reg_write_w && (i_fwd_rd_w != '0) &&
                      (i_fwd_rd_w == rs1_addr_q) &&
                      !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
                        (i_fwd_rd_m == rs1_addr_q))) begin
-            rs1_exec_final = i_fwd_m_w;
+            rs1_exec_registered = i_fwd_m_w;
+        end
+        rs1_exec_final = rs1_exec_registered;
+        if (i_fwd_mem_read_m && i_fwd_reg_write_m &&
+            (i_fwd_rd_m != '0) && (i_fwd_rd_m == rs1_addr_q)) begin
+            rs1_exec_final = i_fwd_load_m;
         end
 
-        rs2_exec_final = rs2_exec_q;
-        if (i_fwd_load_m_valid && i_fwd_mem_read_m &&
-            i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
-            (i_fwd_rd_m == rs2_addr_q)) begin
-            rs2_exec_final = i_fwd_load_m;
+        rs2_exec_registered = rs2_exec_q;
+        if (!i_fwd_mem_read_m && i_fwd_reg_write_m &&
+                     (i_fwd_rd_m != '0) &&
+                     (i_fwd_rd_m == rs2_addr_q)) begin
+            rs2_exec_registered = i_fwd_e_m;
         end else if (i_fwd_reg_write_m2 && (i_fwd_rd_m2 != '0) &&
             (i_fwd_rd_m2 == rs2_addr_q) &&
             !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
               (i_fwd_rd_m == rs2_addr_q))) begin
-            rs2_exec_final = i_fwd_m_m;
+            rs2_exec_registered = i_fwd_m_m;
         end else if (i_fwd_reg_write_w && (i_fwd_rd_w != '0) &&
                      (i_fwd_rd_w == rs2_addr_q) &&
                      !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
                        (i_fwd_rd_m == rs2_addr_q))) begin
-            rs2_exec_final = i_fwd_m_w;
+            rs2_exec_registered = i_fwd_m_w;
+        end
+        rs2_exec_final = rs2_exec_registered;
+        if (i_fwd_mem_read_m && i_fwd_reg_write_m &&
+            (i_fwd_rd_m != '0) && (i_fwd_rd_m == rs2_addr_q)) begin
+            rs2_exec_final = i_fwd_load_m;
         end
 
-        t1_data = (inst_spec_q == `EX_JALR) ? rs1_exec_final : pc_d_e_q;
-        a1_data = (inst_spec_q == `EX_AUIPC) ? pc_q : rs1_exec_final;
+        t1_data = (inst_spec_q == `EX_JALR) ? rs1_exec_registered : pc_d_e_q;
+        a1_data = (inst_spec_q == `EX_AUIPC) ? pc_q :
+                  ((mem_read_q || mem_write_q) ? rs1_exec_registered :
+                                                rs1_exec_final);
         a2_data = (is_rs2_imm_q || (inst_spec_q == `EX_AUIPC)) ? imm_q : rs2_exec_final;
     end
 
@@ -319,8 +327,8 @@ module stage_ex(
     logic [`PC_BUS]  branch_update_target;
 
     branch_cmp u_branch_cmp (
-        .i_b1_data       (rs1_exec_final),
-        .i_b2_data       (rs2_exec_final),
+        .i_b1_data       (rs1_exec_registered),
+        .i_b2_data       (rs2_exec_registered),
         .i_func3         (func3_q),
         .i_pc_d_e        (pc_d_e_q),
         .i_pc_target     (pc_target_q),
@@ -360,11 +368,11 @@ module stage_ex(
     // A single signed 33x33 multiplier covers all RV32M multiply variants by
     // selecting sign/zero extension before the IP.  MUL_0 remains the same
     // three-stage IP configured in the Vivado Tcl and Verilator model.
-    assign mul_a = (m_op_q == `M_MULHU) ? {1'b0, rs1_exec_final} :
-                                           {rs1_exec_final[31], rs1_exec_final};
+    assign mul_a = (m_op_q == `M_MULHU) ? {1'b0, rs1_exec_registered} :
+                                           {rs1_exec_registered[31], rs1_exec_registered};
     assign mul_b = ((m_op_q == `M_MUL) || (m_op_q == `M_MULH)) ?
-                   {rs2_exec_final[31], rs2_exec_final} :
-                   {1'b0, rs2_exec_final};
+                   {rs2_exec_registered[31], rs2_exec_registered} :
+                   {1'b0, rs2_exec_registered};
 
     MUL_0 u_mul_pipe (
         .CLK (i_clk),
@@ -408,8 +416,8 @@ module stage_ex(
         .i_rst_n (i_rst_n),
         .i_start (m_start_pulse),
         .i_flush (i_flush_e),
-        .i_rs1   (rs1_exec_final),
-        .i_rs2   (rs2_exec_final),
+        .i_rs1   (rs1_exec_registered),
+        .i_rs2   (rs2_exec_registered),
         .i_m_op  (m_op_q),
         .o_busy  (m_busy_int),
         .o_done  (m_done_int),
@@ -431,7 +439,7 @@ module stage_ex(
     assign is_csr_inst = (inst_spec_q == `EX_CSR);
 
     // func3[2]=1 时为立即数版本；i_imm 已由 imm_unit 计算为 {27'b0, instr[19:15]}
-    assign csr_operand = (func3_q[2]) ? imm_q : rs1_exec_final;
+    assign csr_operand = (func3_q[2]) ? imm_q : rs1_exec_registered;
 
     // wmode: func3[1:0] - 1 → 01→00(write), 10→01(set), 11→10(clear)
     assign csr_wmode = func3_q[1:0] - 2'b01;
@@ -499,7 +507,8 @@ module stage_ex(
     assign o_load_unsigned = load_unsigned_q;
 
     always_comb begin
-        o_a2_data = rs2_exec_final;
+        o_mem_addr = rs1_exec_registered + imm_q;
+        o_a2_data = mem_write_q ? rs2_exec_registered : rs2_exec_final;
 
         if (is_div_q) begin
             o_alu_res = m_res;
