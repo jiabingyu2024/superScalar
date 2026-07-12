@@ -9,7 +9,8 @@ module CoreFreeList #(
     input  logic rst,
     input  logic clear_i,
     input  logic recover_i,
-    input  logic [PHY_REG_NUM-1:0] recover_live_mask_i,
+    input  PhyRegNumPath [LOGIC_REG_NUM-1:0] recover_map_i,
+    input  PhyRegNumPath [LOGIC_REG_NUM-1:0] live_map_i,
 
     input  logic [ALLOC_WIDTH-1:0] alloc_req_i,
     input  logic [ALLOC_WIDTH-1:0] alloc_accept_i,
@@ -26,8 +27,6 @@ module CoreFreeList #(
     localparam int COUNT_WIDTH = $clog2(PHY_REG_NUM + 1);
     localparam logic [COUNT_WIDTH-1:0] FREE_DEPTH_COUNT =
         COUNT_WIDTH'(PHY_REG_NUM - LOGIC_REG_NUM);
-    localparam int GROUP_SIZE = 8;
-    localparam int GROUP_COUNT = (PHY_REG_NUM + GROUP_SIZE - 1) / GROUP_SIZE;
 
     logic [ALLOC_WIDTH-1:0] alloc_fire;
     logic [ALLOC_WIDTH-1:0] alloc_found;
@@ -35,10 +34,22 @@ module CoreFreeList #(
     logic [FREE_WIDTH-1:0] free_pre_fire;
     logic [FREE_WIDTH-1:0] free_fire;
     logic [PHY_REG_NUM-1:0] free_q;
+    logic [PHY_REG_NUM-1:0] live_mask;
+    logic [PHY_REG_NUM-1:0] recover_live_mask;
     logic [PHY_REG_NUM-1:0] alloc_taken_mask;
-    logic [COUNT_WIDTH-1:0] free_count_q;
-    logic [COUNT_WIDTH-1:0] alloc_count;
-    logic [COUNT_WIDTH-1:0] retire_free_count;
+    logic [COUNT_WIDTH-1:0] free_count;
+
+    always_comb begin
+        live_mask = '0;
+        recover_live_mask = '0;
+        live_mask[0] = 1'b1;
+        recover_live_mask[0] = 1'b1;
+        for (int r = 1; r < LOGIC_REG_NUM; r = r + 1) begin
+            live_mask[live_map_i[r]] = 1'b1;
+            recover_live_mask[recover_map_i[r]] = 1'b1;
+        end
+
+    end
 
     // Candidate generation deliberately has no dependency on alloc_accept_i.
     // Rename can therefore determine the current-cycle resources without a
@@ -53,31 +64,13 @@ module CoreFreeList #(
         end
 
         for (int i = 0; i < ALLOC_WIDTH; i = i + 1) begin
-            logic group_found;
-            group_found = 1'b0;
-            for (int g = 0; g < GROUP_COUNT; g = g + 1) begin
-                logic group_available;
-                group_available = 1'b0;
-                for (int b = 0; b < GROUP_SIZE; b = b + 1) begin
-                    int p;
-                    p = g * GROUP_SIZE + b;
-                    if ((p < PHY_REG_NUM) && (p != 0) && free_q[p] &&
-                        !alloc_taken_mask[p]) begin
-                        group_available = 1'b1;
-                    end
-                end
-                if (!group_found && group_available) begin
-                    for (int b = 0; b < GROUP_SIZE; b = b + 1) begin
-                        int p;
-                        p = g * GROUP_SIZE + b;
-                        if (!alloc_found[i] && (p < PHY_REG_NUM) &&
-                            (p != 0) && free_q[p] &&
-                            !alloc_taken_mask[p]) begin
-                            alloc_found[i] = 1'b1;
-                            alloc_candidate[i] = PhyRegNumPath'(p);
-                        end
-                    end
-                    group_found = 1'b1;
+            for (int p = 1; p < PHY_REG_NUM; p = p + 1) begin
+                if (!alloc_found[i] &&
+                    free_q[p] &&
+                    !live_mask[p] &&
+                    !alloc_taken_mask[p]) begin
+                    alloc_found[i] = 1'b1;
+                    alloc_candidate[i] = PhyRegNumPath'(p);
                 end
             end
             // Availability is independent of the requesting stage's ready path.
@@ -91,12 +84,8 @@ module CoreFreeList #(
     end
 
     always_comb begin
-        alloc_count = '0;
         for (int i = 0; i < ALLOC_WIDTH; i = i + 1) begin
             alloc_fire[i] = alloc_req_i[i] && alloc_valid_o[i] && alloc_accept_i[i];
-            if (alloc_fire[i]) begin
-                alloc_count = alloc_count + 1'b1;
-            end
         end
 
         free_pre_fire = '0;
@@ -114,7 +103,7 @@ module CoreFreeList #(
             free_ready_o[j] = 1'b1;
             free_pre_fire[j] = free_valid_i[j] &&
                                (free_phy_i[j] != '0) &&
-                               !free_q[free_phy_i[j]] &&
+                               !live_mask[free_phy_i[j]] &&
                                !allocated_same_cycle;
         end
         free_fire = free_pre_fire;
@@ -127,36 +116,35 @@ module CoreFreeList #(
             end
         end
 
-        retire_free_count = '0;
-        for (int j = 0; j < FREE_WIDTH; j = j + 1) begin
-            if (free_fire[j]) begin
-                retire_free_count = retire_free_count + 1'b1;
+        free_count = '0;
+        for (int p = 1; p < PHY_REG_NUM; p = p + 1) begin
+            if (free_q[p] && !live_mask[p]) begin
+                free_count = free_count + 1'b1;
             end
         end
     end
 
-    assign empty_o = (free_count_q == '0);
-    assign full_o = (free_count_q == FREE_DEPTH_COUNT);
+    assign empty_o = (free_count == '0);
+    assign full_o = (free_count == FREE_DEPTH_COUNT);
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             for (int p = 0; p < PHY_REG_NUM; p = p + 1) begin
                 free_q[p] <= (p >= LOGIC_REG_NUM);
             end
-            free_count_q <= FREE_DEPTH_COUNT;
         end else if (clear_i) begin
             for (int p = 0; p < PHY_REG_NUM; p = p + 1) begin
                 free_q[p] <= (p >= LOGIC_REG_NUM);
             end
-            free_count_q <= FREE_DEPTH_COUNT;
         end else if (recover_i) begin
             for (int p = 0; p < PHY_REG_NUM; p = p + 1) begin
-                free_q[p] <= !recover_live_mask_i[p];
+                free_q[p] <= !recover_live_mask[p];
             end
             free_q[0] <= 1'b0;
-            free_count_q <= FREE_DEPTH_COUNT;
         end else begin
-            free_count_q <= free_count_q - alloc_count + retire_free_count;
+            for (int p = 0; p < PHY_REG_NUM; p = p + 1) begin
+                free_q[p] <= free_q[p];
+            end
             for (int a = 0; a < ALLOC_WIDTH; a = a + 1) begin
                 if (alloc_fire[a]) begin
                     free_q[alloc_candidate[a]] <= 1'b0;
@@ -170,18 +158,4 @@ module CoreFreeList #(
             free_q[0] <= 1'b0;
         end
     end
-
-`ifdef VERILATOR_TB
-    always_ff @(posedge clk) begin
-        if (!rst && !clear_i && !recover_i) begin
-            assert (free_count_q <= FREE_DEPTH_COUNT)
-                else $error("free-list registered count overflow");
-            if (ALLOC_WIDTH > 1) begin
-                assert (!(alloc_fire[0] && alloc_fire[1] &&
-                          (alloc_candidate[0] == alloc_candidate[1])))
-                    else $error("free-list allocated one PRD twice");
-            end
-        end
-    end
-`endif
 endmodule : CoreFreeList

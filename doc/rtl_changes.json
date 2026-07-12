@@ -380,5 +380,88 @@
       "Confirm u_mem_iq issue_slot/issue_uop, early_wakeup, and ROB allocation storage are absent from the new dominant path/runtime warnings."
     ],
     "notes": "This change is a structural QoR repair, not routed timing evidence. Compile, functional regression, and clean Vivado implementation remain mandatory."
+  },
+  "latest_low_ipc_fpga_structure_optimization": {
+    "timestamp": "2026-07-12T18:20:00+08:00",
+    "trigger": "User requested implementation of every extremely-low-IPC-risk optimization in docs/archive/2026-07-12/068_core_fpga_timing_routing_global_review.md without invoking Vivado",
+    "backup_dir": "backup/20260712_174700",
+    "files_modified": [
+      {
+        "path": "rtl/core/issue/CompressedQueue.sv",
+        "lines_changed": "stable-slot payload, age-ranked selection, remove/replacement and assertions",
+        "change_type": "stable_slot_issue_queue"
+      },
+      {
+        "path": "rtl/core/execute/ExecuteCluster.sv",
+        "lines_changed": "fixed INT/MEM/MULDIV slot datapaths and CSR port specialization",
+        "change_type": "slot_specific_execute_cones"
+      },
+      {
+        "path": "rtl/core/memory/DCache.sv",
+        "lines_changed": "two ways reorganized into eight shallow word banks",
+        "change_type": "distributed_ram_word_banking"
+      },
+      {
+        "path": "rtl/core/backend/CoreBackend.sv",
+        "lines_changed": "incremental committed physical live mask and recovery-edge forwarding",
+        "change_type": "committed_live_mask_owner"
+      },
+      {
+        "path": "rtl/core/rename/BusyTable.sv",
+        "lines_changed": "direct committed-mask recovery",
+        "change_type": "recovery_decode_removal"
+      },
+      {
+        "path": "rtl/core/rename/FreeList.sv",
+        "lines_changed": "hierarchical allocation encoder, registered count, and direct mask recovery",
+        "change_type": "fpga_friendly_free_list"
+      },
+      {
+        "path": "rtl/core/execute/StoreBuffer.sv",
+        "lines_changed": "head-only adjacent shift and recovery-prefix retention",
+        "change_type": "general_compaction_removal"
+      },
+      {
+        "path": "rtl/core/dispatch/ROB.sv",
+        "lines_changed": "compact retirement metadata in place of full decode uop",
+        "change_type": "rob_cold_payload_narrowing"
+      },
+      {
+        "path": "rtl/core/common/MultiPushFifo.sv",
+        "lines_changed": "even/odd shallow payload banks and parity crossbar",
+        "change_type": "two_wide_fifo_banking"
+      },
+      {
+        "path": "docs/archive/2026-07-12/068_core_fpga_timing_routing_global_review.md",
+        "lines_changed": "implementation and verification appendix",
+        "change_type": "implementation_record"
+      }
+    ],
+    "cascade_scope": "full_reverify",
+    "preserved_contracts": [
+      "Registered writeback and IQ-local tag-only early wakeup are unchanged.",
+      "INT IQ remains oldest-ready, two-wide, and supports same-cycle remove/replacement.",
+      "DCache lookup latency, refill ordering, critical-word return, and writeback protocol are unchanged.",
+      "StoreBuffer retains split address/data ownership and younger-store byte precedence.",
+      "ROB external interface, completion ownership, and two-wide registered retirement are unchanged.",
+      "No module was pipelined and no queue, ROB, PRF, or cache capacity was reduced."
+    ],
+    "recovery_fix_found_during_regression": [
+      "ARAT combinational output already contains the current commit overlay and cannot identify the old committed PRD; the live mask now clears free_old_prd from the ROB entry.",
+      "BusyTable and FreeList recovery consume the next committed mask so a branch or trap retirement on the recovery edge is included."
+    ],
+    "verification": [
+      "All Verilator rv32, src, and src difftest models rebuilt successfully.",
+      "RV32UI 40/40, RV32UM 8/8, and RV32MI 4/4 passed.",
+      "srcSmoke difftest 200k reached 124305 commits, RV32I display 37, and ended at the requested TIMEOUT with no selfcheck error.",
+      "srcWithMext difftest 200k reached 255647 commits, RV32I=37, fail=0, M=8, IPC=1.27822, and ended at the requested TIMEOUT with no selfcheck error.",
+      "srcWithMext 500k reached 617609 commits, RV32I=37, fail=0, M=8, IPC=1.23522, exactly matching the pre-change baseline.",
+      "git diff --check passed.",
+      "No Vivado command was run."
+    ],
+    "pending_physical_verification": [
+      "A future user-authorized clean Vivado synthesis/place/route must confirm actual LUT/FF/LUTRAM, fanout, congestion, WNS/TNS, runtime, and peak-memory improvements.",
+      "Do not use the old 061 routed checkpoint as QoR evidence for these RTL changes."
+    ]
   }
 }

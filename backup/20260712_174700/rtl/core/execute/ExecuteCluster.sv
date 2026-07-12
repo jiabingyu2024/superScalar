@@ -567,10 +567,7 @@ module CoreExecuteCluster (
 
     always_comb begin
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-            csr_read_addr_o[i] = '0;
-            if (i < INT_ISSUE_WIDTH) begin
-                csr_read_addr_o[i] = issue_uop[i].uop.csr_addr;
-            end
+            csr_read_addr_o[i] = issue_uop[i].uop.csr_addr;
         end
     end
 
@@ -618,95 +615,93 @@ module CoreExecuteCluster (
             csr_new_value[i] = csr_read_data_i[i];
             result[i] = 32'b0;
 
-            // Slot classes are architectural constants. Keep INT/BRC/SYS,
-            // MEM and MULDIV cones disjoint so synthesis does not retain a
-            // generic ALU/branch/CSR datapath behind every issue slot.
-            if (i < INT_ISSUE_WIDTH) begin
-                unique case (issue_uop[i].uop.tube)
-                    TUBE_TYPE_BRC: begin
-                        unique case (issue_uop[i].uop.branch_op)
-                            BR_OP_BEQ:  branch_taken[i] = (src0[i] == src1[i]);
-                            BR_OP_BNE:  branch_taken[i] = (src0[i] != src1[i]);
-                            BR_OP_BLT:  branch_taken[i] = ($signed(src0[i]) < $signed(src1[i]));
-                            BR_OP_BGE:  branch_taken[i] = ($signed(src0[i]) >= $signed(src1[i]));
-                            BR_OP_BLTU: branch_taken[i] = (src0[i] < src1[i]);
-                            BR_OP_BGEU: branch_taken[i] = (src0[i] >= src1[i]);
-                            BR_OP_JAL,
-                            BR_OP_JALR: branch_taken[i] = 1'b1;
-                            default:    branch_taken[i] = 1'b0;
-                        endcase
-                        if (issue_uop[i].uop.branch_op == BR_OP_JAL) begin
-                            branch_target[i] = issue_uop[i].uop.pc +
-                                               issue_uop[i].uop.imm_j;
-                        end else if (issue_uop[i].uop.branch_op == BR_OP_JALR) begin
-                            branch_target[i] = (src0[i] +
-                                                issue_uop[i].uop.imm_i) &
-                                               32'hffff_fffe;
-                        end else if (issue_uop[i].uop.is_branch &&
-                                     branch_taken[i]) begin
-                            branch_target[i] = issue_uop[i].uop.pc +
-                                               issue_uop[i].uop.imm_b;
-                        end
-                        result[i] = issue_uop[i].uop.pc + 32'd4;
+            case (issue_uop[i].uop.tube)
+                TUBE_TYPE_BRC: begin
+                    unique case (issue_uop[i].uop.branch_op)
+                        BR_OP_BEQ:  branch_taken[i] = (src0[i] == src1[i]);
+                        BR_OP_BNE:  branch_taken[i] = (src0[i] != src1[i]);
+                        BR_OP_BLT:  branch_taken[i] = ($signed(src0[i]) < $signed(src1[i]));
+                        BR_OP_BGE:  branch_taken[i] = ($signed(src0[i]) >= $signed(src1[i]));
+                        BR_OP_BLTU: branch_taken[i] = (src0[i] < src1[i]);
+                        BR_OP_BGEU: branch_taken[i] = (src0[i] >= src1[i]);
+                        BR_OP_JAL,
+                        BR_OP_JALR: branch_taken[i] = 1'b1;
+                        default:    branch_taken[i] = 1'b0;
+                    endcase
+                    if (issue_uop[i].uop.branch_op == BR_OP_JAL) begin
+                        branch_target[i] = issue_uop[i].uop.pc + issue_uop[i].uop.imm_j;
+                    end else if (issue_uop[i].uop.branch_op == BR_OP_JALR) begin
+                        branch_target[i] = (src0[i] + issue_uop[i].uop.imm_i) & 32'hffff_fffe;
+                    end else if (issue_uop[i].uop.is_branch && branch_taken[i]) begin
+                        branch_target[i] = issue_uop[i].uop.pc + issue_uop[i].uop.imm_b;
                     end
-                    TUBE_TYPE_SYS: begin
-                        result[i] = csr_read_data_i[i];
-                        if (issue_uop[i].uop.is_csr) begin
-                            csr_do_write[i] = csr_writes(issue_uop[i].uop);
-                            unique case (issue_uop[i].uop.csr_op)
-                                CSR_OP_RW: csr_new_value[i] = csr_operand[i];
-                                CSR_OP_RS: csr_new_value[i] =
-                                    csr_read_data_i[i] | csr_operand[i];
-                                CSR_OP_RC: csr_new_value[i] =
-                                    csr_read_data_i[i] & ~csr_operand[i];
-                                default: csr_new_value[i] = csr_read_data_i[i];
-                            endcase
-                        end
-                    end
-                    default: begin
-                        result[i] = alu_result(issue_uop[i].uop,
-                                               src0[i], src1[i]);
-                    end
-                endcase
-
-                if (issue_uop[i].uop.is_csr) begin
-                    csr_fault[i] =
-                        !csr_exists(issue_uop[i].uop.csr_addr) ||
-                        csr_priv_fault(issue_uop[i].uop.csr_addr,
-                                       csr_priv_mode_i) ||
-                        (csr_do_write[i] &&
-                         csr_write_readonly(issue_uop[i].uop.csr_addr));
-                    if (csr_fault[i]) begin
-                        dynamic_exception[i] = 1'b1;
-                        dynamic_exception_cause[i] = EXC_CAUSE_ILLEGAL_INST;
+                    result[i] = issue_uop[i].uop.pc + 32'd4;
+                end
+                TUBE_TYPE_MUL: begin
+                    result[i] = 32'b0;
+                end
+                TUBE_TYPE_MEM: begin
+                    if ((i == MEM_SLOT) && mem_req_valid) begin
+                        result[i] = mem_req_head_addr;
+                    end else begin
+                        result[i] = src0[i] +
+                                    (issue_uop[i].uop.is_store ?
+                                     issue_uop[i].uop.imm_s : issue_uop[i].uop.imm_i);
                     end
                 end
+                TUBE_TYPE_SYS: begin
+                    result[i] = csr_read_data_i[i];
+                    if (issue_uop[i].uop.is_csr) begin
+                        csr_do_write[i] = csr_writes(issue_uop[i].uop);
+                        unique case (issue_uop[i].uop.csr_op)
+                            CSR_OP_RW: begin
+                                csr_new_value[i] = csr_operand[i];
+                            end
+                            CSR_OP_RS: begin
+                                csr_new_value[i] = csr_read_data_i[i] | csr_operand[i];
+                            end
+                            CSR_OP_RC: begin
+                                csr_new_value[i] = csr_read_data_i[i] & ~csr_operand[i];
+                            end
+                            default: begin
+                                csr_new_value[i] = csr_read_data_i[i];
+                            end
+                        endcase
+                    end
+                end
+                default: begin
+                    result[i] = alu_result(issue_uop[i].uop, src0[i], src1[i]);
+                end
+            endcase
 
-                if (issue_uop[i].uop.is_mret &&
-                    (csr_priv_mode_i != PRIV_M)) begin
+            if (issue_uop[i].uop.is_csr) begin
+                csr_fault[i] = !csr_exists(issue_uop[i].uop.csr_addr) ||
+                               csr_priv_fault(issue_uop[i].uop.csr_addr, csr_priv_mode_i) ||
+                               (csr_do_write[i] && csr_write_readonly(issue_uop[i].uop.csr_addr));
+                if (csr_fault[i]) begin
                     dynamic_exception[i] = 1'b1;
                     dynamic_exception_cause[i] = EXC_CAUSE_ILLEGAL_INST;
                 end
+            end
 
-                if (issue_uop[i].uop.is_ecall) begin
-                    dynamic_exception[i] = 1'b1;
-                    dynamic_exception_cause[i] =
-                        (csr_priv_mode_i == PRIV_M) ?
-                        EXC_CAUSE_ECALL_M : EXC_CAUSE_ECALL_U;
-                end
-            end else if (i == MEM_SLOT) begin
-                result[i] = mem_req_valid ? mem_req_head_addr : 32'b0;
-                if (mem_req_valid &&
-                    (issue_uop[i].uop.is_load ||
-                     issue_uop[i].uop.is_store) &&
-                    mem_misaligned(issue_uop[i].uop, result[i])) begin
-                    mem_align_fault[i] = 1'b1;
-                    dynamic_exception[i] = 1'b1;
-                    dynamic_exception_cause[i] =
-                        issue_uop[i].uop.is_load ?
-                        EXC_CAUSE_LOAD_MISALIGNED :
-                        EXC_CAUSE_STORE_MISALIGNED;
-                end
+            if ((issue_uop[i].uop.is_load || issue_uop[i].uop.is_store) &&
+                mem_misaligned(issue_uop[i].uop, result[i])) begin
+                mem_align_fault[i] = 1'b1;
+                dynamic_exception[i] = 1'b1;
+                dynamic_exception_cause[i] = issue_uop[i].uop.is_load ?
+                                             EXC_CAUSE_LOAD_MISALIGNED :
+                                             EXC_CAUSE_STORE_MISALIGNED;
+            end
+
+            if (issue_uop[i].uop.is_mret && (csr_priv_mode_i != PRIV_M)) begin
+                dynamic_exception[i] = 1'b1;
+                dynamic_exception_cause[i] = EXC_CAUSE_ILLEGAL_INST;
+            end
+
+            if (issue_uop[i].uop.is_ecall) begin
+                dynamic_exception[i] = 1'b1;
+                dynamic_exception_cause[i] = (csr_priv_mode_i == PRIV_M) ?
+                                             EXC_CAUSE_ECALL_M : EXC_CAUSE_ECALL_U;
             end
 
             wb_valid_d[i] = issue_valid[i];
@@ -718,20 +713,19 @@ module CoreExecuteCluster (
             wb_exception_cause_d[i] = dynamic_exception[i] ?
                                       dynamic_exception_cause[i] :
                                       issue_uop[i].uop.exception_cause;
-            wb_branch_miss_d[i] = 1'b0;
-            if (i < INT_ISSUE_WIDTH) begin
-                wb_branch_miss_d[i] = issue_valid[i] &&
-                    (issue_uop[i].uop.is_branch ||
-                     issue_uop[i].uop.is_jal ||
-                     issue_uop[i].uop.is_jalr) &&
-                    ((branch_taken[i] != issue_uop[i].uop.pred_taken) ||
-                     (branch_taken[i] &&
-                      (branch_target[i] != issue_uop[i].uop.pred_target)));
-            end
+            wb_branch_miss_d[i] = issue_valid[i] &&
+                                  (issue_uop[i].uop.is_branch ||
+                                   issue_uop[i].uop.is_jal ||
+                                   issue_uop[i].uop.is_jalr) &&
+                                  ((branch_taken[i] !=
+                                    issue_uop[i].uop.pred_taken) ||
+                                   (branch_taken[i] &&
+                                    (branch_target[i] !=
+                                     issue_uop[i].uop.pred_target)));
             wb_redirect_pc_d[i] = branch_target[i];
-            wb_csr_write_d[i] = (i < INT_ISSUE_WIDTH) && issue_valid[i] &&
-                                issue_uop[i].uop.is_csr && csr_do_write[i] &&
-                                !csr_fault[i];
+            wb_csr_write_d[i] = issue_valid[i] &&
+                                issue_uop[i].uop.is_csr &&
+                                csr_do_write[i] && !csr_fault[i];
             wb_csr_addr_d[i] = issue_uop[i].uop.csr_addr;
             wb_csr_wdata_d[i] = csr_new_value[i];
 

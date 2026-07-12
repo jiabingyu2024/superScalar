@@ -64,13 +64,8 @@ module CoreDCache #(
     // One asynchronous read and one synchronous write per way maps naturally
     // to Xilinx distributed RAM while preserving the current zero-cycle hit
     // lookup. A future BRAM version would require an extra lookup pipeline.
-    // Bank by line word so each physical LUTRAM is only SET_COUNT deep.
-    // This preserves the asynchronous hit lookup while localizing write
-    // address/enable routing to one of WORDS_PER_LINE shallow banks.
-    (* ram_style = "distributed" *) logic [31:0] data_way0_q
-        [0:WORDS_PER_LINE-1][0:SET_COUNT-1];
-    (* ram_style = "distributed" *) logic [31:0] data_way1_q
-        [0:WORDS_PER_LINE-1][0:SET_COUNT-1];
+    (* ram_style = "distributed" *) logic [31:0] data_way0_q [0:DATA_DEPTH-1];
+    (* ram_style = "distributed" *) logic [31:0] data_way1_q [0:DATA_DEPTH-1];
     (* ram_style = "distributed" *) logic [TAG_BITS-1:0] tag_way0_q [0:SET_COUNT-1];
     (* ram_style = "distributed" *) logic [TAG_BITS-1:0] tag_way1_q [0:SET_COUNT-1];
     logic [SET_COUNT-1:0] lru_q;
@@ -131,8 +126,6 @@ module CoreDCache #(
     DataPath hit_word;
     logic [DATA_ADDR_BITS-1:0] data_read_addr;
     logic [DATA_ADDR_BITS-1:0] data_write_addr;
-    logic [INDEX_BITS-1:0] data_read_index;
-    logic [WORD_BITS-1:0] data_read_word;
     DataPath data_way0_read;
     DataPath data_way1_read;
     DataPath victim_read_word;
@@ -261,10 +254,8 @@ module CoreDCache #(
         end
     end
 
-    assign data_read_index = data_read_addr[DATA_ADDR_BITS-1:WORD_BITS];
-    assign data_read_word = data_read_addr[WORD_BITS-1:0];
-    assign data_way0_read = data_way0_q[data_read_word][data_read_index];
-    assign data_way1_read = data_way1_q[data_read_word][data_read_index];
+    assign data_way0_read = data_way0_q[data_read_addr];
+    assign data_way1_read = data_way1_q[data_read_addr];
     assign data_way0_effective = data_write_valid_q && !data_write_way_q &&
                                  (data_write_addr_q == data_read_addr) ?
                                  data_write_data_q : data_way0_read;
@@ -338,23 +329,15 @@ module CoreDCache #(
         endcase
     end
 
-    for (genvar bank = 0; bank < WORDS_PER_LINE; bank++) begin : gen_data_bank
-        always_ff @(posedge clk) begin
-            if (data_write_valid_q && !data_write_way_q &&
-                (data_write_addr_q[WORD_BITS-1:0] == WORD_BITS'(bank))) begin
-                data_way0_q[bank][
-                    data_write_addr_q[DATA_ADDR_BITS-1:WORD_BITS]
-                ] <= data_write_data_q;
-            end
+    always_ff @(posedge clk) begin
+        if (data_write_valid_q && !data_write_way_q) begin
+            data_way0_q[data_write_addr_q] <= data_write_data_q;
         end
+    end
 
-        always_ff @(posedge clk) begin
-            if (data_write_valid_q && data_write_way_q &&
-                (data_write_addr_q[WORD_BITS-1:0] == WORD_BITS'(bank))) begin
-                data_way1_q[bank][
-                    data_write_addr_q[DATA_ADDR_BITS-1:WORD_BITS]
-                ] <= data_write_data_q;
-            end
+    always_ff @(posedge clk) begin
+        if (data_write_valid_q && data_write_way_q) begin
+            data_way1_q[data_write_addr_q] <= data_write_data_q;
         end
     end
 
@@ -681,8 +664,8 @@ module CoreDCache #(
         if (!rst && (state_q == DC_WRITEBACK_REQ)) begin
             assert (writeback_data_q ==
                     (victim_way_q ?
-                     data_way1_q[burst_word_q][req_index_q] :
-                     data_way0_q[burst_word_q][req_index_q]))
+                     data_way1_q[{req_index_q, burst_word_q}] :
+                     data_way0_q[{req_index_q, burst_word_q}]))
                 else $error("DCache writeback data/word alignment mismatch");
         end
 

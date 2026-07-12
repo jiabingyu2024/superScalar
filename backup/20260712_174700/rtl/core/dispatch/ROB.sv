@@ -42,30 +42,14 @@ module CoreROB #(
         $clog2(ROB_DEPTH + ALLOC_WIDTH + RETIRE_W + 1);
     localparam logic [COUNT_WIDTH-1:0] ROB_DEPTH_COUNT =
         COUNT_WIDTH'(ROB_DEPTH);
-    typedef struct packed {
-        PcPath pc;
-        logic [31:0] inst;
-        LgcRegNumPath rd;
-        LgcRegNumPath rs1;
-        TubeTypePath tube;
-        logic is_branch;
-        logic is_jal;
-        logic is_jalr;
-        logic is_load;
-        logic is_store;
-        logic is_mret;
-        logic is_serial;
-        logic pred_taken;
-        PcPath pred_target;
-    } rob_alloc_meta_t;
-    localparam int ALLOC_META_WIDTH = $bits(rob_alloc_meta_t);
+    localparam int UOP_WIDTH = $bits(CoreDecodeUop);
 
     // Keep allocation and completion write ownership disjoint, but express
     // each field as a flat vector array.  In particular, store the packed uop
-    // as compact retirement metadata rather than the full execute-time decode
-    // uop. This keeps immediates/ALU/memory controls out of the ROB head mux.
+    // as bits rather than an unpacked array of records so Vivado does not build
+    // a 3D record RAM with thousands of registers.
     RobIndexPath alloc_rob_idx_q [ROB_DEPTH-1:0];
-    logic [ALLOC_META_WIDTH-1:0] alloc_meta_bits_q [ROB_DEPTH-1:0];
+    logic [UOP_WIDTH-1:0] alloc_uop_bits_q [ROB_DEPTH-1:0];
     PhyRegNumPath alloc_prd_q [ROB_DEPTH-1:0];
     PhyRegNumPath alloc_old_prd_q [ROB_DEPTH-1:0];
     logic alloc_has_prd_q [ROB_DEPTH-1:0];
@@ -119,53 +103,14 @@ module CoreROB #(
         end
     endfunction
 
-    function automatic rob_alloc_meta_t make_alloc_meta(
-        input CoreDecodeUop uop
-    );
-        rob_alloc_meta_t meta;
-        begin
-            meta = '0;
-            meta.pc = uop.pc;
-            meta.inst = uop.inst;
-            meta.rd = uop.rd;
-            meta.rs1 = uop.rs1;
-            meta.tube = uop.tube;
-            meta.is_branch = uop.is_branch;
-            meta.is_jal = uop.is_jal;
-            meta.is_jalr = uop.is_jalr;
-            meta.is_load = uop.is_load;
-            meta.is_store = uop.is_store;
-            meta.is_mret = uop.is_mret;
-            meta.is_serial = uop.is_serial;
-            meta.pred_taken = uop.pred_taken;
-            meta.pred_target = uop.pred_target;
-            make_alloc_meta = meta;
-        end
-    endfunction
-
     function automatic CoreRobEntry assemble_entry(input RobIndexPath idx);
         CoreRobEntry entry;
-        rob_alloc_meta_t meta;
         begin
             entry = '0;
-            meta = rob_alloc_meta_t'(alloc_meta_bits_q[idx]);
             entry.valid = valid_q[idx];
             entry.done = done_q[idx];
             entry.rob_idx = alloc_rob_idx_q[idx];
-            entry.uop.pc = meta.pc;
-            entry.uop.inst = meta.inst;
-            entry.uop.rd = meta.rd;
-            entry.uop.rs1 = meta.rs1;
-            entry.uop.tube = meta.tube;
-            entry.uop.is_branch = meta.is_branch;
-            entry.uop.is_jal = meta.is_jal;
-            entry.uop.is_jalr = meta.is_jalr;
-            entry.uop.is_load = meta.is_load;
-            entry.uop.is_store = meta.is_store;
-            entry.uop.is_mret = meta.is_mret;
-            entry.uop.is_serial = meta.is_serial;
-            entry.uop.pred_taken = meta.pred_taken;
-            entry.uop.pred_target = meta.pred_target;
+            entry.uop = CoreDecodeUop'(alloc_uop_bits_q[idx]);
             entry.prd = alloc_prd_q[idx];
             entry.old_prd = alloc_old_prd_q[idx];
             entry.alloc_prd = alloc_has_prd_q[idx];
@@ -182,10 +127,10 @@ module CoreROB #(
     endfunction
 
     function automatic logic alloc_is_store(input RobIndexPath idx);
-        rob_alloc_meta_t meta;
+        CoreDecodeUop uop;
         begin
-            meta = rob_alloc_meta_t'(alloc_meta_bits_q[idx]);
-            alloc_is_store = meta.is_store;
+            uop = CoreDecodeUop'(alloc_uop_bits_q[idx]);
+            alloc_is_store = uop.is_store;
         end
     endfunction
 
@@ -353,8 +298,8 @@ module CoreROB #(
             if (alloc_fire[a]) begin
                 alloc_rob_idx_q[wrap_add(tail_q, alloc_offset[a])] <=
                     wrap_add(tail_q, alloc_offset[a]);
-                alloc_meta_bits_q[wrap_add(tail_q, alloc_offset[a])] <=
-                    make_alloc_meta(alloc_uop_i[a].uop);
+                alloc_uop_bits_q[wrap_add(tail_q, alloc_offset[a])] <=
+                    alloc_uop_i[a].uop;
                 alloc_prd_q[wrap_add(tail_q, alloc_offset[a])] <=
                     alloc_uop_i[a].prd;
                 alloc_old_prd_q[wrap_add(tail_q, alloc_offset[a])] <=

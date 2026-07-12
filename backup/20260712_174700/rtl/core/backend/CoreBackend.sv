@@ -234,8 +234,6 @@ module CoreBackend (
     logic [DECODE_WIDTH-1:0] decode_ready_from_rename;
     PhyRegNumPath [LOGIC_REG_NUM-1:0] srat_map;
     PhyRegNumPath [LOGIC_REG_NUM-1:0] arat_map;
-    logic [PHY_REG_NUM-1:0] arat_live_mask_q;
-    logic [PHY_REG_NUM-1:0] arat_live_mask_d;
 
     function automatic logic [DISPATCH_BUFFER_PTR_BITS-1:0]
         dispatch_buffer_wrap_add(
@@ -547,8 +545,8 @@ module CoreBackend (
         .rst(rst),
         .clear_i(clear_i),
         .recover_i(recover_i),
-        // Include the branch/trap retirement occurring on the recovery edge.
-        .recover_live_mask_i(arat_live_mask_d),
+        .recover_map_i(arat_map),
+        .live_map_i(srat_map),
         .alloc_req_i(free_alloc_req),
         .alloc_accept_i(free_alloc_accept),
         .alloc_valid_o(free_alloc_valid),
@@ -592,7 +590,7 @@ module CoreBackend (
         .rst(rst),
         .clear_i(clear_i),
         .recover_i(recover_i),
-        .recover_live_mask_i(arat_live_mask_d),
+        .recover_map_i(arat_map),
         .stable_query_src1_i(dispatch_busy_src1_phy),
         .stable_query_src1_ready_o(dispatch_busy_src1_ready),
         .stable_query_src2_i(dispatch_busy_src2_phy),
@@ -827,33 +825,6 @@ module CoreBackend (
             serial_inflight_q <= 1'b0;
         end else begin
             serial_inflight_q <= (serial_inflight_q || serial_alloc) && !serial_retire;
-        end
-    end
-
-    // Maintain one committed physical-register ownership mask alongside ARAT.
-    // Recovery consumers can copy this narrow state directly instead of each
-    // rebuilding a 64-bit mask from 32 dynamic ARAT indices.
-    always_comb begin
-        arat_live_mask_d = arat_live_mask_q;
-        for (int c = 0; c < RETIRE_WIDTH; c = c + 1) begin
-            if (commit_valid[c] && (commit_arch[c] != '0)) begin
-                // retire_entry carries the exact pre-rename mapping. arat_map
-                // already includes the current combinational commit overlay,
-                // so it must not be used to identify the old owner here.
-                arat_live_mask_d[free_old_prd[c]] = 1'b0;
-                arat_live_mask_d[commit_prd[c]] = 1'b1;
-            end
-        end
-        arat_live_mask_d[0] = 1'b1;
-    end
-
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            for (int p = 0; p < PHY_REG_NUM; p = p + 1) begin
-                arat_live_mask_q[p] <= (p < LOGIC_REG_NUM);
-            end
-        end else begin
-            arat_live_mask_q <= arat_live_mask_d;
         end
     end
 

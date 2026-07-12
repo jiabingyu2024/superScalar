@@ -55,10 +55,11 @@ module CoreStoreBuffer (
 
     store_entry_t entry_q [STORE_BUF_DEPTH-1:0];
     store_entry_t marked_entry [STORE_BUF_DEPTH-1:0];
+    store_entry_t compact_entry [STORE_BUF_DEPTH-1:0];
     store_entry_t next_entry [STORE_BUF_DEPTH-1:0];
+    logic [STORE_BUF_DEPTH-1:0] keep_entry;
     logic [COUNT_WIDTH-1:0] count_q;
-    logic [COUNT_WIDTH-1:0] next_count;
-    logic [COUNT_WIDTH-1:0] post_pop_count;
+    logic [COUNT_WIDTH-1:0] compact_count;
     logic pop_fire;
     logic push_fire;
     logic [3:0] forward_mask;
@@ -200,54 +201,42 @@ module CoreStoreBuffer (
                 end
             end
 
+            keep_entry[i] = marked_entry[i].valid &&
+                            !(pop_fire && (i == 0)) &&
+                            (!clear_i || marked_entry[i].retired);
+            compact_entry[i] = '0;
+            next_entry[i] = '0;
         end
 
-        // StoreBuffer removes only its retired head. Use an adjacent shift for
-        // that single pop instead of a general count-indexed compaction mux.
-        post_pop_count = count_q - COUNT_WIDTH'(pop_fire);
+        compact_count = '0;
         for (int i = 0; i < STORE_BUF_DEPTH; i = i + 1) begin
-            next_entry[i] = marked_entry[i];
-            if (pop_fire) begin
-                if (i < STORE_BUF_DEPTH - 1) begin
-                    next_entry[i] = marked_entry[i + 1];
-                end else begin
-                    next_entry[i] = '0;
-                end
-            end
-        end
-
-        // In-order retirement guarantees that stores surviving recovery form
-        // a contiguous prefix. Invalidate the speculative suffix in place.
-        next_count = post_pop_count;
-        if (clear_i) begin
-            next_count = '0;
-            for (int i = 0; i < STORE_BUF_DEPTH; i = i + 1) begin
-                if (next_entry[i].valid && next_entry[i].retired) begin
-                    next_count = next_count + 1'b1;
-                end else begin
-                    next_entry[i] = '0;
-                end
+            if (keep_entry[i]) begin
+                compact_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]] = marked_entry[i];
+                compact_count = compact_count + 1'b1;
             end
         end
 
         push_fire = push_valid_i && push_ready_o;
+
+        for (int i = 0; i < STORE_BUF_DEPTH; i = i + 1) begin
+            next_entry[i] = compact_entry[i];
+        end
         if (push_fire) begin
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].valid = 1'b1;
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].retired = 1'b0;
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].rob_idx = push_rob_idx_i;
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].addr = push_addr_i;
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].data = push_data_i;
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].mask = push_mask_i;
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].data_valid =
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].valid = 1'b1;
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].retired = 1'b0;
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].rob_idx = push_rob_idx_i;
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].addr = push_addr_i;
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].data = push_data_i;
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].mask = push_mask_i;
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].data_valid =
                 push_data_valid_i;
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].data_prd =
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].data_prd =
                 push_data_prd_i;
             // Execute reports completion for a store whose data was already
             // ready at shell allocation.  Only a data-pending shell needs the
             // dedicated completion output above.
-            next_entry[post_pop_count[STORE_BUF_INDEX_WIDTH-1:0]].complete_sent =
+            next_entry[compact_count[STORE_BUF_INDEX_WIDTH-1:0]].complete_sent =
                 push_data_valid_i;
-            next_count = post_pop_count + 1'b1;
         end
 
     end
@@ -268,7 +257,7 @@ module CoreStoreBuffer (
             for (int i = 0; i < STORE_BUF_DEPTH; i = i + 1) begin
                 entry_q[i] <= next_entry[i];
             end
-            count_q <= next_count;
+            count_q <= compact_count + COUNT_WIDTH'(push_fire);
         end
     end
 
