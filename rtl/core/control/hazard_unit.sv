@@ -11,100 +11,32 @@
 `include "cpu_defines.svh"
 
 module hazard_unit(
-    input  logic                            i_clk,
-    input  logic                            i_rst_n,
     input  logic  [`PC_BUS]                 i_pc_cur,
-    input  logic  [`RF_BUS]                 i_rs1_addr_f,
-    input  logic  [`RF_BUS]                 i_rs2_addr_f,
-    input  logic  [`RF_BUS]                 i_rs1_addr_d,
-    input  logic  [`RF_BUS]                 i_rs2_addr_d,
-    input  logic  [`RF_BUS]                 i_rd_addr_e,
-    input  logic                            i_mem_read_e,
-    input  logic                            i_reg_write_e,//load_use
-
     input  logic                            i_predict_taken,
     input  logic  [`PC_BUS]                 i_predict_target,
-
     input  logic                            i_error,
     input  logic  [`PC_BUS]                 i_right_pc,
-
-    input  logic                            i_m_busy,
-    input  logic                            i_mem_busy,
-
-    output logic                            o_stall_p_f,
-    output logic                            o_stall_f_d,
-    output logic                            o_stall_d_e,
-    output logic                            o_stall_e_m,
-    output logic                            o_stall_m_w,
-
-    output logic                            o_flush_p_f,
-    output logic                            o_flush_f_d,
-    output logic                            o_flush_d_e,
-    output logic                            o_flush_e_m,
-    output logic                            o_flush_m_w,
-
+    input  logic                            i_c1_busy,
+    input  logic                            i_front_busy,
+    input  logic                            i_addr_dep,
+    output logic                            o_stall_front,
+    output logic                            o_flush_front,
+    output logic                            o_flush_c1,
+    output logic                            o_hold_c1,
+    output logic                            o_bubble_c1,
     output logic  [`PC_BUS]                 o_pc_next,
     output logic  [`PC_BUS]                 o_pc_predict
-
-
 );
-
-    logic load_use_hazard_raw_e;
-    logic load_use_hazard_raw_f;
-    logic load_use_hazard_hold_d;
-    logic load_use_hazard_hold_f;
-    logic load_use_hazard;
-
-    assign load_use_hazard_raw_e = i_mem_read_e && i_reg_write_e && (i_rd_addr_e != '0) &&
-                                   ((i_rd_addr_e == i_rs1_addr_d) || (i_rd_addr_e == i_rs2_addr_d));
-    assign load_use_hazard_raw_f = i_mem_read_e && i_reg_write_e && (i_rd_addr_e != '0) &&
-                                   ((i_rd_addr_e == i_rs1_addr_f) || (i_rd_addr_e == i_rs2_addr_f));
-    assign load_use_hazard = load_use_hazard_raw_e || load_use_hazard_hold_d || load_use_hazard_hold_f;
-
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
-        if (!i_rst_n) begin
-            load_use_hazard_hold_d <= 1'b0;
-            load_use_hazard_hold_f <= 1'b0;
-        end else if (i_error) begin
-            load_use_hazard_hold_d <= 1'b0;
-            load_use_hazard_hold_f <= 1'b0;
-        end else if (i_m_busy || i_mem_busy) begin
-            load_use_hazard_hold_d <= load_use_hazard_hold_d;
-            load_use_hazard_hold_f <= load_use_hazard_hold_f;
-        end else begin
-            load_use_hazard_hold_d <= load_use_hazard_raw_e;
-            load_use_hazard_hold_f <= load_use_hazard_raw_f && !load_use_hazard_raw_e;
-        end
-    end
-
     always_comb begin
-
-        o_stall_p_f = load_use_hazard || i_m_busy || i_mem_busy;
-        o_stall_f_d = load_use_hazard || i_m_busy || i_mem_busy;
-        o_stall_d_e = i_m_busy || i_mem_busy;
-        // When EX is busy with MUL/DIV, let the older M1 instruction drain once
-        // and inject bubbles into EX/M. Holding EX/M would replay the same M1
-        // load/store every busy cycle on this ready-valid DCache port.
-        o_stall_e_m = i_mem_busy;
-        // A DCache miss stalls the M1 request, but the older instruction already
-        // in M2 must still drain to WB.  While M1 is held, M2 is turned into a
-        // bubble via o_flush_m_w below; stalling M2/WB would pair the eventual
-        // miss return data with stale M2 metadata on the release cycle.
-        o_stall_m_w = 1'b0;
-
-        o_flush_p_f = i_error;
-        o_flush_f_d = i_error;
-        o_flush_d_e = i_error || (load_use_hazard && !i_m_busy && !i_mem_busy);
-        // Redirect is reported from EX/M1, so the current EX instruction is
-        // already a younger wrong-path instruction and must be squashed.
-        o_flush_e_m = i_error || (i_m_busy && !i_mem_busy);
-        o_flush_m_w = i_mem_busy;
-
+        o_stall_front = i_front_busy || i_addr_dep;
+        o_flush_front = i_error;
+        o_flush_c1    = i_error;
+        o_hold_c1     = i_c1_busy;
+        o_bubble_c1   = i_addr_dep && !i_c1_busy;
         o_pc_predict = i_predict_taken ? i_predict_target : (i_pc_cur + 32'd4);
-
         if (i_error) begin
             o_pc_next = i_right_pc;
-        end else if (load_use_hazard || i_m_busy || i_mem_busy) begin
+        end else if (o_stall_front) begin
             o_pc_next = i_pc_cur;
         end else begin
             o_pc_next = o_pc_predict;

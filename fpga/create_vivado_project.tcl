@@ -170,7 +170,11 @@ foreach required_file [list $irom_coe $dram_coe $xdc_file] {
     }
 }
 
-set project_dir [file normalize [file join $script_dir build ${project_name}_${mem_profile}]]
+set project_tag $mem_profile
+if {[info exists ::env(FPGA_PROJECT_TAG)]} {
+    set project_tag $::env(FPGA_PROJECT_TAG)
+}
+set project_dir [file normalize [file join $script_dir build ${project_name}_${project_tag}]]
 create_project -force $project_name $project_dir -part $part
 
 set_property target_language Verilog [current_project]

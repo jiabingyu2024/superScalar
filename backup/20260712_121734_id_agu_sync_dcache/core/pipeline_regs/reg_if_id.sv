@@ -26,15 +26,11 @@ module reg_if_id(
     input logic [`PC_BUS]    i_pc_f_d,
     input logic [`INST_BUS]  i_inst_f_d,
     input logic [`PC_BUS]    i_pc_predict,
-    input logic              i_predict_taken,
-    input logic              i_valid,
 
 
     output logic [`PC_BUS]   o_pc_f_d,
     output logic [`INST_BUS] o_inst_f_d,
-    output logic [`PC_BUS]   o_pc_predict,
-    output logic             o_predict_taken,
-    output logic             o_valid
+    output logic [`PC_BUS]   o_pc_predict
 );
 
     always_ff @(posedge i_clk or negedge i_rst_n) begin
@@ -42,20 +38,14 @@ module reg_if_id(
             o_pc_f_d     <= '0;
             o_inst_f_d   <= '0;
             o_pc_predict <= '0;
-            o_predict_taken <= 1'b0;
-            o_valid      <= 1'b0;
         end else if (i_flush) begin
             o_pc_f_d     <= '0;
             o_inst_f_d   <= '0;
             o_pc_predict <= '0;
-            o_predict_taken <= 1'b0;
-            o_valid      <= 1'b0;
         end else if (!i_stall) begin
             o_pc_f_d     <= i_pc_f_d;
             o_inst_f_d   <= i_inst_f_d;
             o_pc_predict <= i_pc_predict;
-            o_predict_taken <= i_predict_taken;
-            o_valid      <= i_valid;
         end
     end
 endmodule

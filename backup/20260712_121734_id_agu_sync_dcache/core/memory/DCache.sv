@@ -90,9 +90,7 @@ module DCache #(
         DC_UNCACHED_REPLAY,
         DC_MISS_REQ,
         DC_MISS_WAIT,
-        DC_MISS_REPLAY,
-        DC_BG_REQ,
-        DC_BG_WAIT
+        DC_MISS_REPLAY
     } state_e;
 
     state_e state_q;
@@ -116,7 +114,6 @@ module DCache #(
     logic [2:0]  fill_count_q;
     logic [31:0] resp_rdata_q;
     logic        resp_valid_q;
-    logic        restart_pending_q;
 
     logic [INDEX_W-1:0] req_index_c;
     logic [31:TAG_LSB]  req_tag_c;
@@ -131,7 +128,6 @@ module DCache #(
     logic [31:0]        fill_resp_shifted_c;
     logic [31:0]        store_shifted_data_c;
     logic [3:0]         store_shifted_mask_c;
-
 
     generate
         for (genvar word_idx = 0; word_idx < WORDS_PER_LINE; word_idx++) begin : gen_data_word
@@ -190,8 +186,7 @@ module DCache #(
                 data_write_word_c  = req_word_c;
                 data_write_data_c  = store_shifted_data_c;
                 data_write_mask_c  = store_shifted_mask_c;
-            end else if (((state_q == DC_MISS_WAIT) ||
-                          (state_q == DC_BG_WAIT)) && mem_resp_valid) begin
+            end else if ((state_q == DC_MISS_WAIT) && mem_resp_valid) begin
                 data_write_en_c    = 1'b1;
                 data_write_index_c = miss_index_c;
                 data_write_word_c  = fill_word_q;
@@ -249,18 +244,6 @@ module DCache #(
                 mem_req_uncached = 1'b0;
             end
 
-            DC_BG_REQ: begin
-                mem_req_valid    = 1'b1;
-                mem_req_write    = 1'b0;
-                mem_req_addr     = {miss_addr_q[31:4], fill_word_q, 2'b00};
-                mem_req_uncached = 1'b0;
-                cpu_req_ready    = restart_pending_q;
-            end
-
-            DC_BG_WAIT: begin
-                cpu_req_ready = restart_pending_q;
-            end
-
             default: begin
             end
         endcase
@@ -268,9 +251,7 @@ module DCache #(
 
     assign cpu_resp_valid = resp_valid_q ||
                             (state_q == DC_UNCACHED_REPLAY) ||
-                            (state_q == DC_MISS_REPLAY) ||
-                            (((state_q == DC_BG_REQ) ||
-                              (state_q == DC_BG_WAIT)) && restart_pending_q);
+                            (state_q == DC_MISS_REPLAY);
     assign cpu_resp_rdata = resp_rdata_q;
 
     always_ff @(posedge clk) begin
@@ -282,7 +263,6 @@ module DCache #(
             fill_count_q <= 3'd0;
             resp_rdata_q <= 32'd0;
             resp_valid_q <= 1'b0;
-            restart_pending_q <= 1'b0;
             perf_dcache_access <= 64'd0;
             perf_dcache_miss <= 64'd0;
             perf_stall_mem <= 64'd0;
@@ -290,7 +270,7 @@ module DCache #(
         end else begin
             resp_valid_q <= 1'b0;
 
-            if (cpu_req_valid && !cpu_req_ready) begin
+            if ((state_q != DC_IDLE) || (cpu_req_valid && !cpu_req_ready)) begin
                 perf_stall_mem <= perf_stall_mem + 64'd1;
             end
 
@@ -315,10 +295,7 @@ module DCache #(
                             perf_dcache_miss <= perf_dcache_miss + 64'd1;
                             miss_addr_q <= cpu_req_addr;
                             miss_target_word_q <= req_word_c;
-                            // Critical word first. The CPU is restarted as soon
-                            // as this word returns; the rest of the line fills
-                            // in the background while non-memory instructions run.
-                            fill_word_q <= req_word_c;
+                            fill_word_q <= 2'd0;
                             fill_count_q <= 3'd0;
                             state_q <= DC_MISS_REQ;
                         end else if (mem_req_ready) begin
@@ -348,39 +325,20 @@ module DCache #(
 
                 DC_MISS_WAIT: begin
                     if (mem_resp_valid) begin
-                        resp_rdata_q <= fill_resp_shifted_c;
-                        fill_count_q <= 3'd1;
-                        fill_word_q <= next_fill_word_c;
-                        restart_pending_q <= 1'b1;
-                        state_q <= DC_BG_REQ;
-                    end
-                end
+                        if (fill_word_q == miss_target_word_q) begin
+                            resp_rdata_q <= fill_resp_shifted_c;
+                        end
 
-                DC_BG_REQ: begin
-                    if (restart_pending_q && cpu_req_valid) begin
-                        restart_pending_q <= 1'b0;
-                    end
-                    if (mem_req_ready) begin
-                        state_q <= DC_BG_WAIT;
-                    end
-                end
-
-                DC_BG_WAIT: begin
-                    if (restart_pending_q && cpu_req_valid) begin
-                        restart_pending_q <= 1'b0;
-                    end
-                    if (mem_resp_valid) begin
                         if (fill_count_q == 3'(WORDS_PER_LINE - 1)) begin
                             tag_q[miss_index_c] <= miss_tag_c;
                             valid_q[miss_index_c] <= 1'b1;
                             fill_count_q <= 3'd0;
                             fill_word_q <= miss_target_word_q;
-                            restart_pending_q <= 1'b0;
-                            state_q <= DC_IDLE;
+                            state_q <= DC_MISS_REPLAY;
                         end else begin
                             fill_count_q <= fill_count_q + 3'd1;
                             fill_word_q <= next_fill_word_c;
-                            state_q <= DC_BG_REQ;
+                            state_q <= DC_MISS_REQ;
                         end
                     end
                 end

@@ -18,7 +18,6 @@ module branch_cmp(
     input  logic  [`PC_BUS]                 i_pc_d_e,
     input  logic  [`PC_BUS]                 i_pc_target,
     input  logic  [`PC_BUS]                 i_pc_predict,
-    input  logic                            i_predict_taken,
 
     input  logic  [`PC_BUS]                 i_t1_data,
     input  logic  [`PC_BUS]                 i_t2_data,
@@ -40,7 +39,6 @@ module branch_cmp(
     logic [`PC_BUS] branch_target;
     logic [`PC_BUS] pc_plus4;
     logic [`PC_BUS] right_pc;
-    logic        target_mismatch;
 
     always_comb begin
         branch_taken  = 1'b0;
@@ -70,12 +68,6 @@ module branch_cmp(
         o_update_pc     = i_pc_d_e;
         o_update_target = right_pc;
         o_right_pc      = right_pc;
-        target_mismatch = (branch_target != i_pc_predict);
-        // Direction and target checks are parallel.  Keeping branch_taken out
-        // of a 32-bit right-PC mux before the comparison shortens the C2
-        // bypass -> branch redirect path substantially.
-        o_error = o_update_en &&
-                  ((branch_taken != i_predict_taken) ||
-                   (branch_taken && i_predict_taken && target_mismatch));
+        o_error         = o_update_en && (right_pc != i_pc_predict);
     end
 endmodule

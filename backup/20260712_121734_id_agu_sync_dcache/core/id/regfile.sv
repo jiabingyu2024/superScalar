@@ -12,13 +12,10 @@ module regfile(
     input wire              i_clk,
     input wire              i_rst_n,
     input wire              i_we,
-    input wire              i_we2,
     input wire [`RF_BUS]    i_rs1_addr,
     input wire [`RF_BUS]    i_rs2_addr,
     input wire [`RF_BUS]    i_w_addr,
     input wire [`DATA_BUS]  i_w_data,
-    input wire [`RF_BUS]    i_w_addr2,
-    input wire [`DATA_BUS]  i_w_data2,
     output wire [`DATA_BUS] o_rs1_data,
     output wire [`DATA_BUS] o_rs2_data
 );
@@ -31,14 +28,8 @@ module regfile(
             for (idx = 0; idx < `RF_DEPTH; idx = idx + 1) begin
                 rf_mem[idx] <= '0;
             end
-        end else begin
-            if (i_we && (i_w_addr != '0)) begin
-                rf_mem[i_w_addr] <= i_w_data;
-            end
-            // Port 2 is the younger EX result and wins a same-rd collision.
-            if (i_we2 && (i_w_addr2 != '0)) begin
-                rf_mem[i_w_addr2] <= i_w_data2;
-            end
+        end else if (i_we && (i_w_addr != '0)) begin
+            rf_mem[i_w_addr] <= i_w_data;
         end
     end
 

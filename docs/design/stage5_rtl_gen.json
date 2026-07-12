@@ -1,0 +1,37 @@
+{
+  "design": "rv32_c0_c1_c2_id_agu",
+  "generated_at": "2026-07-12T12:50:00+08:00",
+  "source": [
+    "docs/design/id_agu_sync_dcache_evaluation.md",
+    "docs/design/id_agu_sync_dcache_implementation_plan.md"
+  ],
+  "backup": "backup/20260712_121734_id_agu_sync_dcache",
+  "modules_created": [
+    "rtl/core/id/agu.sv",
+    "rtl/core/pipeline_regs/reg_id_c1.sv",
+    "rtl/core/pipeline_regs/reg_c1_c2.sv"
+  ],
+  "modules_reworked": [
+    "rtl/core/core.sv",
+    "rtl/core/control/hazard_unit.sv",
+    "rtl/core/memory/DCache.sv",
+    "rtl/core/ex/stage_ex.sv",
+    "rtl/core/id/control_unit.sv",
+    "rtl/core/myCPU.sv"
+  ],
+  "architecture": {
+    "c0": "decode, register read, AGU",
+    "c1": "integer/branch/MulDiv execution or DCache request",
+    "c2": "load formatting and architectural write-back",
+    "dcache": "direct-mapped, write-through, critical-word-first, one background refill",
+    "redirect": "directly from C1 EX"
+  },
+  "verification_status": "verilator_regression_passed",
+  "results": {
+    "rv32_all": "PASS",
+    "srcSmoke": "PASS",
+    "srcWithMext_5m_ipc": 0.826767,
+    "srcWithMext_100m_ipc": 0.857533
+  }
+}
+

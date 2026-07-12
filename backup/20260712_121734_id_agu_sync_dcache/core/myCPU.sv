@@ -63,16 +63,6 @@ module myCPU (
     logic [63:0] perf_dcache_access;
     logic [63:0] perf_dcache_miss;
     logic [63:0] perf_stall_mem;
-`ifdef VERILATOR_TB
-    logic [63:0] core_perf_commit;
-    logic [63:0] core_perf_branch;
-    logic [63:0] core_perf_branch_miss;
-    logic [63:0] core_perf_load;
-    logic [63:0] core_perf_store;
-    logic [63:0] core_perf_stall_front;
-    logic [63:0] core_perf_stall_muldiv;
-    logic [63:0] core_perf_stall_load_use;
-`endif
 
     assign rst_n_int = ~cpu_rst;
 
@@ -97,17 +87,6 @@ module myCPU (
         .dram_addr     (core_dram_addr),
         .dram_wdata    (core_dram_wdata),
         .dram_mask     (core_dram_mask)
-`ifdef VERILATOR_TB
-        ,
-        .dbg_perf_commit         (core_perf_commit),
-        .dbg_perf_branch         (core_perf_branch),
-        .dbg_perf_branch_miss    (core_perf_branch_miss),
-        .dbg_perf_load           (core_perf_load),
-        .dbg_perf_store          (core_perf_store),
-        .dbg_perf_stall_front    (core_perf_stall_front),
-        .dbg_perf_stall_muldiv   (core_perf_stall_muldiv),
-        .dbg_perf_stall_load_use (core_perf_stall_load_use)
-`endif
     );
 
     DCache #(
@@ -142,17 +121,17 @@ module myCPU (
 
 `ifdef VERILATOR_TB
     assign dbg_perf_cycle          = perf_cycle_q;
-    assign dbg_perf_commit         = core_perf_commit;
-    assign dbg_perf_branch         = core_perf_branch;
-    assign dbg_perf_branch_miss    = core_perf_branch_miss;
-    assign dbg_perf_load           = core_perf_load;
-    assign dbg_perf_store          = core_perf_store;
+    assign dbg_perf_commit         = 64'd0;
+    assign dbg_perf_branch         = 64'd0;
+    assign dbg_perf_branch_miss    = 64'd0;
+    assign dbg_perf_load           = 64'd0;
+    assign dbg_perf_store          = 64'd0;
     assign dbg_perf_dcache_access  = perf_dcache_access;
     assign dbg_perf_dcache_miss    = perf_dcache_miss;
-    assign dbg_perf_stall_front    = core_perf_stall_front;
+    assign dbg_perf_stall_front    = 64'd0;
     assign dbg_perf_stall_mem      = perf_stall_mem;
-    assign dbg_perf_stall_muldiv   = core_perf_stall_muldiv;
-    assign dbg_perf_stall_load_use = core_perf_stall_load_use;
+    assign dbg_perf_stall_muldiv   = 64'd0;
+    assign dbg_perf_stall_load_use = 64'd0;
 `endif
 
     logic unused_dcache_cpu_resp_valid;

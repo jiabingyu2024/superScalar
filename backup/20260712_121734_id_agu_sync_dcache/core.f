@@ -13,7 +13,6 @@ rtl/core/id/imm_unit.sv
 rtl/core/id/regfile.sv
 rtl/core/id/control_unit.sv
 rtl/core/id/stage_id.sv
-rtl/core/id/agu.sv
 
 # EX stage
 rtl/core/ex/alu.sv
@@ -36,10 +35,6 @@ rtl/core/pipeline_regs/reg_id_ex.sv
 rtl/core/pipeline_regs/reg_ex_m1.sv
 rtl/core/pipeline_regs/reg_m1_m2.sv
 rtl/core/pipeline_regs/reg_m2_wb.sv
-rtl/core/pipeline_regs/reg_id_c1.sv
-rtl/core/pipeline_regs/reg_c1_c2.sv
-rtl/core/pipeline_regs/reg_id_ls.sv
-rtl/core/pipeline_regs/reg_ls_wb.sv
 
 # Control
 rtl/core/control/forward_unit.sv

@@ -1,173 +1,85 @@
-//==============================================================================
-// 模块: core_top
-// 功能概述：
-//   SoC/CPU 核顶层。仅例化 IF/ID/EX/MEM/WB、流水线寄存器、前递单元、冒险单元、BPU
-//   等子模块并完成信号互连；不包含组合功能逻辑（仲裁、译码等应在下级模块实现）。
-// 接口/协作审查（供采纳）：
-//   - 当前仅 clk/rst_n；外设、总线、中断等按赛题在顶层或外层 wrapper 扩展。
-//   - 命名：子模块例化前缀 u_；流水线相关时钟/复位/控制建议 P/F/D/E/M/W 分级命名便于 debug。
-//==============================================================================
 `include "cpu_defines.svh"
 
-module core(
-    input  logic                                     clk,
-    input  logic                                     rst_n,
+// Single-issue C0/C1/C2 backend.
+// C0: decode, register read and AGU.
+// C1: integer/branch/MulDiv execution or DCache request.
+// C2: load formatting and architectural write-back.
+module core (
+    input  logic                  clk,
+    input  logic                  rst_n,
 
-    input  logic  [`DATA_BUS]                        irom_data,
-    output logic  [`PC_BUS]                          irom_addr,
-    output logic                                     irom_ena,   // assign irom_ena = stall_p_f;
+    input  logic [`DATA_BUS]      irom_data,
+    output logic [`PC_BUS]        irom_addr,
+    output logic                  irom_ena,
 
-    input  logic  [`DATA_BUS]                        dram_rdata,
-    input  logic                                     dram_req_ready,
-    output logic                                     dram_wen,
-    output logic                                     dram_ren,
-    output logic  [`RAM_ADDR_BUS]                    dram_addr,
-    output logic  [`DATA_BUS]                        dram_wdata,
-    output logic  [3:0]                              dram_mask
-
+    input  logic [`DATA_BUS]      dram_rdata,
+    input  logic                  dram_req_ready,
+    output logic                  dram_wen,
+    output logic                  dram_ren,
+    output logic [`RAM_ADDR_BUS]  dram_addr,
+    output logic [`DATA_BUS]      dram_wdata,
+    output logic [3:0]            dram_mask
+`ifdef VERILATOR_TB
+    ,
+    output logic [63:0]           dbg_perf_commit,
+    output logic [63:0]           dbg_perf_branch,
+    output logic [63:0]           dbg_perf_branch_miss,
+    output logic [63:0]           dbg_perf_load,
+    output logic [63:0]           dbg_perf_store,
+    output logic [63:0]           dbg_perf_stall_front,
+    output logic [63:0]           dbg_perf_stall_muldiv,
+    output logic [63:0]           dbg_perf_stall_load_use
+`endif
 );
-    logic [`PC_BUS]   pc_next_hz;
+    // ------------------------------------------------------------------
+    // Frontend: PC -> synchronous IROM align -> IF/ID.
+    // ------------------------------------------------------------------
+    logic [`PC_BUS]   pc_next;
     logic [`PC_BUS]   pc_p;
     logic [`PC_BUS]   pc_predict_p;
     logic [`PC_BUS]   pc_pf;
     logic [`PC_BUS]   pc_predict_pf;
     logic             valid_pf;
-    logic [`PC_BUS]   pc_predict_f;
-    logic [`INST_BUS] inst_f;
+    logic             predict_taken_pf;
     logic [`PC_BUS]   pc_f;
+    logic [`INST_BUS] inst_f;
+    logic [`PC_BUS]   pc_predict_f;
     logic             predict_taken_f;
     logic [`PC_BUS]   predict_target_f;
 
     logic [`PC_BUS]   pc_d;
     logic [`INST_BUS] inst_d;
     logic [`PC_BUS]   pc_predict_d;
+    logic             valid_d;
+    logic             predict_taken_d;
 
-    logic             mem_read_d;
-    logic             mem_write_d;
-    logic             reg_write_d;
-    logic             wb_src_d;
-    logic             is_rs2_imm_d;
-    logic [3:0]       inst_spec_d;
-    logic [3:0]       alu_ctrl_d;
-    logic [2:0]       func3_d;
-    logic [3:0]       mem_mask_d;
-    logic             load_unsigned_d;
-    logic             is_branch_d;
-    logic             is_m_ext_d;
-    logic [2:0]       m_op_d;
-    logic [11:0]      csr_addr_d;
-    logic [`DATA_BUS] imm_d;
-    logic [`DATA_BUS] rs1_data_d;
-    logic [`RF_BUS]   rs1_addr_d;
-    logic [`DATA_BUS] rs2_data_d;
-    logic [`RF_BUS]   rs2_addr_d;
-    logic [`RF_BUS]   rd_addr_d;
-    logic [`PC_BUS]   pc_target_d;
-
-    logic [`DATA_BUS] rs1_data_e;
-    logic [`DATA_BUS] rs2_data_e;
-    logic [`RF_BUS]   rd_addr_e;
-    logic [`RF_BUS]   rs1_addr_e;
-    logic [`RF_BUS]   rs2_addr_e;
-    logic [`DATA_BUS] imm_e;
-    logic             mem_read_e;
-    logic             reg_write_e;
-    logic             mem_write_e;
-    logic             wb_src_e;
-    logic             is_rs2_imm_e;
-    logic [3:0]       inst_spec_e;
-    logic [3:0]       alu_ctrl_e;
-    logic [2:0]       func3_e;
-    logic [3:0]       mem_mask_e;
-    logic             load_unsigned_e;
-    logic             is_branch_e;
-    logic [`PC_BUS]   pc_e;
-    logic [`PC_BUS]   pc_target_e;
-    logic [`PC_BUS]   pc_predict_e;
-    logic             is_m_ext_e;
-    logic [2:0]       m_op_e;
-    logic [11:0]      csr_addr_e;
-
-    logic [1:0]       rs1_fwd_sel_d;
-    logic [1:0]       rs2_fwd_sel_d;
-    logic [1:0]       rs1_fwd_sel_e;
-    logic [1:0]       rs2_fwd_sel_e;
-
-    logic [`DATA_BUS] alu_res_e;
-    logic [`DATA_BUS] a2_data_e;
-    logic             update_taken_e;
-    logic             update_en_e;
-    logic [`PC_BUS]   update_pc_e;
-    logic [`PC_BUS]   update_target_e;
-    logic             error_e;
-    logic [`PC_BUS]   right_pc_e;
-
-    logic [`RF_BUS]   rd_addr_m;
-    logic [`DATA_BUS] alu_res_m;
-    logic [`DATA_BUS] a2_data_m;
-    logic             mem_read_m;
-    logic             mem_write_m;
-    logic             wb_src_m;
-    logic             reg_write_m;
-    logic [3:0]       mem_mask_m;
-    logic             load_unsigned_m;
-    logic             update_taken_m;
-    logic             update_en_m;
-    logic [`PC_BUS]   update_pc_m;
-    logic [`PC_BUS]   update_target_m;
-    logic             branch_error_m;
-    logic [`PC_BUS]   branch_right_pc_m;
-
-    logic [`RF_BUS]   rd_addr_m2;
-    logic [`DATA_BUS] alu_res_m2;
-    logic             wb_src_m2;
-    logic             reg_write_m2;
-    logic [3:0]       mem_mask_m2;
-    logic             load_unsigned_m2;
-    logic [`DATA_BUS] mem_data_m2;
-    logic [`DATA_BUS] wb_data_m2;
-    logic [`DATA_BUS] m1_m2_data;
-
-    logic [`RF_BUS]   rd_addr_w;
-    logic             reg_write_w;
-    logic [`DATA_BUS] wb_data_w;
-
-    logic             stall_p_f;
-    logic             stall_f_d;
-    logic             stall_d_e;
-    logic             stall_e_m;
-    logic             stall_m_w;
-    logic             flush_p_f;
-    logic             flush_f_d;
-    logic             flush_d_e;
-    logic             flush_e_m;
-    logic             flush_m_w;
-    logic             m_busy_e;
-    logic             mem_req_m;
-    logic             mem_busy_m;
+    logic             stall_front;
+    logic             flush_front;
+    logic             flush_c1;
+    logic             hold_c1;
+    logic             bubble_c1;
 
     assign irom_addr = pc_p;
-    assign irom_ena  = !stall_p_f;
-    assign pc_target_d = pc_d + imm_d;
-    assign mem_req_m  = mem_read_m || mem_write_m;
-    assign mem_busy_m = mem_req_m && !dram_req_ready;
+    assign irom_ena  = !stall_front;
 
     stage_pc u_stage_pc (
-        .i_clk       (clk),
-        .i_rst_n     (rst_n),
-        .i_pc_next   (pc_next_hz),
-        .o_pc_cur    (pc_p)
+        .i_clk     (clk),
+        .i_rst_n   (rst_n),
+        .i_pc_next (pc_next),
+        .o_pc_cur  (pc_p)
     );
 
     reg_pc_if u_reg_pc_if (
         .i_clk        (clk),
         .i_rst_n      (rst_n),
-        .i_flush      (flush_p_f),
-        .i_stall      (stall_p_f),
+        .i_flush      (flush_front),
+        .i_stall      (stall_front),
         .i_pc         (pc_p),
         .i_pc_predict (pc_predict_p),
+        .i_predict_taken (predict_taken_f),
         .o_pc         (pc_pf),
         .o_pc_predict (pc_predict_pf),
+        .o_predict_taken (predict_taken_pf),
         .o_valid      (valid_pf)
     );
 
@@ -181,61 +93,83 @@ module core(
         .o_pc_predict (pc_predict_f)
     );
 
-    bpu_top u_bpu_top (
-        .i_clk           (clk),
-        .i_rst_n         (rst_n),
-        .i_pc_cur        (pc_p),
-        .i_update_en     (update_en_m),
-        .i_update_taken  (update_taken_m),
-        .i_update_target (update_target_m),
-        .i_update_pc     (update_pc_m),
-        .o_predict_taken (predict_taken_f),
-        .o_predict_target(predict_target_f)
-    );
-
-    hazard_unit u_hazard_unit (
-        .i_clk           (clk),
-        .i_rst_n         (rst_n),
-        .i_pc_cur        (pc_p),
-        .i_rs1_addr_f    (inst_f[19:15]),
-        .i_rs2_addr_f    (inst_f[24:20]),
-        .i_rs1_addr_d    (rs1_addr_d),
-        .i_rs2_addr_d    (rs2_addr_d),
-        .i_rd_addr_e     (rd_addr_e),
-        .i_mem_read_e    (mem_read_e),
-        .i_reg_write_e   (reg_write_e),
-        .i_predict_taken (predict_taken_f),
-        .i_predict_target(predict_target_f),
-        .i_error         (branch_error_m),
-        .i_right_pc      (branch_right_pc_m),
-        .i_m_busy        (m_busy_e),
-        .i_mem_busy      (mem_busy_m),
-        .o_stall_p_f     (stall_p_f),
-        .o_stall_f_d     (stall_f_d),
-        .o_stall_d_e     (stall_d_e),
-        .o_stall_e_m     (stall_e_m),
-        .o_stall_m_w     (stall_m_w),
-        .o_flush_p_f     (flush_p_f),
-        .o_flush_f_d     (flush_f_d),
-        .o_flush_d_e     (flush_d_e),
-        .o_flush_e_m     (flush_e_m),
-        .o_flush_m_w     (flush_m_w),
-        .o_pc_next       (pc_next_hz),
-        .o_pc_predict    (pc_predict_p)
-    );
-
     reg_if_id u_reg_if_id (
         .i_clk        (clk),
         .i_rst_n      (rst_n),
-        .i_flush      (flush_f_d),
-        .i_stall      (stall_f_d),
+        .i_flush      (flush_front),
+        .i_stall      (stall_front),
         .i_pc_f_d     (pc_f),
         .i_inst_f_d   (inst_f),
         .i_pc_predict (pc_predict_f),
+        .i_predict_taken (predict_taken_pf),
+        .i_valid      (valid_pf),
         .o_pc_f_d     (pc_d),
         .o_inst_f_d   (inst_d),
-        .o_pc_predict (pc_predict_d)
+        .o_pc_predict (pc_predict_d),
+        .o_predict_taken (predict_taken_d),
+        .o_valid      (valid_d)
     );
+
+    // ------------------------------------------------------------------
+    // C0: decode, RF read and address generation.
+    // ------------------------------------------------------------------
+    logic             mem_read_d;
+    logic             mem_write_d;
+    logic             reg_write_d;
+    logic             wb_src_d;
+    logic             is_rs2_imm_d;
+    logic [3:0]       inst_spec_d;
+    logic [3:0]       alu_ctrl_d;
+    logic [2:0]       func3_d;
+    logic [3:0]       mem_mask_d;
+    logic             load_unsigned_d;
+    logic             is_branch_d;
+    logic             is_m_ext_d;
+    logic [`M_OP_BUS] m_op_d;
+    logic [11:0]      csr_addr_d;
+    logic [`DATA_BUS] imm_d;
+    logic [`DATA_BUS] rs1_data_d;
+    logic [`RF_BUS]   rs1_addr_d;
+    logic [`DATA_BUS] rs2_data_d;
+    logic [`RF_BUS]   rs2_addr_d;
+    logic [`RF_BUS]   rd_addr_d;
+    logic [`PC_BUS]   pc_target_d;
+    logic [`DATA_BUS] agu_base_d;
+    logic [`DATA_BUS] mem_addr_d;
+    logic [`RF_BUS]   rd_addr_c1;
+    logic [`DATA_BUS] alu_res_c1;
+    logic             c1_agu_forwardable;
+    logic [`DATA_BUS] store_data_d;
+
+    // C2 writeback signals are also the stable C0 bypass source.
+    logic             valid_c2;
+    logic [`RF_BUS]   rd_addr_c2;
+    logic [`DATA_BUS] alu_res_c2;
+    logic             wb_src_c2;
+    logic             reg_write_c2;
+    logic [3:0]       mem_mask_c2;
+    logic             load_unsigned_c2;
+    logic [`DATA_BUS] mem_data_c2;
+    logic [`DATA_BUS] wb_data_c2;
+    logic [`DATA_BUS] ex_wb_data_c2;
+    logic [`DATA_BUS] ls_wb_data_c2;
+    logic [`RF_BUS]   wb_rd_addr_c2;
+    logic             wb_fire_c2;
+    logic             ex_wb_fire_c2;
+    logic             ls_wb_fire_c2;
+    logic             ls_wb_valid;
+    logic [`RF_BUS]   ls_wb_rd_addr;
+    logic [3:0]       ls_wb_mem_mask;
+    logic             ls_wb_load_unsigned;
+    logic [`DATA_BUS] ls_mem_data;
+    logic             wb_commit_valid;
+
+    assign ex_wb_fire_c2 = valid_c2 && reg_write_c2 && (rd_addr_c2 != '0);
+    assign ls_wb_fire_c2 = ls_wb_valid && (ls_wb_rd_addr != '0);
+    assign wb_fire_c2 = ex_wb_fire_c2 || ls_wb_fire_c2;
+    assign wb_commit_valid = valid_c2 || ls_wb_valid;
+    assign wb_rd_addr_c2 = ex_wb_fire_c2 ? rd_addr_c2 : ls_wb_rd_addr;
+    assign wb_data_c2 = ex_wb_fire_c2 ? ex_wb_data_c2 : ls_wb_data_c2;
 
     stage_id u_stage_id (
         .i_clk           (clk),
@@ -243,9 +177,12 @@ module core(
         .i_pc_f_d        (pc_d),
         .i_inst_f_d      (inst_d),
         .i_pc_predict    (pc_predict_d),
-        .i_we            (reg_write_w),
-        .i_w_addr        (rd_addr_w),
-        .i_w_data        (wb_data_w),
+        .i_we            (ls_wb_fire_c2),
+        .i_w_addr        (ls_wb_rd_addr),
+        .i_w_data        (ls_wb_data_c2),
+        .i_we2           (ex_wb_fire_c2),
+        .i_w_addr2       (rd_addr_c2),
+        .i_w_data2       (ex_wb_data_c2),
         .o_mem_read      (mem_read_d),
         .o_mem_write     (mem_write_d),
         .o_reg_write     (reg_write_d),
@@ -268,33 +205,69 @@ module core(
         .o_rd_addr       (rd_addr_d)
     );
 
-    forward_unit u_forward_unit (
-        .i_rs1_addr      (rs1_addr_d),
-        .i_rs2_addr      (rs2_addr_d),
-        .i_rd_addr_e     (rd_addr_e),
-        .i_rd_addr_m     (rd_addr_m),
-        .i_rd_addr_m2    (rd_addr_m2),
-        .i_reg_write_e   (reg_write_e),
-        .i_reg_write_m   (reg_write_m),
-        .i_reg_write_m2  (reg_write_m2),
-        .o_rs1_fwd_sel   (rs1_fwd_sel_d),
-        .o_rs2_fwd_sel   (rs2_fwd_sel_d)
+    assign pc_target_d = pc_d + imm_d;
+    assign agu_base_d = ex_wb_fire_c2 && (rd_addr_c2 == rs1_addr_d) ?
+                        ex_wb_data_c2 :
+                        (ls_wb_fire_c2 && (ls_wb_rd_addr == rs1_addr_d) ?
+                         ls_wb_data_c2 : rs1_data_d);
+
+    assign store_data_d = ex_wb_fire_c2 && (rd_addr_c2 == rs2_addr_d) ?
+                          ex_wb_data_c2 :
+                          (ls_wb_fire_c2 && (ls_wb_rd_addr == rs2_addr_d) ?
+                           ls_wb_data_c2 : rs2_data_d);
+
+    agu u_agu (
+        .i_base   (agu_base_d),
+        .i_offset (imm_d),
+        .o_addr   (mem_addr_d)
     );
 
-    reg_id_ex u_reg_id_ex (
+    // ------------------------------------------------------------------
+    // C1 pipeline register and execution/cache request slot.
+    // ------------------------------------------------------------------
+    logic             valid_c1;
+    logic [`DATA_BUS] rs1_data_c1;
+    logic [`RF_BUS]   rs1_addr_c1;
+    logic [`DATA_BUS] rs2_data_c1;
+    logic [`RF_BUS]   rs2_addr_c1;
+    logic [`DATA_BUS] imm_c1;
+    logic [`DATA_BUS] mem_addr_c1;
+    logic             mem_read_c1;
+    logic             mem_write_c1;
+    logic             reg_write_c1;
+    logic             wb_src_c1;
+    logic             is_rs2_imm_c1;
+    logic [3:0]       inst_spec_c1;
+    logic [3:0]       alu_ctrl_c1;
+    logic [2:0]       func3_c1;
+    logic [3:0]       mem_mask_c1;
+    logic             load_unsigned_c1;
+    logic             is_branch_c1;
+    logic [`PC_BUS]   pc_c1;
+    logic [`PC_BUS]   pc_target_c1;
+    logic [`PC_BUS]   pc_predict_c1;
+    logic             is_m_ext_c1;
+    logic             predict_taken_c1;
+    logic [`M_OP_BUS] m_op_c1;
+    logic [11:0]      csr_addr_c1;
+
+    reg_id_c1 u_reg_id_c1 (
         .i_clk           (clk),
         .i_rst_n         (rst_n),
-        .i_flush         (flush_d_e),
-        .i_stall         (stall_d_e),
+        .i_flush         (flush_c1),
+        .i_hold          (hold_c1),
+        .i_bubble        (bubble_c1),
+        .i_valid         (valid_d && !mem_read_d && !mem_write_d),
         .i_rs1_data      (rs1_data_d),
         .i_rs1_addr      (rs1_addr_d),
         .i_rs2_data      (rs2_data_d),
         .i_rs2_addr      (rs2_addr_d),
         .i_rd_addr       (rd_addr_d),
         .i_imm           (imm_d),
+        .i_mem_addr      (mem_addr_d),
         .i_mem_read      (mem_read_d),
-        .i_reg_write     (reg_write_d),
         .i_mem_write     (mem_write_d),
+        .i_reg_write     (reg_write_d),
         .i_wb_src        (wb_src_d),
         .i_is_rs2_imm    (is_rs2_imm_d),
         .i_inst_spec     (inst_spec_d),
@@ -303,169 +276,380 @@ module core(
         .i_mem_mask      (mem_mask_d),
         .i_load_unsigned (load_unsigned_d),
         .i_is_branch     (is_branch_d),
-        .i_pc_d_e        (pc_d),
+        .i_pc            (pc_d),
         .i_pc_target     (pc_target_d),
         .i_pc_predict    (pc_predict_d),
-        .i_rs1_fwd_sel   (rs1_fwd_sel_d),
-        .i_rs2_fwd_sel   (rs2_fwd_sel_d),
+        .i_predict_taken (predict_taken_d),
         .i_is_m_ext      (is_m_ext_d),
         .i_m_op          (m_op_d),
         .i_csr_addr      (csr_addr_d),
-        .o_rs1_data      (rs1_data_e),
-        .o_rs2_data      (rs2_data_e),
-        .o_rd_addr       (rd_addr_e),
-        .o_rs1_addr      (rs1_addr_e),
-        .o_rs2_addr      (rs2_addr_e),
-        .o_imm           (imm_e),
-        .o_mem_read      (mem_read_e),
-        .o_reg_write     (reg_write_e),
-        .o_mem_write     (mem_write_e),
-        .o_wb_src        (wb_src_e),
-        .o_is_rs2_imm    (is_rs2_imm_e),
-        .o_inst_spec     (inst_spec_e),
-        .o_alu_ctrl      (alu_ctrl_e),
-        .o_func3         (func3_e),
-        .o_mem_mask      (mem_mask_e),
-        .o_load_unsigned (load_unsigned_e),
-        .o_is_branch     (is_branch_e),
-        .o_pc_d_e        (pc_e),
-        .o_pc_target     (pc_target_e),
-        .o_pc_predict    (pc_predict_e),
-        .o_rs1_fwd_sel   (rs1_fwd_sel_e),
-        .o_rs2_fwd_sel   (rs2_fwd_sel_e),
-        .o_is_m_ext      (is_m_ext_e),
-        .o_m_op          (m_op_e),
-        .o_csr_addr      (csr_addr_e)
+        .o_valid         (valid_c1),
+        .o_rs1_data      (rs1_data_c1),
+        .o_rs1_addr      (rs1_addr_c1),
+        .o_rs2_data      (rs2_data_c1),
+        .o_rs2_addr      (rs2_addr_c1),
+        .o_rd_addr       (rd_addr_c1),
+        .o_imm           (imm_c1),
+        .o_mem_addr      (mem_addr_c1),
+        .o_mem_read      (mem_read_c1),
+        .o_mem_write     (mem_write_c1),
+        .o_reg_write     (reg_write_c1),
+        .o_wb_src        (wb_src_c1),
+        .o_is_rs2_imm    (is_rs2_imm_c1),
+        .o_inst_spec     (inst_spec_c1),
+        .o_alu_ctrl      (alu_ctrl_c1),
+        .o_func3         (func3_c1),
+        .o_mem_mask      (mem_mask_c1),
+        .o_load_unsigned (load_unsigned_c1),
+        .o_is_branch     (is_branch_c1),
+        .o_pc            (pc_c1),
+        .o_pc_target     (pc_target_c1),
+        .o_pc_predict    (pc_predict_c1),
+        .o_predict_taken (predict_taken_c1),
+        .o_is_m_ext      (is_m_ext_c1),
+        .o_m_op          (m_op_c1),
+        .o_csr_addr      (csr_addr_c1)
     );
+
+    logic             valid_ls;
+    logic [`DATA_BUS] mem_addr_ls;
+    logic [`DATA_BUS] store_data_ls;
+    logic [3:0]       mem_mask_ls;
+    logic             load_unsigned_ls;
+    logic             mem_read_ls;
+    logic             mem_write_ls;
+    logic [`RF_BUS]   rd_addr_ls;
+    logic             ls_busy;
+    logic             ls_advance;
+    logic [`DATA_BUS] ls_offset;
+    logic             ls_addr_pending;
+    logic [`RF_BUS]   ls_addr_dep_rd;
+    logic             ls_data_pending;
+    logic [`RF_BUS]   ls_data_dep_rd;
+    logic             addr_pending_d;
+    logic [`RF_BUS]   addr_dep_rd_d;
+    logic             data_pending_d;
+    logic [`RF_BUS]   data_dep_rd_d;
+    logic             ls_operands_ready;
+    logic [`DATA_BUS] resolved_mem_addr_ls;
+    logic [`DATA_BUS] resolved_store_data_ls;
+    logic             resolve_addr_ls;
+    logic             resolve_data_ls;
+    logic [`DATA_BUS] resolved_addr_capture_ls;
+    logic [`DATA_BUS] resolved_data_capture_ls;
+    logic             ls_waits_for_c1;
+    logic             addr_dep_ex_match;
+    logic             addr_dep_ls_match;
+    logic             data_dep_ex_match;
+    logic             data_dep_ls_match;
+    logic [`DATA_BUS] pending_addr_base_ls;
+    logic [`DATA_BUS] pending_store_data_ls;
+
+    assign addr_pending_d = valid_d && (mem_read_d || mem_write_d) &&
+                            ((valid_c1 && reg_write_c1 &&
+                              (rd_addr_c1 != '0) &&
+                              (rd_addr_c1 == rs1_addr_d)) ||
+                             (valid_ls && mem_read_ls &&
+                              (rd_addr_ls != '0) &&
+                              (rd_addr_ls == rs1_addr_d)));
+    assign addr_dep_rd_d = (valid_c1 && reg_write_c1 &&
+                            (rd_addr_c1 == rs1_addr_d)) ?
+                           rd_addr_c1 : rd_addr_ls;
+    assign data_pending_d = valid_d && mem_write_d &&
+                            ((valid_c1 && reg_write_c1 &&
+                              (rd_addr_c1 != '0) &&
+                              (rd_addr_c1 == rs2_addr_d)) ||
+                             (valid_ls && mem_read_ls &&
+                              (rd_addr_ls != '0) &&
+                              (rd_addr_ls == rs2_addr_d)));
+    assign data_dep_rd_d = (valid_c1 && reg_write_c1 &&
+                            (rd_addr_c1 == rs2_addr_d)) ?
+                           rd_addr_c1 : rd_addr_ls;
+
+    reg_id_ls u_reg_id_ls (
+        .i_clk           (clk),
+        .i_rst_n         (rst_n),
+        .i_flush         (flush_c1),
+        .i_hold          (ls_busy),
+        .i_valid         (valid_d && (mem_read_d || mem_write_d) &&
+                          !m_busy_c1),
+        .i_mem_addr      (mem_addr_d),
+        .i_store_data    (store_data_d),
+        .i_offset        (imm_d),
+        .i_addr_pending  (addr_pending_d),
+        .i_addr_dep_rd   (addr_dep_rd_d),
+        .i_data_pending  (data_pending_d),
+        .i_data_dep_rd   (data_dep_rd_d),
+        .i_resolve_addr  (resolve_addr_ls),
+        .i_resolved_addr (resolved_addr_capture_ls),
+        .i_resolve_data  (resolve_data_ls),
+        .i_resolved_data (resolved_data_capture_ls),
+        .i_mem_mask      (mem_mask_d),
+        .i_load_unsigned (load_unsigned_d),
+        .i_mem_read      (mem_read_d),
+        .i_mem_write     (mem_write_d),
+        .i_rd_addr       (rd_addr_d),
+        .o_valid         (valid_ls),
+        .o_mem_addr      (mem_addr_ls),
+        .o_store_data    (store_data_ls),
+        .o_offset        (ls_offset),
+        .o_addr_pending  (ls_addr_pending),
+        .o_addr_dep_rd   (ls_addr_dep_rd),
+        .o_data_pending  (ls_data_pending),
+        .o_data_dep_rd   (ls_data_dep_rd),
+        .o_mem_mask      (mem_mask_ls),
+        .o_load_unsigned (load_unsigned_ls),
+        .o_mem_read      (mem_read_ls),
+        .o_mem_write     (mem_write_ls),
+        .o_rd_addr       (rd_addr_ls)
+    );
+
+    logic [`DATA_BUS] rs1_exec_c1;
+    logic [`DATA_BUS] rs2_exec_c1;
+    logic [`DATA_BUS] store_data_c1;
+    logic             update_taken_c1;
+    logic             update_en_c1;
+    logic [`PC_BUS]   update_pc_c1;
+    logic [`PC_BUS]   update_target_c1;
+    logic             error_c1;
+    logic [`PC_BUS]   right_pc_c1;
+    logic             m_busy_c1;
+    logic             mem_busy_c1;
+    logic             c1_busy;
+    logic             addr_dep;
+    logic             c1_advance;
+
+    assign rs1_exec_c1 = ex_wb_fire_c2 && (rd_addr_c2 == rs1_addr_c1) ?
+                         ex_wb_data_c2 :
+                         (ls_wb_fire_c2 && (ls_wb_rd_addr == rs1_addr_c1) ?
+                          ls_wb_data_c2 : rs1_data_c1);
+    assign rs2_exec_c1 = ex_wb_fire_c2 && (rd_addr_c2 == rs2_addr_c1) ?
+                         ex_wb_data_c2 :
+                         (ls_wb_fire_c2 && (ls_wb_rd_addr == rs2_addr_c1) ?
+                          ls_wb_data_c2 : rs2_data_c1);
 
     stage_ex u_stage_ex (
         .i_clk           (clk),
         .i_rst_n         (rst_n),
-        .i_flush_e       (branch_error_m),
-        .i_stall_e       (stall_d_e),
-        .i_rs1_data      (rs1_data_e),
-        .i_rs2_data      (rs2_data_e),
-        .i_imm           (imm_e),
-        .i_pc            (pc_e),
-        .i_fwd_e_m       (alu_res_m),
-        .i_fwd_m_w       (wb_data_w),
-        .i_fwd_m_m       (m1_m2_data),
-        .i_pc_d_e        (pc_e),
-        .i_pc_target     (pc_target_e),
-        .i_pc_predict    (pc_predict_e),
-        .i_rs1_fwd_sel   (rs1_fwd_sel_e),
-        .i_rs2_fwd_sel   (rs2_fwd_sel_e),
-        .i_alu_ctrl      (alu_ctrl_e),
-        .i_func3         (func3_e),
-        .i_is_branch     (is_branch_e),
-        .i_is_rs2_imm    (is_rs2_imm_e),
-        .i_inst_spec     (inst_spec_e),
-        .i_is_m_ext      (is_m_ext_e),
-        .i_m_op          (m_op_e),
-        .i_csr_addr      (csr_addr_e),
-        .o_alu_res       (alu_res_e),
-        .o_a2_data       (a2_data_e),
-        .o_update_taken  (update_taken_e),
-        .o_update_en     (update_en_e),
-        .o_update_pc     (update_pc_e),
-        .o_update_target (update_target_e),
-        .o_error         (error_e),
-        .o_right_pc      (right_pc_e),
-        .o_m_busy        (m_busy_e)
+        .i_flush_e       (1'b0),
+        .i_stall_e       (c1_busy),
+        .i_rs1_data      (rs1_exec_c1),
+        .i_rs2_data      (rs2_exec_c1),
+        .i_imm           (imm_c1),
+        .i_pc            (pc_c1),
+        .i_fwd_e_m       ('0),
+        .i_fwd_m_w       ('0),
+        .i_fwd_m_m       ('0),
+        .i_pc_d_e        (pc_c1),
+        .i_pc_target     (pc_target_c1),
+        .i_pc_predict    (pc_predict_c1),
+        .i_predict_taken (predict_taken_c1),
+        .i_rs1_fwd_sel   (`FWD_RF),
+        .i_rs2_fwd_sel   (`FWD_RF),
+        .i_alu_ctrl      (alu_ctrl_c1),
+        .i_func3         (func3_c1),
+        .i_is_branch     (valid_c1 && is_branch_c1),
+        .i_is_rs2_imm    (is_rs2_imm_c1),
+        .i_inst_spec     (valid_c1 ? inst_spec_c1 : 4'b0000),
+        .i_is_m_ext      (valid_c1 && is_m_ext_c1),
+        .i_m_op          (m_op_c1),
+        .i_csr_addr      (csr_addr_c1),
+        .o_alu_res       (alu_res_c1),
+        .o_a2_data       (store_data_c1),
+        .o_update_taken  (update_taken_c1),
+        .o_update_en     (update_en_c1),
+        .o_update_pc     (update_pc_c1),
+        .o_update_target (update_target_c1),
+        .o_error         (error_c1),
+        .o_right_pc      (right_pc_c1),
+        .o_m_busy        (m_busy_c1)
     );
 
-    reg_ex_m1 u_reg_ex_m1 (
+    assign addr_dep_ex_match = ex_wb_fire_c2 &&
+                               (rd_addr_c2 == ls_addr_dep_rd);
+    assign addr_dep_ls_match = ls_wb_fire_c2 &&
+                               (ls_wb_rd_addr == ls_addr_dep_rd);
+    assign data_dep_ex_match = ex_wb_fire_c2 &&
+                               (rd_addr_c2 == ls_data_dep_rd);
+    assign data_dep_ls_match = ls_wb_fire_c2 &&
+                               (ls_wb_rd_addr == ls_data_dep_rd);
+    assign pending_addr_base_ls = addr_dep_ex_match ?
+                                  ex_wb_data_c2 : ls_wb_data_c2;
+    assign pending_store_data_ls = data_dep_ex_match ?
+                                   ex_wb_data_c2 : ls_wb_data_c2;
+    assign ls_operands_ready = (!ls_addr_pending || addr_dep_ex_match ||
+                                addr_dep_ls_match) &&
+                               (!ls_data_pending || data_dep_ex_match ||
+                                data_dep_ls_match);
+    assign resolve_addr_ls = ls_addr_pending &&
+                             (addr_dep_ex_match || addr_dep_ls_match);
+    assign resolve_data_ls = ls_data_pending &&
+                             (data_dep_ex_match || data_dep_ls_match);
+    assign resolved_addr_capture_ls = pending_addr_base_ls + ls_offset;
+    assign resolved_data_capture_ls = pending_store_data_ls;
+    assign resolved_mem_addr_ls = ls_addr_pending ?
+                                  (pending_addr_base_ls + ls_offset) :
+                                  mem_addr_ls;
+    assign resolved_store_data_ls = ls_data_pending ?
+                                    pending_store_data_ls : store_data_ls;
+
+    assign dram_wen   = valid_ls && ls_operands_ready && mem_write_ls;
+    assign dram_ren   = valid_ls && ls_operands_ready && mem_read_ls;
+    assign dram_addr  = resolved_mem_addr_ls;
+    assign dram_wdata = resolved_store_data_ls;
+    assign dram_mask  = mem_mask_ls;
+
+    assign ls_busy      = valid_ls &&
+                          (!ls_operands_ready || !dram_req_ready);
+    assign mem_busy_c1  = ls_busy;
+    assign ls_waits_for_c1 = valid_c1 && reg_write_c1 &&
+                             (rd_addr_c1 != '0) &&
+                             ((ls_addr_pending &&
+                               (ls_addr_dep_rd == rd_addr_c1)) ||
+                              (ls_data_pending &&
+                               (ls_data_dep_rd == rd_addr_c1)));
+
+    assign c1_busy      = m_busy_c1 ||
+                          (ls_busy && !ls_waits_for_c1);
+    assign c1_advance   = valid_c1 && !c1_busy;
+    assign ls_advance   = valid_ls && ls_operands_ready && dram_req_ready;
+    // Keep all AGU dependencies on the registered WB path.  The direct
+    // C1-ALU-to-C0-AGU bypass is intentionally removed to break the feedback
+    // path identified by routed timing.
+    assign c1_agu_forwardable = 1'b0;
+
+    // A C0 memory address cannot consume a result still being generated in C1
+    // without creating an EX/Cache-to-AGU combinational path. Insert one bubble;
+    // on the following cycle the value is available from the registered C2 path.
+    assign addr_dep = 1'b0;
+
+    hazard_unit u_hazard_unit (
+        .i_pc_cur         (pc_p),
+        .i_predict_taken  (predict_taken_f),
+        .i_predict_target (predict_target_f),
+        .i_error          (valid_c1 && error_c1),
+        .i_right_pc       (right_pc_c1),
+        .i_c1_busy        (c1_busy),
+        .i_front_busy     (m_busy_c1 || ls_busy),
+        .i_addr_dep       (addr_dep),
+        .o_stall_front    (stall_front),
+        .o_flush_front    (flush_front),
+        .o_flush_c1       (flush_c1),
+        .o_hold_c1        (hold_c1),
+        .o_bubble_c1      (bubble_c1),
+        .o_pc_next        (pc_next),
+        .o_pc_predict     (pc_predict_p)
+    );
+
+    bpu_top u_bpu_top (
         .i_clk           (clk),
         .i_rst_n         (rst_n),
-        .i_flush         (flush_e_m),
-        .i_stall         (stall_e_m),
-        .i_rd_addr       (rd_addr_e),
-        .i_alu_res       (alu_res_e),
-        .i_a2_data       (a2_data_e),
-        .i_mem_read      (mem_read_e),
-        .i_mem_write     (mem_write_e),
-        .i_wb_src        (wb_src_e),
-        .i_reg_write     (reg_write_e),
-        .i_mem_mask      (mem_mask_e),
-        .i_load_unsigned (load_unsigned_e),
-        .i_update_taken  (update_taken_e),
-        .i_update_en     (update_en_e),
-        .i_update_pc     (update_pc_e),
-        .i_update_target (update_target_e),
-        .i_branch_error  (error_e),
-        .i_branch_right_pc(right_pc_e),
-        .o_rd_addr       (rd_addr_m),
-        .o_alu_res       (alu_res_m),
-        .o_a2_data       (a2_data_m),
-        .o_mem_read      (mem_read_m),
-        .o_mem_write     (mem_write_m),
-        .o_wb_src        (wb_src_m),
-        .o_reg_write     (reg_write_m),
-        .o_mem_mask      (mem_mask_m),
-        .o_load_unsigned (load_unsigned_m),
-        .o_update_taken  (update_taken_m),
-        .o_update_en     (update_en_m),
-        .o_update_pc     (update_pc_m),
-        .o_update_target (update_target_m),
-        .o_branch_error  (branch_error_m),
-        .o_branch_right_pc(branch_right_pc_m)
+        .i_pc_cur        (pc_p),
+        .i_update_en     (valid_c1 && update_en_c1),
+        .i_update_taken  (update_taken_c1),
+        .i_update_target (update_target_c1),
+        .i_update_pc     (update_pc_c1),
+        .o_predict_taken (predict_taken_f),
+        .o_predict_target(predict_target_f)
     );
 
-    assign dram_wen   = mem_write_m;
-    assign dram_ren   = mem_read_m;
-    assign dram_addr  = alu_res_m[`RAM_ADDR_BUS];
-    assign dram_wdata = a2_data_m;
-    assign dram_mask  = mem_mask_m;
-
-    reg_m1_m2 u_reg_m1_m2 (
+    // ------------------------------------------------------------------
+    // C2: registered metadata, load formatting and write-back.
+    // ------------------------------------------------------------------
+    reg_c1_c2 u_reg_c1_c2 (
         .i_clk           (clk),
         .i_rst_n         (rst_n),
-        .i_flush         (flush_m_w),
-        .i_stall         (stall_m_w),
-        .i_rd_addr       (rd_addr_m),
-        .i_alu_res       (alu_res_m),
-        .i_mem_mask      (mem_mask_m),
-        .i_wb_src        (wb_src_m),
-        .i_reg_write     (reg_write_m),
-        .i_load_unsigned (load_unsigned_m),
-        .o_rd_addr       (rd_addr_m2),
-        .o_alu_res       (alu_res_m2),
-        .o_mem_mask      (mem_mask_m2),
-        .o_wb_src        (wb_src_m2),
-        .o_reg_write     (reg_write_m2),
-        .o_load_unsigned (load_unsigned_m2)
+        .i_valid         (c1_advance),
+        .i_rd_addr       (rd_addr_c1),
+        .i_alu_res       (alu_res_c1),
+        .i_wb_src        (wb_src_c1),
+        .i_reg_write     (valid_c1 && reg_write_c1),
+        .i_mem_mask      (mem_mask_c1),
+        .i_load_unsigned (load_unsigned_c1),
+        .o_valid         (valid_c2),
+        .o_rd_addr       (rd_addr_c2),
+        .o_alu_res       (alu_res_c2),
+        .o_wb_src        (wb_src_c2),
+        .o_reg_write     (reg_write_c2),
+        .o_mem_mask      (mem_mask_c2),
+        .o_load_unsigned (load_unsigned_c2)
     );
 
+    reg_ls_wb u_reg_ls_wb (
+        .i_clk           (clk),
+        .i_rst_n         (rst_n),
+        .i_valid         (ls_advance && mem_read_ls && (rd_addr_ls != '0)),
+        .i_rd_addr       (rd_addr_ls),
+        .i_mem_mask      (mem_mask_ls),
+        .i_load_unsigned (load_unsigned_ls),
+        .o_valid         (ls_wb_valid),
+        .o_rd_addr       (ls_wb_rd_addr),
+        .o_mem_mask      (ls_wb_mem_mask),
+        .o_load_unsigned (ls_wb_load_unsigned)
+    );
+
+    // DCache registers the aligned and extended load value.  Keeping the
+    // formatter on the cache-register input avoids placing it in series with
+    // the C2 bypass and the next instruction's C0 AGU.
     stage_m2 u_stage_m2 (
-        .i_mem_mask      (mem_mask_m2),
-        .i_load_unsigned (load_unsigned_m2),
+        .i_mem_mask      (ls_wb_mem_mask),
+        .i_load_unsigned (ls_wb_load_unsigned),
         .i_dram_rdata    (dram_rdata),
-        .o_mem_rdata     (mem_data_m2)
+        .o_mem_rdata     (ls_mem_data)
     );
 
-    // Select the architectural result before the M2/WB register.  The WB
-    // forwarding path therefore starts at a register Q instead of traversing
-    // the write-back select mux in the EX cycle.
     stage_wb u_stage_wb (
-        .i_alu_res       (alu_res_m2),
-        .i_mem_data      (mem_data_m2),
-        .i_wb_src        (wb_src_m2),
-        .o_wb_data       (wb_data_m2)
+        .i_alu_res  (alu_res_c2),
+        .i_mem_data (mem_data_c2),
+        .i_wb_src   (wb_src_c2),
+        .o_wb_data  (ex_wb_data_c2)
     );
 
-    assign m1_m2_data = alu_res_m2;
+    assign ls_wb_data_c2 = ls_mem_data;
 
-    reg_m2_wb u_reg_m2_wb (
-        .i_clk           (clk),
-        .i_rst_n         (rst_n),
-        .i_flush         (1'b0),
-        .i_stall         (stall_m_w),
-        .i_reg_write     (reg_write_m2),
-        .i_rd_addr       (rd_addr_m2),
-        .i_wb_data       (wb_data_m2),
-        .o_rd_addr       (rd_addr_w),
-        .o_wb_data       (wb_data_w),
-        .o_reg_write     (reg_write_w)
-    );
+`ifdef VERILATOR_TB
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dbg_perf_commit         <= 64'd0;
+            dbg_perf_branch         <= 64'd0;
+            dbg_perf_branch_miss    <= 64'd0;
+            dbg_perf_load           <= 64'd0;
+            dbg_perf_store          <= 64'd0;
+            dbg_perf_stall_front    <= 64'd0;
+            dbg_perf_stall_muldiv   <= 64'd0;
+            dbg_perf_stall_load_use <= 64'd0;
+        end else begin
+            if (valid_c2 || ls_wb_valid ||
+                (ls_advance && mem_write_ls)) begin
+                dbg_perf_commit <= dbg_perf_commit +
+                                   (valid_c2 ? 64'd1 : 64'd0) +
+                                   (ls_wb_valid ? 64'd1 : 64'd0) +
+                                   ((ls_advance && mem_write_ls) ?
+                                    64'd1 : 64'd0);
+            end
+            if (valid_c1 && update_en_c1 && !c1_busy) begin
+                dbg_perf_branch <= dbg_perf_branch + 64'd1;
+                if (error_c1) begin
+                    dbg_perf_branch_miss <= dbg_perf_branch_miss + 64'd1;
+                end
+            end
+            if (ls_advance && mem_read_ls) begin
+                dbg_perf_load <= dbg_perf_load + 64'd1;
+            end
+            if (ls_advance && mem_write_ls) begin
+                dbg_perf_store <= dbg_perf_store + 64'd1;
+            end
+            if (stall_front) begin
+                dbg_perf_stall_front <= dbg_perf_stall_front + 64'd1;
+            end
+            if (m_busy_c1) begin
+                dbg_perf_stall_muldiv <= dbg_perf_stall_muldiv + 64'd1;
+            end
+            if (addr_dep && !c1_busy) begin
+                dbg_perf_stall_load_use <= dbg_perf_stall_load_use + 64'd1;
+            end
+        end
+    end
+`endif
 
 endmodule

@@ -9,6 +9,8 @@
 | `design/project_framework.md` | 项目目录职责、受保护文件、后续行动规约。 |
 | `design/memory_and_test_contract.md` | rv32/src DUT 分流、IROM/DRAM 时序、测试契约。 |
 | `design/rtl_core_design.md` | 当前 `rtl/core` 微架构、流水级、队列资源、恢复路径和维护风险。 |
+| `design/id_agu_sync_dcache_evaluation.md` | ID 同拍 AGU、C1 一拍同步 DCache、C2 写回方案的 IPC、时序、冒险和风险评价。 |
+| `design/id_agu_sync_dcache_implementation_plan.md` | 上述微架构的模块划分、分阶段修改、验证与验收计划。 |
 
 ## 仿真文档
 

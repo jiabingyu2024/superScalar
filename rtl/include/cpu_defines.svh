@@ -118,6 +118,12 @@
 `define EX_ECALL        4'B0101   // ecall — redirect PC to mtvec, save PC→mepc
 `define EX_EBREAK       4'B0110   // ebreak — like ecall with mcause=3
 `define EX_MRET         4'B0111   // mret  — restore PC from mepc
+`define EX_SH1ADD       4'h9
+`define EX_ANDN         4'hA
+`define EX_CLMUL        4'hB
+`define EX_BREV8        4'hC
+`define EX_XPERM4       4'hD
+`define EX_BCLR         4'hE
 
 `define WB_SRC_ALU      1'b0
 `define WB_SRC_MEM      1'b1

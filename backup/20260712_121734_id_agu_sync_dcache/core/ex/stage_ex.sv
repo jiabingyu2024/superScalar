@@ -25,7 +25,6 @@ module stage_ex(
     input  logic  [`PC_BUS]                 i_pc_d_e,
     input  logic  [`PC_BUS]                 i_pc_target,
     input  logic  [`PC_BUS]                 i_pc_predict,
-    input  logic                            i_predict_taken,
 
     input  logic  [1:0]                     i_rs1_fwd_sel,
     input  logic  [1:0]                     i_rs2_fwd_sel,
@@ -66,26 +65,6 @@ module stage_ex(
     logic             exec_hold_valid_q;
     logic [`PC_BUS]   t1_data;
     logic [`DATA_BUS] alu_res_raw;
-    logic [`DATA_BUS] brev8_res;
-    logic [`DATA_BUS] xperm4_res;
-
-    always_comb begin
-        brev8_res = '0;
-        for (int byte_idx = 0; byte_idx < 4; byte_idx++) begin
-            for (int bit_idx = 0; bit_idx < 8; bit_idx++) begin
-                brev8_res[byte_idx*8 + bit_idx] =
-                    rs1_exec_data[byte_idx*8 + (7-bit_idx)];
-            end
-        end
-
-        xperm4_res = '0;
-        for (int nibble_idx = 0; nibble_idx < 8; nibble_idx++) begin
-            if (rs2_exec_data[nibble_idx*4 +: 4] < 4'd8) begin
-                xperm4_res[nibble_idx*4 +: 4] =
-                    rs1_exec_data[rs2_exec_data[nibble_idx*4 +: 4]*4 +: 4];
-            end
-        end
-    end
 
     // ---- Forwarding mux ----
     always_comb begin
@@ -146,7 +125,6 @@ module stage_ex(
         .i_pc_d_e        (i_pc_d_e),
         .i_pc_target     (i_pc_target),
         .i_pc_predict    (i_pc_predict),
-        .i_predict_taken (i_predict_taken),
         .i_t1_data       (t1_data),
         .i_t2_data       (i_imm),
         .i_is_branch     (i_is_branch),
@@ -166,67 +144,7 @@ module stage_ex(
     logic             m_issued;
 
     assign m_start_pulse = i_is_m_ext && !m_busy_int && !m_issued;
-    logic             clmul_busy_q;
-    logic             clmul_done_q;
-    logic             clmul_issued_q;
-    logic [5:0]       clmul_count_q;
-    logic [`DATA_BUS] clmul_a_q;
-    logic [`DATA_BUS] clmul_b_q;
-    logic [`DATA_BUS] clmul_acc_q;
-    logic [`DATA_BUS] clmul_result_q;
-    logic             clmul_start;
-    logic             is_clmul_inst;
-
-    assign is_clmul_inst = (i_inst_spec == `EX_CLMUL);
-    assign clmul_start = is_clmul_inst && !clmul_busy_q && !clmul_issued_q;
-    assign o_m_busy = (i_is_m_ext && !m_done_int) ||
-                      (is_clmul_inst && !clmul_done_q);
-
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
-        if (!i_rst_n) begin
-            clmul_busy_q  <= 1'b0;
-            clmul_done_q  <= 1'b0;
-            clmul_issued_q <= 1'b0;
-            clmul_count_q <= '0;
-            clmul_a_q     <= '0;
-            clmul_b_q     <= '0;
-            clmul_acc_q   <= '0;
-            clmul_result_q <= '0;
-        end else if (i_flush_e) begin
-            clmul_busy_q  <= 1'b0;
-            clmul_done_q  <= 1'b0;
-            clmul_issued_q <= 1'b0;
-            clmul_count_q <= '0;
-            clmul_acc_q   <= '0;
-        end else begin
-            clmul_done_q <= 1'b0;
-            if (!is_clmul_inst) begin
-                clmul_issued_q <= 1'b0;
-            end
-            if (clmul_start) begin
-                clmul_busy_q   <= 1'b1;
-                clmul_issued_q <= 1'b1;
-                clmul_count_q  <= 6'd0;
-                clmul_a_q      <= rs1_exec_data;
-                clmul_b_q      <= rs2_exec_data;
-                clmul_acc_q    <= '0;
-            end else if (clmul_busy_q) begin
-                clmul_a_q <= clmul_a_q << 1;
-                clmul_b_q <= clmul_b_q >> 1;
-                if (clmul_b_q[0]) begin
-                    clmul_acc_q <= clmul_acc_q ^ clmul_a_q;
-                end
-                if (clmul_count_q == 6'd31) begin
-                    clmul_busy_q   <= 1'b0;
-                    clmul_done_q   <= 1'b1;
-                    clmul_result_q <= clmul_b_q[0] ?
-                                      (clmul_acc_q ^ clmul_a_q) : clmul_acc_q;
-                end else begin
-                    clmul_count_q <= clmul_count_q + 6'd1;
-                end
-            end
-        end
-    end
+    assign o_m_busy      = i_is_m_ext && !m_done_int;
 
     always_ff @(posedge i_clk or negedge i_rst_n) begin
         if (!i_rst_n) begin
@@ -337,13 +255,6 @@ module stage_ex(
                 `EX_LUI:          o_alu_res = i_imm;
                 `EX_JAL,
                 `EX_JALR:         o_alu_res = i_pc + 32'd4;
-                `EX_SH1ADD:       o_alu_res = (rs1_exec_data << 1) + rs2_exec_data;
-                `EX_ANDN:         o_alu_res = rs1_exec_data & ~rs2_exec_data;
-                `EX_CLMUL:        o_alu_res = clmul_result_q;
-                `EX_BREV8:        o_alu_res = brev8_res;
-                `EX_XPERM4:       o_alu_res = xperm4_res;
-                `EX_BCLR:         o_alu_res = rs1_exec_data &
-                                               ~(32'h1 << rs2_exec_data[4:0]);
                 `EX_ECALL,
                 `EX_EBREAK,
                 `EX_MRET:         o_alu_res = 32'h0;  // 不写 rd

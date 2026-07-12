@@ -19,11 +19,8 @@ module stage_id(
     input  logic  [`PC_BUS]                 i_pc_predict,
 
     input  logic                            i_we,
-    input  logic                            i_we2,
     input  logic  [`RF_BUS]                 i_w_addr,
     input  logic  [`DATA_BUS]               i_w_data,
-    input  logic  [`RF_BUS]                 i_w_addr2,
-    input  logic  [`DATA_BUS]               i_w_data2,
 
     output logic                            o_mem_read,   // from control
     output logic                            o_mem_write,
@@ -92,13 +89,10 @@ module stage_id(
         .i_clk      (i_clk),
         .i_rst_n    (i_rst_n),
         .i_we       (i_we),
-        .i_we2      (i_we2),
         .i_rs1_addr (o_rs1_addr),
         .i_rs2_addr (o_rs2_addr),
         .i_w_addr   (i_w_addr),
         .i_w_data   (i_w_data),
-        .i_w_addr2  (i_w_addr2),
-        .i_w_data2  (i_w_data2),
         .o_rs1_data (rs1_data),
         .o_rs2_data (rs2_data)
     );
