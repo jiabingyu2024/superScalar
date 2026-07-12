@@ -165,19 +165,8 @@ module CoreBackend (
     PhyRegNumPath [ISSUE_WIDTH-1:0] exec_complete_prd;
     logic [ISSUE_WIDTH-1:0] execute_early_wakeup_valid;
     PhyRegNumPath [ISSUE_WIDTH-1:0] execute_early_wakeup_prd;
-    // Keep three tag-only wakeup roots local to their consumer IQ.  The
-    // networks are intentionally distinct so Vivado may place/replicate each
-    // compare tree with its queue instead of routing one merged scheduler bus
-    // across the whole backend.
-    (* keep = "true" *) logic [ISSUE_WIDTH-1:0] int_iq_wakeup_valid;
-    (* keep = "true" *) PhyRegNumPath [ISSUE_WIDTH-1:0]
-        int_iq_wakeup_prd;
-    (* keep = "true" *) logic [ISSUE_WIDTH-1:0] mem_iq_wakeup_valid;
-    (* keep = "true" *) PhyRegNumPath [ISSUE_WIDTH-1:0]
-        mem_iq_wakeup_prd;
-    (* keep = "true" *) logic [ISSUE_WIDTH-1:0] mul_iq_wakeup_valid;
-    (* keep = "true" *) PhyRegNumPath [ISSUE_WIDTH-1:0]
-        mul_iq_wakeup_prd;
+    logic [ISSUE_WIDTH-1:0] scheduler_wakeup_valid;
+    PhyRegNumPath [ISSUE_WIDTH-1:0] scheduler_wakeup_prd;
     DataPath [ISSUE_WIDTH-1:0] exec_complete_result;
     logic [ISSUE_WIDTH-1:0] exec_complete_exception;
     logic [ISSUE_WIDTH-1:0][31:0] exec_complete_exception_cause;
@@ -304,40 +293,19 @@ module CoreBackend (
         end
     end
 
-    // Execute announces only tags whose wb_valid_d/wb_prf_we_d are already
-    // resolved this cycle. A dependent IQ entry may enter its issue register
-    // on the producer's WB edge and consume wb_q bypass on the next cycle.
-    // Each IQ owns a separate merge cone; data/results and architectural state
-    // continue to use registered exec_complete_* only.
+    // Execute announces only results whose wb_valid_d/wb_prf_we_d are already
+    // resolved this cycle. A dependent IQ entry may enter its issue register on
+    // the producer's WB edge and consume wb_q bypass on the next cycle. Each
+    // slot overlays its previous completion announcement because that PRD was
+    // already announced one cycle earlier; architectural state still observes
+    // only exec_complete_* below.
     always_comb begin
-        int_iq_wakeup_valid = exec_complete_valid;
-        int_iq_wakeup_prd = exec_complete_prd;
+        scheduler_wakeup_valid = exec_complete_valid;
+        scheduler_wakeup_prd = exec_complete_prd;
         for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
             if (execute_early_wakeup_valid[i]) begin
-                int_iq_wakeup_valid[i] = 1'b1;
-                int_iq_wakeup_prd[i] = execute_early_wakeup_prd[i];
-            end
-        end
-    end
-
-    always_comb begin
-        mem_iq_wakeup_valid = exec_complete_valid;
-        mem_iq_wakeup_prd = exec_complete_prd;
-        for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-            if (execute_early_wakeup_valid[i]) begin
-                mem_iq_wakeup_valid[i] = 1'b1;
-                mem_iq_wakeup_prd[i] = execute_early_wakeup_prd[i];
-            end
-        end
-    end
-
-    always_comb begin
-        mul_iq_wakeup_valid = exec_complete_valid;
-        mul_iq_wakeup_prd = exec_complete_prd;
-        for (int i = 0; i < ISSUE_WIDTH; i = i + 1) begin
-            if (execute_early_wakeup_valid[i]) begin
-                mul_iq_wakeup_valid[i] = 1'b1;
-                mul_iq_wakeup_prd[i] = execute_early_wakeup_prd[i];
+                scheduler_wakeup_valid[i] = 1'b1;
+                scheduler_wakeup_prd[i] = execute_early_wakeup_prd[i];
             end
         end
     end
@@ -657,8 +625,8 @@ module CoreBackend (
         .push_valid_i(int_push_valid),
         .push_uop_i(int_push_uop),
         .push_ready_o(int_push_ready),
-        .wakeup_valid_i(int_iq_wakeup_valid),
-        .wakeup_phy_i(int_iq_wakeup_prd),
+        .wakeup_valid_i(scheduler_wakeup_valid),
+        .wakeup_phy_i(scheduler_wakeup_prd),
         .issue_ready_i(int_select_ready),
         .issue_valid_o(int_select_valid),
         .issue_uop_o(int_select_uop)
@@ -671,8 +639,8 @@ module CoreBackend (
         .push_valid_i(mem_push_valid),
         .push_uop_i(mem_push_uop),
         .push_ready_o(mem_push_ready),
-        .wakeup_valid_i(mem_iq_wakeup_valid),
-        .wakeup_phy_i(mem_iq_wakeup_prd),
+        .wakeup_valid_i(scheduler_wakeup_valid),
+        .wakeup_phy_i(scheduler_wakeup_prd),
         .issue_ready_i(mem_select_ready),
         .issue_valid_o(mem_select_valid),
         .issue_uop_o(mem_select_uop),
@@ -699,8 +667,8 @@ module CoreBackend (
         .push_valid_i(mul_push_valid),
         .push_uop_i(mul_push_uop),
         .push_ready_o(mul_push_ready),
-        .wakeup_valid_i(mul_iq_wakeup_valid),
-        .wakeup_phy_i(mul_iq_wakeup_prd),
+        .wakeup_valid_i(scheduler_wakeup_valid),
+        .wakeup_phy_i(scheduler_wakeup_prd),
         .issue_ready_i(mul_select_ready),
         .issue_valid_o(mul_select_valid),
         .issue_uop_o(mul_select_uop)

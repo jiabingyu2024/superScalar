@@ -42,26 +42,33 @@ module CoreROB #(
         $clog2(ROB_DEPTH + ALLOC_WIDTH + RETIRE_W + 1);
     localparam logic [COUNT_WIDTH-1:0] ROB_DEPTH_COUNT =
         COUNT_WIDTH'(ROB_DEPTH);
-    localparam int UOP_WIDTH = $bits(CoreDecodeUop);
 
-    // Keep allocation and completion write ownership disjoint, but express
-    // each field as a flat vector array.  In particular, store the packed uop
-    // as bits rather than an unpacked array of records so Vivado does not build
-    // a 3D record RAM with thousands of registers.
-    RobIndexPath alloc_rob_idx_q [ROB_DEPTH-1:0];
-    logic [UOP_WIDTH-1:0] alloc_uop_bits_q [ROB_DEPTH-1:0];
-    PhyRegNumPath alloc_prd_q [ROB_DEPTH-1:0];
-    PhyRegNumPath alloc_old_prd_q [ROB_DEPTH-1:0];
-    logic alloc_has_prd_q [ROB_DEPTH-1:0];
+    // Fields written only at allocation are isolated from the four completion
+    // ports. This prevents completion index decode from touching PC/inst/PRD
+    // and old-PRD payload bits.
+    typedef struct packed {
+        RobIndexPath rob_idx;
+        CoreDecodeUop uop;
+        PhyRegNumPath prd;
+        PhyRegNumPath old_prd;
+        logic alloc_prd;
+    } rob_alloc_payload_t;
 
-    DataPath completion_result_q [ROB_DEPTH-1:0];
-    logic completion_exception_q [ROB_DEPTH-1:0];
-    logic [31:0] completion_exception_cause_q [ROB_DEPTH-1:0];
-    logic completion_branch_miss_q [ROB_DEPTH-1:0];
-    PcPath completion_redirect_pc_q [ROB_DEPTH-1:0];
-    logic completion_csr_write_q [ROB_DEPTH-1:0];
-    logic [11:0] completion_csr_addr_q [ROB_DEPTH-1:0];
-    DataPath completion_csr_wdata_q [ROB_DEPTH-1:0];
+    // Fields written only by execution/store completion form a separate cold
+    // array. valid/done stay in narrow hot vectors below.
+    typedef struct packed {
+        DataPath result;
+        logic exception;
+        logic [31:0] exception_cause;
+        logic branch_miss;
+        PcPath redirect_pc;
+        logic csr_write;
+        logic [11:0] csr_addr;
+        DataPath csr_wdata;
+    } rob_completion_payload_t;
+
+    rob_alloc_payload_t alloc_payload_q [ROB_DEPTH-1:0];
+    rob_completion_payload_t completion_payload_q [ROB_DEPTH-1:0];
     logic [ROB_DEPTH-1:0] valid_q;
     logic [ROB_DEPTH-1:0] done_q;
 
@@ -109,28 +116,21 @@ module CoreROB #(
             entry = '0;
             entry.valid = valid_q[idx];
             entry.done = done_q[idx];
-            entry.rob_idx = alloc_rob_idx_q[idx];
-            entry.uop = CoreDecodeUop'(alloc_uop_bits_q[idx]);
-            entry.prd = alloc_prd_q[idx];
-            entry.old_prd = alloc_old_prd_q[idx];
-            entry.alloc_prd = alloc_has_prd_q[idx];
-            entry.result = completion_result_q[idx];
-            entry.exception = completion_exception_q[idx];
-            entry.exception_cause = completion_exception_cause_q[idx];
-            entry.branch_miss = completion_branch_miss_q[idx];
-            entry.redirect_pc = completion_redirect_pc_q[idx];
-            entry.csr_write = completion_csr_write_q[idx];
-            entry.csr_addr = completion_csr_addr_q[idx];
-            entry.csr_wdata = completion_csr_wdata_q[idx];
+            entry.rob_idx = alloc_payload_q[idx].rob_idx;
+            entry.uop = alloc_payload_q[idx].uop;
+            entry.prd = alloc_payload_q[idx].prd;
+            entry.old_prd = alloc_payload_q[idx].old_prd;
+            entry.alloc_prd = alloc_payload_q[idx].alloc_prd;
+            entry.result = completion_payload_q[idx].result;
+            entry.exception = completion_payload_q[idx].exception;
+            entry.exception_cause =
+                completion_payload_q[idx].exception_cause;
+            entry.branch_miss = completion_payload_q[idx].branch_miss;
+            entry.redirect_pc = completion_payload_q[idx].redirect_pc;
+            entry.csr_write = completion_payload_q[idx].csr_write;
+            entry.csr_addr = completion_payload_q[idx].csr_addr;
+            entry.csr_wdata = completion_payload_q[idx].csr_wdata;
             assemble_entry = entry;
-        end
-    endfunction
-
-    function automatic logic alloc_is_store(input RobIndexPath idx);
-        CoreDecodeUop uop;
-        begin
-            uop = CoreDecodeUop'(alloc_uop_bits_q[idx]);
-            alloc_is_store = uop.is_store;
         end
     endfunction
 
@@ -296,15 +296,15 @@ module CoreROB #(
     always_ff @(posedge clk) begin
         for (int a = 0; a < ALLOC_WIDTH; a = a + 1) begin
             if (alloc_fire[a]) begin
-                alloc_rob_idx_q[wrap_add(tail_q, alloc_offset[a])] <=
+                alloc_payload_q[wrap_add(tail_q, alloc_offset[a])].rob_idx <=
                     wrap_add(tail_q, alloc_offset[a]);
-                alloc_uop_bits_q[wrap_add(tail_q, alloc_offset[a])] <=
+                alloc_payload_q[wrap_add(tail_q, alloc_offset[a])].uop <=
                     alloc_uop_i[a].uop;
-                alloc_prd_q[wrap_add(tail_q, alloc_offset[a])] <=
+                alloc_payload_q[wrap_add(tail_q, alloc_offset[a])].prd <=
                     alloc_uop_i[a].prd;
-                alloc_old_prd_q[wrap_add(tail_q, alloc_offset[a])] <=
+                alloc_payload_q[wrap_add(tail_q, alloc_offset[a])].old_prd <=
                     alloc_uop_i[a].old_prd;
-                alloc_has_prd_q[wrap_add(tail_q, alloc_offset[a])] <=
+                alloc_payload_q[wrap_add(tail_q, alloc_offset[a])].alloc_prd <=
                     alloc_uop_i[a].alloc_prd;
             end
         end
@@ -315,35 +315,35 @@ module CoreROB #(
     always_ff @(posedge clk) begin
         for (int c = 0; c < COMPLETE_WIDTH; c = c + 1) begin
             if (complete_valid_i[c]) begin
-                completion_result_q[complete_idx_i[c]] <=
+                completion_payload_q[complete_idx_i[c]].result <=
                     complete_result_i[c];
-                completion_exception_q[complete_idx_i[c]] <=
+                completion_payload_q[complete_idx_i[c]].exception <=
                     complete_exception_i[c];
-                completion_exception_cause_q[complete_idx_i[c]] <=
+                completion_payload_q[complete_idx_i[c]].exception_cause <=
                     complete_exception_cause_i[c];
-                completion_branch_miss_q[complete_idx_i[c]] <=
+                completion_payload_q[complete_idx_i[c]].branch_miss <=
                     complete_branch_miss_i[c];
-                completion_redirect_pc_q[complete_idx_i[c]] <=
+                completion_payload_q[complete_idx_i[c]].redirect_pc <=
                     complete_redirect_pc_i[c];
-                completion_csr_write_q[complete_idx_i[c]] <=
+                completion_payload_q[complete_idx_i[c]].csr_write <=
                     complete_csr_write_i[c];
-                completion_csr_addr_q[complete_idx_i[c]] <=
+                completion_payload_q[complete_idx_i[c]].csr_addr <=
                     complete_csr_addr_i[c];
-                completion_csr_wdata_q[complete_idx_i[c]] <=
+                completion_payload_q[complete_idx_i[c]].csr_wdata <=
                     complete_csr_wdata_i[c];
             end
         end
 
         if (store_complete_valid_i) begin
-            completion_result_q[store_complete_idx_i] <=
+            completion_payload_q[store_complete_idx_i].result <=
                 store_complete_addr_i;
-            completion_exception_q[store_complete_idx_i] <= 1'b0;
-            completion_exception_cause_q[store_complete_idx_i] <= '0;
-            completion_branch_miss_q[store_complete_idx_i] <= 1'b0;
-            completion_redirect_pc_q[store_complete_idx_i] <= '0;
-            completion_csr_write_q[store_complete_idx_i] <= 1'b0;
-            completion_csr_addr_q[store_complete_idx_i] <= '0;
-            completion_csr_wdata_q[store_complete_idx_i] <= '0;
+            completion_payload_q[store_complete_idx_i].exception <= 1'b0;
+            completion_payload_q[store_complete_idx_i].exception_cause <= '0;
+            completion_payload_q[store_complete_idx_i].branch_miss <= 1'b0;
+            completion_payload_q[store_complete_idx_i].redirect_pc <= '0;
+            completion_payload_q[store_complete_idx_i].csr_write <= 1'b0;
+            completion_payload_q[store_complete_idx_i].csr_addr <= '0;
+            completion_payload_q[store_complete_idx_i].csr_wdata <= '0;
         end
     end
 
@@ -359,7 +359,7 @@ module CoreROB #(
             if (store_complete_valid_i) begin
                 assert (valid_q[store_complete_idx_i])
                     else $error("store completion targeted an unowned ROB entry");
-                assert (alloc_is_store(store_complete_idx_i))
+                assert (alloc_payload_q[store_complete_idx_i].uop.is_store)
                     else $error("store completion targeted a non-store ROB entry");
                 assert (!done_q[store_complete_idx_i])
                     else $error("store completion was reported more than once");

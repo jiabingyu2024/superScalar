@@ -132,14 +132,13 @@ module CoreExecuteCluster (
     DataPath [ISSUE_WIDTH-1:0] wb_csr_wdata_q;
     logic [ISSUE_WIDTH-1:0] wb_prf_we_d;
     logic [ISSUE_WIDTH-1:0] wb_prf_we_q;
-    // The MEM elastic stage is the persistent owner of an address-ready store
-    // until Execute accepts it. Capture only a completion matching that
-    // store's data PRD and hold it until request insertion; do not retain and
-    // rebroadcast every backend completion.
-    logic store_issue_capture_valid_q;
-    PhyRegNumPath store_issue_capture_prd_q;
-    DataPath store_issue_capture_result_q;
-    logic [ISSUE_WIDTH-1:0] store_issue_capture_hit;
+    // A store address may leave MEM-IQ one cycle before its data producer
+    // reaches architectural completion.  Keep one extra completion beat so
+    // the request-register insertion cannot fall into the gap after the IQ
+    // wakeup but before the StoreBuffer shell exists.
+    logic [ISSUE_WIDTH-1:0] store_wakeup_hold_valid_q;
+    PhyRegNumPath [ISSUE_WIDTH-1:0] store_wakeup_hold_prd_q;
+    DataPath [ISSUE_WIDTH-1:0] store_wakeup_hold_result_q;
 
     logic [MEM_REQ_COUNT_BITS-1:0] mem_req_count_q;
     CoreRenamedUop mem_req_uop_q [MEM_REQ_DEPTH-1:0];
@@ -418,19 +417,6 @@ module CoreExecuteCluster (
     assign mem_probe_resolve_rob_idx_o = mem_probe_uop_q.rob_idx;
 
     always_comb begin
-        store_issue_capture_hit = '0;
-        if (mem_issue_valid_i[0] &&
-            mem_issue_uop_i[0].uop.is_store &&
-            !mem_issue_uop_i[0].src2_ready && !mem_issue_fire) begin
-            for (int w = 0; w < ISSUE_WIDTH; w++) begin
-                store_issue_capture_hit[w] = wakeup_valid_i[w] &&
-                    (wakeup_phy_i[w] != '0) &&
-                    (wakeup_phy_i[w] == mem_issue_uop_i[0].prs2);
-            end
-        end
-    end
-
-    always_comb begin
         for (int e = 0; e < MEM_REQ_DEPTH; e++) begin
             mem_req_store_data_now[e] = mem_req_store_data_q[e];
             mem_req_store_data_valid_now[e] =
@@ -440,6 +426,14 @@ module CoreExecuteCluster (
                     if (wakeup_valid_i[w] && (wakeup_phy_i[w] != '0) &&
                         (wakeup_phy_i[w] == mem_req_store_data_prd_q[e])) begin
                         mem_req_store_data_now[e] = wakeup_result_i[w];
+                        mem_req_store_data_valid_now[e] = 1'b1;
+                    end
+                    if (store_wakeup_hold_valid_q[w] &&
+                        (store_wakeup_hold_prd_q[w] != '0) &&
+                        (store_wakeup_hold_prd_q[w] ==
+                         mem_req_store_data_prd_q[e])) begin
+                        mem_req_store_data_now[e] =
+                            store_wakeup_hold_result_q[w];
                         mem_req_store_data_valid_now[e] = 1'b1;
                     end
                 end
@@ -466,12 +460,13 @@ module CoreExecuteCluster (
                     mem_enqueue_store_data = wakeup_result_i[w];
                     mem_enqueue_store_data_valid = 1'b1;
                 end
-            end
-            if (store_issue_capture_valid_q &&
-                (store_issue_capture_prd_q ==
-                 mem_enqueue_store_data_prd)) begin
-                mem_enqueue_store_data = store_issue_capture_result_q;
-                mem_enqueue_store_data_valid = 1'b1;
+                if (store_wakeup_hold_valid_q[w] &&
+                    (store_wakeup_hold_prd_q[w] != '0) &&
+                    (store_wakeup_hold_prd_q[w] ==
+                     mem_enqueue_store_data_prd)) begin
+                    mem_enqueue_store_data = store_wakeup_hold_result_q[w];
+                    mem_enqueue_store_data_valid = 1'b1;
+                end
             end
         end
         if (mem_probe_resolve_accept_o) begin
@@ -861,14 +856,12 @@ module CoreExecuteCluster (
             mem_req_count_q <= '0;
             load_meta_count_q <= '0;
             store_drain_pending_q <= 1'b0;
-            store_issue_capture_valid_q <= 1'b0;
+            store_wakeup_hold_valid_q <= '0;
         end else begin
-            if (clear_i || mem_issue_fire || !mem_issue_valid_i[0] ||
-                !mem_issue_uop_i[0].uop.is_store ||
-                mem_issue_uop_i[0].src2_ready) begin
-                store_issue_capture_valid_q <= 1'b0;
-            end else if (|store_issue_capture_hit) begin
-                store_issue_capture_valid_q <= 1'b1;
+            if (clear_i) begin
+                store_wakeup_hold_valid_q <= '0;
+            end else begin
+                store_wakeup_hold_valid_q <= wakeup_valid_i;
             end
             if (clear_i) begin
                 // Requests not yet accepted by DCache are wrong-path and can
@@ -915,9 +908,9 @@ module CoreExecuteCluster (
     always_ff @(posedge clk) begin
         if (!rst) begin
             for (int w = 0; w < ISSUE_WIDTH; w++) begin
-                if (store_issue_capture_hit[w]) begin
-                    store_issue_capture_prd_q <= wakeup_phy_i[w];
-                    store_issue_capture_result_q <= wakeup_result_i[w];
+                if (wakeup_valid_i[w]) begin
+                    store_wakeup_hold_prd_q[w] <= wakeup_phy_i[w];
+                    store_wakeup_hold_result_q[w] <= wakeup_result_i[w];
                 end
             end
             if (!clear_i) begin
@@ -1045,14 +1038,6 @@ module CoreExecuteCluster (
         if (rst || clear_i) begin
             mem_req_stalled_prev_q <= 1'b0;
         end else begin
-            if (store_issue_capture_valid_q) begin
-                assert (mem_issue_valid_i[0] &&
-                        mem_issue_uop_i[0].uop.is_store &&
-                        !mem_issue_uop_i[0].src2_ready &&
-                        (store_issue_capture_prd_q ==
-                         mem_issue_uop_i[0].prs2))
-                    else $error("store data capture lost its issue owner");
-            end
             if (mem_req_stalled_prev_q) begin
                 assert (mem_req_valid &&
                         (mem_req_head_uop == mem_req_uop_prev_q) &&

@@ -45,15 +45,7 @@ module CoreMemIssueQueue (
     logic [MEM_IQ_DEPTH-1:0] ready_now;
     logic [MEM_IQ_DEPTH-1:0] src1_ready_now;
     logic [MEM_IQ_DEPTH-1:0] src2_ready_now;
-    logic older_barrier_valid;
-    logic [SLOT_WIDTH-1:0] oldest_barrier_age;
-    logic [MEM_IQ_DEPTH-1:0] head_candidate;
-    logic [MEM_IQ_DEPTH-1:0] lookahead_candidate;
-    logic head_candidate_valid;
-    logic lookahead_candidate_valid;
-    logic [SLOT_WIDTH-1:0] head_candidate_slot;
-    logic [SLOT_WIDTH-1:0] lookahead_candidate_slot;
-    logic [SLOT_WIDTH-1:0] lookahead_candidate_age;
+    logic [MEM_IQ_DEPTH-1:0] older_all_load;
     logic [MEM_IQ_DEPTH-1:0] remove_mask;
     logic [MEM_IQ_DEPTH-1:0] free_mask;
     logic [DISPATCH_WIDTH-1:0] push_fire;
@@ -96,66 +88,24 @@ module CoreMemIssueQueue (
         end
     end
 
-    // A single oldest non-load age is the ordering barrier for every younger
-    // lookahead candidate.  This replaces the former slot-by-slot NxN
-    // older_all_load matrix: a load may bypass iff its age is strictly older
-    // than the first store/fence/serial entry.
     always_comb begin
-        older_barrier_valid = 1'b0;
-        oldest_barrier_age = '1;
+        older_all_load = '1;
         for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
-            if (valid_q[e] && !entry_q[e].uop.is_load &&
-                (!older_barrier_valid ||
-                 (age_q[e] < oldest_barrier_age))) begin
-                older_barrier_valid = 1'b1;
-                oldest_barrier_age = age_q[e];
+            for (int o = 0; o < MEM_IQ_DEPTH; o++) begin
+                if (valid_q[o] && (age_q[o] < age_q[e]) &&
+                    !entry_q[o].uop.is_load) begin
+                    older_all_load[e] = 1'b0;
+                end
             end
         end
     end
 
-    // Predecode slot-local eligibility.  The selection stage below only needs
-    // one minimum-age reduction instead of wanted_age x physical-slot scans.
-    always_comb begin
-        head_candidate = '0;
-        lookahead_candidate = '0;
-        for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
-            head_candidate[e] = valid_q[e] && (age_q[e] == '0) &&
-                                ready_now[e];
-            lookahead_candidate[e] = valid_q[e] && (age_q[e] != '0) &&
-                                     ready_now[e] &&
-                                     entry_q[e].uop.is_load &&
-                                     !denied_q[e] &&
-                                     (!older_barrier_valid ||
-                                      (age_q[e] < oldest_barrier_age)) &&
-                                     !(probe_pending_q &&
-                                       (SLOT_WIDTH'(e) == probe_slot_q));
-        end
-    end
-
-    always_comb begin
-        head_candidate_valid = 1'b0;
-        head_candidate_slot = '0;
-        lookahead_candidate_valid = 1'b0;
-        lookahead_candidate_slot = '0;
-        lookahead_candidate_age = '1;
-        for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
-            if (head_candidate[e]) begin
-                head_candidate_valid = 1'b1;
-                head_candidate_slot = SLOT_WIDTH'(e);
-            end
-            if (lookahead_candidate[e] &&
-                (!lookahead_candidate_valid ||
-                 (age_q[e] < lookahead_candidate_age))) begin
-                lookahead_candidate_valid = 1'b1;
-                lookahead_candidate_slot = SLOT_WIDTH'(e);
-                lookahead_candidate_age = age_q[e];
-            end
-        end
-    end
-
-    // Stable-slot selection. Head has priority in a normal cycle. A resolving
-    // probe may only be replaced by another lookahead because the old accept
-    // already consumes this cycle's single IQ removal.
+    // Stable-slot selection. Age zero always has priority. A
+    // younger candidate is only a load and every older inspected entry must
+    // also be a load; its address/cacheability is proven by the registered
+    // probe in ExecuteCluster before this queue removes it. When the previous
+    // probe resolves, a new younger candidate may replace it on the same edge,
+    // giving the address-probe stage an initiation interval of one cycle.
     always_comb begin
         issue_valid_o = '0;
         issue_uop_o = '0;
@@ -163,20 +113,33 @@ module CoreMemIssueQueue (
         issue_slot_o = '0;
         issue_age_o = '0;
         if (!probe_pending_q || probe_resolve_valid_i) begin
-            if (!probe_pending_q && head_candidate_valid) begin
-                issue_valid_o[0] = 1'b1;
-                issue_slot_o = head_candidate_slot;
-                issue_age_o = '0;
-            end else if (lookahead_candidate_valid) begin
-                issue_valid_o[0] = 1'b1;
-                issue_lookahead_o = 1'b1;
-                issue_slot_o = lookahead_candidate_slot;
-                issue_age_o = lookahead_candidate_age;
-            end
-            if (issue_valid_o[0]) begin
-                issue_uop_o[0] = entry_q[issue_slot_o];
-                issue_uop_o[0].src1_ready = src1_ready_now[issue_slot_o];
-                issue_uop_o[0].src2_ready = src2_ready_now[issue_slot_o];
+            for (int wanted_age = 0;
+                 wanted_age < MEM_IQ_DEPTH;
+                 wanted_age++) begin
+                for (int e = 0; e < MEM_IQ_DEPTH; e++) begin
+                    if (!issue_valid_o[0] && valid_q[e] &&
+                        (age_q[e] == SLOT_WIDTH'(wanted_age)) &&
+                        ready_now[e] &&
+                        // A resolving probe may only be replaced by another
+                        // lookahead. Direct head issue and old-probe removal
+                        // cannot both consume IQ ownership in this cycle.
+                        (!probe_pending_q || (wanted_age != 0)) &&
+                        !(probe_pending_q &&
+                          (SLOT_WIDTH'(e) == probe_slot_q)) &&
+                        ((wanted_age == 0) ||
+                         (entry_q[e].uop.is_load &&
+                          !denied_q[e]))) begin
+                        if ((wanted_age == 0) || older_all_load[e]) begin
+                            issue_valid_o[0] = 1'b1;
+                            issue_uop_o[0] = entry_q[e];
+                            issue_uop_o[0].src1_ready = src1_ready_now[e];
+                            issue_uop_o[0].src2_ready = src2_ready_now[e];
+                            issue_lookahead_o = (wanted_age != 0);
+                            issue_slot_o = SLOT_WIDTH'(e);
+                            issue_age_o = age_q[e];
+                        end
+                    end
+                end
             end
         end
 
