@@ -27,13 +27,17 @@ module reg_ex_m1 (
     input logic [`PC_BUS]                     i_update_pc,
     input logic [`PC_BUS]                     i_update_target,
     input logic                               i_branch_error,
-    input logic [`PC_BUS]                     i_branch_right_pc,
 
     output logic [`RF_BUS]                    o_rd_addr,
     // The M1 address/result fans out into all DCache LUTRAM banks.  Request
     // synthesis-time register replication so each physical copy serves a
     // bounded bank group; this does not add a pipeline stage.
     (* max_fanout = 32 *) output logic [`DATA_BUS] o_alu_res,
+    // Four explicit tag-index and four data-index register copies keep each
+    // asynchronous LUTRAM bank group local. All copies capture the same EX2
+    // address on this existing boundary, so cache latency is unchanged.
+    output logic [35:0]                       o_cache_tag_indices,
+    output logic [35:0]                       o_cache_data_indices,
     output logic [`DATA_BUS]                  o_a2_data,
 
     output logic                              o_mem_read,
@@ -48,8 +52,7 @@ module reg_ex_m1 (
     output logic                              o_update_en,
     output logic [`PC_BUS]                    o_update_pc,
     output logic [`PC_BUS]                    o_update_target,
-    output logic                              o_branch_error,
-    output logic [`PC_BUS]                    o_branch_right_pc
+    output logic                              o_branch_error
 
 );
 
@@ -57,6 +60,8 @@ module reg_ex_m1 (
         if (!i_rst_n) begin
             o_rd_addr       <= '0;
             o_alu_res       <= '0;
+            o_cache_tag_indices  <= '0;
+            o_cache_data_indices <= '0;
             o_a2_data       <= '0;
             o_mem_read      <= 1'b0;
             o_mem_write     <= 1'b0;
@@ -71,10 +76,11 @@ module reg_ex_m1 (
             o_update_pc     <= '0;
             o_update_target <= '0;
             o_branch_error  <= 1'b0;
-            o_branch_right_pc <= '0;
         end else if (i_flush) begin
             o_rd_addr       <= '0;
             o_alu_res       <= '0;
+            o_cache_tag_indices  <= '0;
+            o_cache_data_indices <= '0;
             o_a2_data       <= '0;
             o_mem_read      <= 1'b0;
             o_mem_write     <= 1'b0;
@@ -89,10 +95,11 @@ module reg_ex_m1 (
             o_update_pc     <= '0;
             o_update_target <= '0;
             o_branch_error  <= 1'b0;
-            o_branch_right_pc <= '0;
         end else if (!i_stall) begin
             o_rd_addr       <= i_rd_addr;
             o_alu_res       <= i_alu_res;
+            o_cache_tag_indices  <= {4{i_alu_res[12:4]}};
+            o_cache_data_indices <= {4{i_alu_res[12:4]}};
             o_a2_data       <= i_a2_data;
             o_mem_read      <= i_mem_read;
             o_mem_write     <= i_mem_write;
@@ -107,7 +114,6 @@ module reg_ex_m1 (
             o_update_pc     <= i_update_pc;
             o_update_target <= i_update_target;
             o_branch_error  <= i_branch_error;
-            o_branch_right_pc <= i_branch_right_pc;
         end
     end
 endmodule

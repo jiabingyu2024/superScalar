@@ -49,7 +49,7 @@ endmodule
 //   changing hit latency or the one-cycle external-memory response contract.
 //------------------------------------------------------------------------------
 module DCache #(
-    parameter int unsigned LINE_COUNT = 1024,
+    parameter int unsigned LINE_COUNT = 512,
     parameter logic [31:0] CACHE_ADDR_START = 32'h8010_0000,
     parameter logic [31:0] CACHE_ADDR_END   = 32'h8014_0000
 ) (
@@ -60,6 +60,8 @@ module DCache #(
     output logic        cpu_req_ready,
     input  logic        cpu_req_write,
     input  logic [31:0] cpu_req_addr,
+    input  logic [(4*$clog2(LINE_COUNT))-1:0] cpu_req_tag_indices,
+    input  logic [(4*$clog2(LINE_COUNT))-1:0] cpu_req_data_indices,
     input  logic [31:0] cpu_req_wdata,
     input  logic [3:0]  cpu_req_wstrb,
     input  logic        cpu_req_uncached,
@@ -98,7 +100,13 @@ module DCache #(
     state_e state_q;
 
     logic [LINE_COUNT-1:0] valid_q;
-    logic [31:TAG_LSB] tag_q [0:LINE_COUNT-1];
+    // v08 partitions the 19-bit tag into LUT-sized groups. Each group has an
+    // independently registered read index, cutting the former address[5]
+    // fanout of 194 and replacing the long monolithic equality chain.
+    (* ram_style = "distributed" *) logic [4:0] tag_q0 [0:LINE_COUNT-1];
+    (* ram_style = "distributed" *) logic [4:0] tag_q1 [0:LINE_COUNT-1];
+    (* ram_style = "distributed" *) logic [4:0] tag_q2 [0:LINE_COUNT-1];
+    (* ram_style = "distributed" *) logic [3:0] tag_q3 [0:LINE_COUNT-1];
 
     // Four word banks, each split into four byte-lane LUTRAMs.  Keeping every
     // physical memory as a one-dimensional LINE_COUNT x 8 array avoids the previous
@@ -122,6 +130,7 @@ module DCache #(
     logic [1:0]         req_word_c;
     logic               req_cacheable_c;
     logic               req_hit_c;
+    logic [3:0]         req_tag_match_c;
     logic [31:0]        cache_word_c;
 
     logic [INDEX_W-1:0] miss_index_c;
@@ -139,7 +148,7 @@ module DCache #(
                     .INDEX_W   (INDEX_W)
                 ) u_data_byte_bank (
                     .clk       (clk),
-                    .read_addr (req_index_c),
+                    .read_addr (cpu_req_data_indices[word_idx*INDEX_W +: INDEX_W]),
                     .read_data (data_word_read_c[word_idx][byte_idx*8 +: 8]),
                     .write_en  (data_write_en_c &&
                                 (data_write_word_c == 2'(word_idx)) &&
@@ -157,9 +166,17 @@ module DCache #(
     assign req_index_c = cpu_req_addr[TAG_LSB-1:4];
     assign req_tag_c   = cpu_req_addr[31:TAG_LSB];
     assign req_word_c  = cpu_req_addr[3:2];
+    assign req_tag_match_c[0] =
+        tag_q0[cpu_req_tag_indices[0*INDEX_W +: INDEX_W]] == cpu_req_addr[17:13];
+    assign req_tag_match_c[1] =
+        tag_q1[cpu_req_tag_indices[1*INDEX_W +: INDEX_W]] == cpu_req_addr[22:18];
+    assign req_tag_match_c[2] =
+        tag_q2[cpu_req_tag_indices[2*INDEX_W +: INDEX_W]] == cpu_req_addr[27:23];
+    assign req_tag_match_c[3] =
+        tag_q3[cpu_req_tag_indices[3*INDEX_W +: INDEX_W]] == cpu_req_addr[31:28];
     assign req_hit_c   = req_cacheable_c &&
-                         valid_q[req_index_c] &&
-                         (tag_q[req_index_c] == req_tag_c);
+                         valid_q[cpu_req_tag_indices[0 +: INDEX_W]] &&
+                         (&req_tag_match_c);
     assign cache_word_c = data_word_read_c[req_word_c];
 
     assign miss_index_c = miss_addr_q[TAG_LSB-1:4];
@@ -344,7 +361,10 @@ module DCache #(
                         end
 
                         if (fill_count_q == 3'(WORDS_PER_LINE - 1)) begin
-                            tag_q[miss_index_c] <= miss_tag_c;
+                            tag_q0[miss_index_c] <= miss_addr_q[17:13];
+                            tag_q1[miss_index_c] <= miss_addr_q[22:18];
+                            tag_q2[miss_index_c] <= miss_addr_q[27:23];
+                            tag_q3[miss_index_c] <= miss_addr_q[31:28];
                             valid_q[miss_index_c] <= 1'b1;
                             fill_count_q <= 3'd0;
                             fill_word_q <= miss_target_word_q;

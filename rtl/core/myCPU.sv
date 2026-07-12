@@ -52,6 +52,8 @@ module myCPU (
     logic        core_dram_wen;
     logic        core_dram_ren;
     logic [31:0] core_dram_addr;
+    logic [35:0] core_dram_tag_indices;
+    logic [35:0] core_dram_data_indices;
     logic [31:0] core_dram_wdata;
     logic [3:0]  core_dram_mask;
 
@@ -89,6 +91,8 @@ module myCPU (
         .dram_wen      (core_dram_wen),
         .dram_ren      (core_dram_ren),
         .dram_addr     (core_dram_addr),
+        .dram_tag_indices(core_dram_tag_indices),
+        .dram_data_indices(core_dram_data_indices),
         .dram_wdata    (core_dram_wdata),
         .dram_mask     (core_dram_mask)
     );
@@ -104,6 +108,8 @@ module myCPU (
         .cpu_req_ready     (dcache_cpu_ready),
         .cpu_req_write     (core_dram_wen),
         .cpu_req_addr      (core_dram_addr),
+        .cpu_req_tag_indices(core_dram_tag_indices),
+        .cpu_req_data_indices(core_dram_data_indices),
         .cpu_req_wdata     (core_dram_wdata),
         .cpu_req_wstrb     (core_dram_mask),
         .cpu_req_uncached  (1'b0),

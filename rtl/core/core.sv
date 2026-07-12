@@ -24,6 +24,8 @@ module core(
     output logic                                     dram_wen,
     output logic                                     dram_ren,
     output logic  [`RAM_ADDR_BUS]                    dram_addr,
+    output logic  [35:0]                             dram_tag_indices,
+    output logic  [35:0]                             dram_data_indices,
     output logic  [`DATA_BUS]                        dram_wdata,
     output logic  [3:0]                              dram_mask
 
@@ -113,7 +115,6 @@ module core(
     logic [`PC_BUS]   update_pc_e;
     logic [`PC_BUS]   update_target_e;
     logic             error_e;
-    logic [`PC_BUS]   right_pc_e;
 
     logic [`RF_BUS]   rd_addr_m;
     logic [`DATA_BUS] alu_res_m;
@@ -131,7 +132,6 @@ module core(
     logic [`PC_BUS]   update_pc_m;
     logic [`PC_BUS]   update_target_m;
     logic             branch_error_m;
-    logic [`PC_BUS]   branch_right_pc_m;
 
     logic [`RF_BUS]   rd_addr_m2;
     logic [`DATA_BUS] alu_res_m2;
@@ -240,7 +240,7 @@ module core(
         .i_predict_taken (predict_taken_f),
         .i_predict_target(predict_target_f),
         .i_error         (branch_error_m),
-        .i_right_pc      (branch_right_pc_m),
+        .i_right_pc      (update_target_m),
         .i_m_busy        (m_busy_e),
         .i_mem_busy      (mem_busy_m),
         .o_stall_p_f     (stall_p_f),
@@ -428,7 +428,6 @@ module core(
         .o_update_pc     (update_pc_e),
         .o_update_target (update_target_e),
         .o_error         (error_e),
-        .o_right_pc      (right_pc_e),
         .o_m_busy        (m_busy_e),
         .o_is_mul        (is_mul_ex2),
         .o_m_op          (m_op_ex2),
@@ -457,9 +456,10 @@ module core(
         .i_update_pc     (update_pc_e),
         .i_update_target (update_target_e),
         .i_branch_error  (error_e),
-        .i_branch_right_pc(right_pc_e),
         .o_rd_addr       (rd_addr_m),
         .o_alu_res       (alu_res_m),
+        .o_cache_tag_indices(dram_tag_indices),
+        .o_cache_data_indices(dram_data_indices),
         .o_a2_data       (a2_data_m),
         .o_mem_read      (mem_read_m),
         .o_mem_write     (mem_write_m),
@@ -473,8 +473,7 @@ module core(
         .o_update_en     (update_en_m),
         .o_update_pc     (update_pc_m),
         .o_update_target (update_target_m),
-        .o_branch_error  (branch_error_m),
-        .o_branch_right_pc(branch_right_pc_m)
+        .o_branch_error  (branch_error_m)
     );
 
     assign dram_wen   = mem_write_m;

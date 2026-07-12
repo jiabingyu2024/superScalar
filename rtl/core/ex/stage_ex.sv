@@ -76,7 +76,6 @@ module stage_ex(
     output logic  [`PC_BUS]                 o_update_pc,
     output logic  [`PC_BUS]                 o_update_target,
     output logic                            o_error,
-    output logic  [`PC_BUS]                 o_right_pc,
 
     output logic                            o_m_busy,
     output logic                            o_is_mul,
@@ -317,7 +316,7 @@ module stage_ex(
 
     // ---- Branch unit (produces branch redirect) ----
     logic            branch_error;
-    logic [`PC_BUS]  branch_right_pc;
+    logic [`PC_BUS]  branch_update_target;
 
     branch_cmp u_branch_cmp (
         .i_b1_data       (rs1_exec_final),
@@ -333,9 +332,9 @@ module stage_ex(
         .o_update_taken  (o_update_taken),
         .o_update_en     (o_update_en),
         .o_update_pc     (o_update_pc),
-        .o_update_target (o_update_target),
+        .o_update_target (branch_update_target),
         .o_error         (branch_error),
-        .o_right_pc      (branch_right_pc)
+        .o_right_pc      ()
     );
 
     // ---- M extension ----
@@ -474,19 +473,19 @@ module stage_ex(
         .o_mepc       (mepc_val)
     );
 
-    // ---- 重定向逻辑（复用 o_error/o_right_pc 机制）----
-    // ecall/ebreak → 跳 mtvec；mret → 跳 mepc；分支误预测 → 跳 branch_right_pc
+    // ---- 重定向逻辑（复用 o_error/o_update_target 机制）----
+    // ecall/ebreak → 跳 mtvec；mret → 跳 mepc；分支误预测 → 跳 branch target
     // 优先级：ecall/ebreak > mret > branch（实际上不会同时有多个）
     always_comb begin
         if (is_ecall || is_ebreak) begin
             o_error     = 1'b1;
-            o_right_pc  = mtvec_val;
+            o_update_target = mtvec_val;
         end else if (is_mret) begin
             o_error     = 1'b1;
-            o_right_pc  = mepc_val;
+            o_update_target = mepc_val;
         end else begin
             o_error     = branch_error;
-            o_right_pc  = branch_right_pc;
+            o_update_target = branch_update_target;
         end
     end
 
