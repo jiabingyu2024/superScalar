@@ -30,7 +30,10 @@ module reg_ex_m1 (
     input logic [`PC_BUS]                     i_branch_right_pc,
 
     output logic [`RF_BUS]                    o_rd_addr,
-    output logic [`DATA_BUS]                  o_alu_res,
+    // The M1 address/result fans out into all DCache LUTRAM banks.  Request
+    // synthesis-time register replication so each physical copy serves a
+    // bounded bank group; this does not add a pipeline stage.
+    (* max_fanout = 32 *) output logic [`DATA_BUS] o_alu_res,
     output logic [`DATA_BUS]                  o_a2_data,
 
     output logic                              o_mem_read,

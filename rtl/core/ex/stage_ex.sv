@@ -94,8 +94,12 @@ module stage_ex(
     logic             stalled_operands_valid_q;
     logic [`DATA_BUS] rs1_exec_q;
     logic [`DATA_BUS] rs2_exec_q;
-    logic [`DATA_BUS] rs1_exec_final;
-    logic [`DATA_BUS] rs2_exec_final;
+    // These buses feed several physically separated EX2 consumers.  Keep
+    // their synthesized fanout bounded so Vivado duplicates the late-bypass
+    // muxes close to ALU/branch/hold consumers instead of routing one shared
+    // high-fanout result across the whole execute region.
+    (* max_fanout = 16 *) logic [`DATA_BUS] rs1_exec_final;
+    (* max_fanout = 16 *) logic [`DATA_BUS] rs2_exec_final;
     logic [`RF_BUS]   rs1_addr_q;
     logic [`RF_BUS]   rs2_addr_q;
     logic [`DATA_BUS] imm_q;

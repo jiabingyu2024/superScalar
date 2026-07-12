@@ -39,6 +39,8 @@ module branch_cmp(
     logic [`PC_BUS] branch_target;
     logic [`PC_BUS] pc_plus4;
     logic [`PC_BUS] right_pc;
+    logic           taken_target_mismatch;
+    logic           fallthrough_mismatch;
 
     always_comb begin
         branch_taken  = 1'b0;
@@ -62,12 +64,20 @@ module branch_cmp(
             branch_target = (i_t1_data + i_t2_data) & ~32'd1;
         end
 
+        // Compare both registered candidate PCs with the prediction in
+        // parallel, then let branch_taken select the already reduced result.
+        // This keeps load-dependent branch data out of a second 32-bit
+        // right_pc-versus-prediction comparator on the EX2 critical path.
+        taken_target_mismatch = (branch_target != i_pc_predict);
+        fallthrough_mismatch  = (pc_plus4 != i_pc_predict);
         right_pc        = branch_taken ? branch_target : pc_plus4;
         o_update_en     = i_is_branch || (i_inst_spec == `EX_JAL) || (i_inst_spec == `EX_JALR);
         o_update_taken  = branch_taken;
         o_update_pc     = i_pc_d_e;
         o_update_target = right_pc;
         o_right_pc      = right_pc;
-        o_error         = o_update_en && (right_pc != i_pc_predict);
+        o_error         = o_update_en &&
+                          (branch_taken ? taken_target_mismatch :
+                                          fallthrough_mismatch);
     end
 endmodule
