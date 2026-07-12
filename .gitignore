@@ -16,3 +16,6 @@ fpga/build/
 *.ip_user_files/
 
 obj_dir/
+fpga/implement_ip_aligned_project.tcl
+fpga/salvage_ip_aligned_route.tcl
+fpga/verify_ip_timing_alignment.tcl

@@ -34,6 +34,7 @@ module dram_driver(
     logic [ 1:0] offset;
     logic [ 1:0] offset_d1;
     logic [ 1:0] offset_d2;
+    logic         read_enable_d1;
     logic [31:0] dram_data, dram_rdata_raw, dout;
     logic [ 3:0] dram_we;
 
@@ -46,11 +47,13 @@ module dram_driver(
         .clka       (clk),
         .dina       (dram_data),
         .ena        (dram_ena),
+        .regcea     (read_enable_d1),
         .wea        (dram_we),
         .douta      (dram_rdata_raw)
     );
 
     always_ff @(posedge clk) begin
+        read_enable_d1 <= dram_ena && !dram_wen;
         if (dram_ena && !dram_wen) begin
             offset_d1 <= offset;
         end

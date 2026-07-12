@@ -4,10 +4,9 @@
  * @module DRAM
  * @description 32-bit data RAM, depth 65536 words.
  *              Port names match the generated BRAM IP used by the FPGA build.
- *              Single-port RAM with byte write enable and the BMG core output
- *              register enabled. Vivado 2023.2 still reports
- *              C_READ_LATENCY_A=1 for this configuration, so douta updates on
- *              the first rising edge after the address/enable are presented.
+ *              Single-port RAM with byte write enable and an independently
+ *              enabled primitive-output register. ENA updates the memory
+ *              output latch; REGCEA transfers that latch to DOUTA.
  *              Address alignment and byte lane shifting are handled by the SoC
  *              adapter, so `addra` is already a word address.
  */
@@ -20,6 +19,7 @@ module DRAM_0 #(
     input  logic                    clka,
     input  logic [DATA_WIDTH-1:0]   dina,
     input  logic                    ena,
+    input  logic                    regcea,
     input  logic [DATA_WIDTH/8-1:0] wea,
     output logic [DATA_WIDTH-1:0]   douta
 );
@@ -27,9 +27,7 @@ module DRAM_0 #(
     localparam int unsigned DEPTH = (1 << ADDR_WIDTH);
 
     logic [DATA_WIDTH-1:0] mem [0:DEPTH-1];
-    logic                  read_en;
-
-    assign read_en = ena && (wea == '0);
+    logic [DATA_WIDTH-1:0] read_data_d1;
 
     initial begin
         string runtime_init_file;
@@ -42,16 +40,17 @@ module DRAM_0 #(
     end
 
     always_ff @(posedge clka) begin
-        if (read_en) begin
-            douta <= mem[addra];
-        end
-
         if (ena) begin
+            // READ_FIRST: capture the pre-write word in the memory latch.
+            read_data_d1 <= mem[addra];
             for (int idx = 0; idx < BYTE_COUNT; idx++) begin
                 if (wea[idx]) begin
                     mem[addra][idx*8 +: 8] <= dina[idx*8 +: 8];
                 end
             end
+        end
+        if (regcea) begin
+            douta <= read_data_d1;
         end
     end
 
