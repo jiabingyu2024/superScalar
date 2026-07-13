@@ -36,6 +36,7 @@ module stage_ex(
     input  logic  [`PC_BUS]                 i_pc_d_e,
     input  logic  [`PC_BUS]                 i_pc_target,
     input  logic  [`PC_BUS]                 i_pc_predict,
+    input  logic  [7:0]                     i_bpu_pht_idx,
 
     input  logic  [1:0]                     i_rs1_fwd_sel,
     input  logic  [1:0]                     i_rs2_fwd_sel,
@@ -76,6 +77,11 @@ module stage_ex(
     output logic                            o_update_en,
     output logic  [`PC_BUS]                 o_update_pc,
     output logic  [`PC_BUS]                 o_update_target,
+    output logic  [`PC_BUS]                 o_update_bpu_target,
+    output logic  [7:0]                     o_update_pht_idx,
+    output logic                            o_update_is_cond,
+    output logic                            o_update_is_call,
+    output logic                            o_update_is_return,
     output logic                            o_error,
 
     output logic                            o_m_busy,
@@ -109,6 +115,7 @@ module stage_ex(
     logic [`PC_BUS]   pc_d_e_q;
     logic [`PC_BUS]   pc_target_q;
     logic [`PC_BUS]   pc_predict_q;
+    logic [7:0]       bpu_pht_idx_q;
     logic [3:0]       alu_ctrl_q;
     logic [2:0]       func3_q;
     logic             is_branch_q;
@@ -241,6 +248,7 @@ module stage_ex(
             pc_d_e_q         <= '0;
             pc_target_q      <= '0;
             pc_predict_q     <= '0;
+            bpu_pht_idx_q    <= '0;
             alu_ctrl_q       <= `ALU_ADD;
             func3_q          <= '0;
             is_branch_q      <= 1'b0;
@@ -266,6 +274,7 @@ module stage_ex(
             pc_d_e_q         <= '0;
             pc_target_q      <= '0;
             pc_predict_q     <= '0;
+            bpu_pht_idx_q    <= '0;
             alu_ctrl_q       <= `ALU_ADD;
             func3_q          <= '0;
             is_branch_q      <= 1'b0;
@@ -296,6 +305,7 @@ module stage_ex(
             pc_d_e_q         <= i_pc_d_e;
             pc_target_q      <= i_pc_target;
             pc_predict_q     <= i_pc_predict;
+            bpu_pht_idx_q    <= i_bpu_pht_idx;
             alu_ctrl_q       <= i_alu_ctrl;
             func3_q          <= i_func3;
             is_branch_q      <= i_is_branch;
@@ -361,6 +371,7 @@ module stage_ex(
     // ---- Branch unit (produces branch redirect) ----
     logic            branch_error;
     logic [`PC_BUS]  branch_update_target;
+    logic [`PC_BUS]  branch_bpu_target;
 
     branch_cmp u_branch_cmp (
         .i_b1_data       (rs1_exec_registered),
@@ -377,6 +388,7 @@ module stage_ex(
         .o_update_en     (o_update_en),
         .o_update_pc     (o_update_pc),
         .o_update_target (branch_update_target),
+        .o_bpu_target    (branch_bpu_target),
         .o_error         (branch_error),
         .o_right_pc      ()
     );
@@ -541,6 +553,19 @@ module stage_ex(
     assign o_reg_write     = reg_write_q;
     assign o_mem_mask      = mem_mask_q;
     assign o_load_unsigned = load_unsigned_q;
+    assign o_update_bpu_target = branch_bpu_target;
+    assign o_update_pht_idx = bpu_pht_idx_q;
+    assign o_update_is_cond = is_branch_q;
+    assign o_update_is_call = o_update_en &&
+                              ((inst_spec_q == `EX_JAL) ||
+                               (inst_spec_q == `EX_JALR)) &&
+                              ((rd_addr_q == 5'd1) || (rd_addr_q == 5'd5));
+    assign o_update_is_return = o_update_en &&
+                                (inst_spec_q == `EX_JALR) &&
+                                (rd_addr_q == 5'd0) &&
+                                ((rs1_addr_q == 5'd1) ||
+                                 (rs1_addr_q == 5'd5)) &&
+                                (imm_q == 32'd0);
 
     always_comb begin
         o_mem_addr = rs1_exec_registered + imm_q;

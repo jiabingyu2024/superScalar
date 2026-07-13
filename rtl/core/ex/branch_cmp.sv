@@ -30,6 +30,7 @@ module branch_cmp(
     output logic                            o_update_en,
     output logic  [`PC_BUS]                 o_update_pc,
     output logic  [`PC_BUS]                 o_update_target,
+    output logic  [`PC_BUS]                 o_bpu_target,
 
     output logic                            o_error,          // for hazard_unit
     output logic  [`PC_BUS]                 o_right_pc
@@ -75,6 +76,7 @@ module branch_cmp(
         o_update_taken  = branch_taken;
         o_update_pc     = i_pc_d_e;
         o_update_target = right_pc;
+        o_bpu_target    = branch_target;
         o_right_pc      = right_pc;
         o_error         = o_update_en &&
                           (branch_taken ? taken_target_mismatch :

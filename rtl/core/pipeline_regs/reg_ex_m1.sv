@@ -27,6 +27,11 @@ module reg_ex_m1 (
     input logic                               i_update_en,
     input logic [`PC_BUS]                     i_update_pc,
     input logic [`PC_BUS]                     i_update_target,
+    input logic [`PC_BUS]                     i_update_bpu_target,
+    input logic [7:0]                         i_update_pht_idx,
+    input logic                               i_update_is_cond,
+    input logic                               i_update_is_call,
+    input logic                               i_update_is_return,
     input logic                               i_branch_error,
 
     output logic [`RF_BUS]                    o_rd_addr,
@@ -54,6 +59,11 @@ module reg_ex_m1 (
     output logic                              o_update_en,
     output logic [`PC_BUS]                    o_update_pc,
     output logic [`PC_BUS]                    o_update_target,
+    output logic [`PC_BUS]                    o_update_bpu_target,
+    output logic [7:0]                        o_update_pht_idx,
+    output logic                              o_update_is_cond,
+    output logic                              o_update_is_call,
+    output logic                              o_update_is_return,
     output logic                              o_branch_error
 
 );
@@ -78,6 +88,11 @@ module reg_ex_m1 (
             o_update_en     <= 1'b0;
             o_update_pc     <= '0;
             o_update_target <= '0;
+            o_update_bpu_target <= '0;
+            o_update_pht_idx <= '0;
+            o_update_is_cond <= 1'b0;
+            o_update_is_call <= 1'b0;
+            o_update_is_return <= 1'b0;
             o_branch_error  <= 1'b0;
         end else if (i_flush) begin
             o_rd_addr       <= '0;
@@ -98,6 +113,11 @@ module reg_ex_m1 (
             o_update_en     <= 1'b0;
             o_update_pc     <= '0;
             o_update_target <= '0;
+            o_update_bpu_target <= '0;
+            o_update_pht_idx <= '0;
+            o_update_is_cond <= 1'b0;
+            o_update_is_call <= 1'b0;
+            o_update_is_return <= 1'b0;
             o_branch_error  <= 1'b0;
         end else if (!i_stall) begin
             o_rd_addr       <= i_rd_addr;
@@ -118,6 +138,11 @@ module reg_ex_m1 (
             o_update_en     <= i_update_en;
             o_update_pc     <= i_update_pc;
             o_update_target <= i_update_target;
+            o_update_bpu_target <= i_update_bpu_target;
+            o_update_pht_idx <= i_update_pht_idx;
+            o_update_is_cond <= i_update_is_cond;
+            o_update_is_call <= i_update_is_call;
+            o_update_is_return <= i_update_is_return;
             o_branch_error  <= i_branch_error;
         end
     end

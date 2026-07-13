@@ -32,10 +32,13 @@ module core(
     logic [`PC_BUS]   pc_next_hz;
     logic [`PC_BUS]   pc_p;
     logic [`PC_BUS]   pc_predict_p;
+    logic [7:0]       bpu_pht_idx_p;
     logic [`PC_BUS]   pc_pf;
     logic [`PC_BUS]   pc_predict_pf;
+    logic [7:0]       bpu_pht_idx_pf;
     logic             valid_pf;
     logic [`PC_BUS]   pc_predict_f;
+    logic [7:0]       bpu_pht_idx_f;
     logic [`INST_BUS] inst_f;
     logic [`PC_BUS]   pc_f;
     logic             predict_taken_f;
@@ -44,6 +47,7 @@ module core(
     logic [`PC_BUS]   pc_d;
     logic [`INST_BUS] inst_d;
     logic [`PC_BUS]   pc_predict_d;
+    logic [7:0]       bpu_pht_idx_d;
 
     logic             mem_read_d;
     logic             mem_write_d;
@@ -89,6 +93,7 @@ module core(
     logic [`PC_BUS]   pc_e;
     logic [`PC_BUS]   pc_target_e;
     logic [`PC_BUS]   pc_predict_e;
+    logic [7:0]       bpu_pht_idx_e;
     logic             is_m_ext_e;
     logic [2:0]       m_op_e;
     logic [11:0]      csr_addr_e;
@@ -116,6 +121,11 @@ module core(
     logic             update_en_e;
     logic [`PC_BUS]   update_pc_e;
     logic [`PC_BUS]   update_target_e;
+    logic [`PC_BUS]   update_bpu_target_e;
+    logic [7:0]       update_pht_idx_e;
+    logic             update_is_cond_e;
+    logic             update_is_call_e;
+    logic             update_is_return_e;
     logic             error_e;
 
     logic [`RF_BUS]   rd_addr_m;
@@ -134,6 +144,11 @@ module core(
     logic             update_en_m;
     logic [`PC_BUS]   update_pc_m;
     logic [`PC_BUS]   update_target_m;
+    logic [`PC_BUS]   update_bpu_target_m;
+    logic [7:0]       update_pht_idx_m;
+    logic             update_is_cond_m;
+    logic             update_is_call_m;
+    logic             update_is_return_m;
     logic             branch_error_m;
 
     logic [`RF_BUS]   rd_addr_m2;
@@ -205,8 +220,10 @@ module core(
         .i_stall      (stall_p_f),
         .i_pc         (pc_p),
         .i_pc_predict (pc_predict_p),
+        .i_bpu_pht_idx(bpu_pht_idx_p),
         .o_pc         (pc_pf),
         .o_pc_predict (pc_predict_pf),
+        .o_bpu_pht_idx(bpu_pht_idx_pf),
         .o_valid      (valid_pf)
     );
 
@@ -214,22 +231,32 @@ module core(
         .i_pc         (pc_pf),
         .i_inst       (irom_data),
         .i_pc_predict (pc_predict_pf),
+        .i_bpu_pht_idx(bpu_pht_idx_pf),
         .i_valid      (valid_pf),
         .o_pc         (pc_f),
         .o_inst       (inst_f),
-        .o_pc_predict (pc_predict_f)
+        .o_pc_predict (pc_predict_f),
+        .o_bpu_pht_idx(bpu_pht_idx_f)
     );
 
-    bpu_top u_bpu_top (
+    bpu_top #(
+        .ENABLE_GSHARE(1'b1),
+        .ENABLE_RAS   (1'b1)
+    ) u_bpu_top (
         .i_clk           (clk),
         .i_rst_n         (rst_n),
         .i_pc_cur        (pc_p),
         .i_update_en     (update_en_m),
         .i_update_taken  (update_taken_m),
-        .i_update_target (update_target_m),
+        .i_update_bpu_target(update_bpu_target_m),
         .i_update_pc     (update_pc_m),
+        .i_update_pht_idx(update_pht_idx_m),
+        .i_update_is_cond(update_is_cond_m),
+        .i_update_is_call(update_is_call_m),
+        .i_update_is_return(update_is_return_m),
         .o_predict_taken (predict_taken_f),
-        .o_predict_target(predict_target_f)
+        .o_predict_target(predict_target_f),
+        .o_predict_pht_idx(bpu_pht_idx_p)
     );
 
     hazard_unit u_hazard_unit (
@@ -280,9 +307,11 @@ module core(
         .i_pc_f_d     (pc_f),
         .i_inst_f_d   (inst_f),
         .i_pc_predict (pc_predict_f),
+        .i_bpu_pht_idx(bpu_pht_idx_f),
         .o_pc_f_d     (pc_d),
         .o_inst_f_d   (inst_d),
-        .o_pc_predict (pc_predict_d)
+        .o_pc_predict (pc_predict_d),
+        .o_bpu_pht_idx(bpu_pht_idx_d)
     );
 
     stage_id u_stage_id (
@@ -356,6 +385,7 @@ module core(
         .i_pc_d_e        (pc_d),
         .i_pc_target     (pc_target_d),
         .i_pc_predict    (pc_predict_d),
+        .i_bpu_pht_idx   (bpu_pht_idx_d),
         .i_rs1_fwd_sel   (rs1_fwd_sel_d),
         .i_rs2_fwd_sel   (rs2_fwd_sel_d),
         .i_is_m_ext      (is_m_ext_d),
@@ -381,6 +411,7 @@ module core(
         .o_pc_d_e        (pc_e),
         .o_pc_target     (pc_target_e),
         .o_pc_predict    (pc_predict_e),
+        .o_bpu_pht_idx   (bpu_pht_idx_e),
         .o_rs1_fwd_sel   (rs1_fwd_sel_e),
         .o_rs2_fwd_sel   (rs2_fwd_sel_e),
         .o_is_m_ext      (is_m_ext_e),
@@ -414,6 +445,7 @@ module core(
         .i_pc_d_e        (pc_e),
         .i_pc_target     (pc_target_e),
         .i_pc_predict    (pc_predict_e),
+        .i_bpu_pht_idx   (bpu_pht_idx_e),
         .i_rs1_fwd_sel   (rs1_fwd_sel_e),
         .i_rs2_fwd_sel   (rs2_fwd_sel_e),
         .i_alu_ctrl      (alu_ctrl_e),
@@ -445,6 +477,11 @@ module core(
         .o_update_en     (update_en_e),
         .o_update_pc     (update_pc_e),
         .o_update_target (update_target_e),
+        .o_update_bpu_target(update_bpu_target_e),
+        .o_update_pht_idx(update_pht_idx_e),
+        .o_update_is_cond(update_is_cond_e),
+        .o_update_is_call(update_is_call_e),
+        .o_update_is_return(update_is_return_e),
         .o_error         (error_e),
         .o_m_busy        (m_busy_e),
         .o_is_mul        (is_mul_ex2),
@@ -474,6 +511,11 @@ module core(
         .i_update_en     (update_en_e),
         .i_update_pc     (update_pc_e),
         .i_update_target (update_target_e),
+        .i_update_bpu_target(update_bpu_target_e),
+        .i_update_pht_idx(update_pht_idx_e),
+        .i_update_is_cond(update_is_cond_e),
+        .i_update_is_call(update_is_call_e),
+        .i_update_is_return(update_is_return_e),
         .i_branch_error  (error_e),
         .o_rd_addr       (rd_addr_m),
         .o_alu_res       (alu_res_m),
@@ -493,6 +535,11 @@ module core(
         .o_update_en     (update_en_m),
         .o_update_pc     (update_pc_m),
         .o_update_target (update_target_m),
+        .o_update_bpu_target(update_bpu_target_m),
+        .o_update_pht_idx(update_pht_idx_m),
+        .o_update_is_cond(update_is_cond_m),
+        .o_update_is_call(update_is_call_m),
+        .o_update_is_return(update_is_return_m),
         .o_branch_error  (branch_error_m)
     );
 

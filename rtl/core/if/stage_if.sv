@@ -9,12 +9,14 @@ module stage_if(
     input  logic  [`PC_BUS]         i_pc,
     input  logic  [`INST_BUS]       i_inst,
     input  logic  [`PC_BUS]         i_pc_predict,
+    input  logic  [7:0]             i_bpu_pht_idx,
 
     input  logic                    i_valid,
 
     output logic  [`PC_BUS]         o_pc,
     output logic  [`INST_BUS]       o_inst,
-    output logic  [`PC_BUS]         o_pc_predict
+    output logic  [`PC_BUS]         o_pc_predict,
+    output logic  [7:0]             o_bpu_pht_idx
 
 );
 
@@ -23,10 +25,12 @@ module stage_if(
             o_pc         = i_pc;
             o_inst       = i_inst;
             o_pc_predict = i_pc_predict;
+            o_bpu_pht_idx = i_bpu_pht_idx;
         end else begin
             o_pc         = '0;
             o_inst       = '0;
             o_pc_predict = '0;
+            o_bpu_pht_idx = '0;
         end
     end
 
