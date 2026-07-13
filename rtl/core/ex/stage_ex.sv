@@ -30,6 +30,7 @@ module stage_ex(
     input  logic                            i_fwd_reg_write_m,
     input  logic  [`RF_BUS]                 i_fwd_rd_m2,
     input  logic                            i_fwd_reg_write_m2,
+    input  logic                            i_fwd_is_mul_m2,
     input  logic  [`RF_BUS]                 i_fwd_rd_w,
     input  logic                            i_fwd_reg_write_w,
 
@@ -108,6 +109,12 @@ module stage_ex(
     (* max_fanout = 16 *) logic [`DATA_BUS] rs2_exec_final;
     logic [`DATA_BUS] rs1_exec_registered;
     logic [`DATA_BUS] rs2_exec_registered;
+    logic             rs1_late_m1_q;
+    logic             rs1_late_m2_q;
+    logic             rs1_late_w_q;
+    logic             rs2_late_m1_q;
+    logic             rs2_late_m2_q;
+    logic             rs2_late_w_q;
     logic [`RF_BUS]   rs1_addr_q;
     logic [`RF_BUS]   rs2_addr_q;
     logic [`DATA_BUS] imm_q;
@@ -172,42 +179,28 @@ module stage_ex(
             rs2_exec_mux = stalled_operands_valid_q ? stalled_rs2_q : i_rs2_data;
         end
 
-        // With one load-use bubble the consumer reaches EX2 in the same cycle
-        // that the producer's registered response is present in M2.  Override
-        // the EX1-captured operand here.  A matching M1 producer is younger
-        // than M2 and therefore suppresses the override.
+        // The ID-stage forwarding decision tells us when the immediately
+        // preceding EX2 producer will enter M1 beside this instruction.  The
+        // remaining load-use case is predecoded while the consumer is in EX1
+        // and its load is in M1.  Consequently the late data mux is selected
+        // only by these local registers; WB/M2 rd-address comparisons no
+        // longer sit in front of the ALU and branch units.
         rs1_exec_registered = rs1_exec_q;
-        if (!i_fwd_mem_read_m && i_fwd_reg_write_m &&
-                     (i_fwd_rd_m != '0) &&
-                     (i_fwd_rd_m == rs1_addr_q)) begin
+        if (rs1_late_m1_q && !i_fwd_mem_read_m) begin
             rs1_exec_registered = i_fwd_e_m;
-        end else if (i_fwd_reg_write_m2 && (i_fwd_rd_m2 != '0) &&
-            (i_fwd_rd_m2 == rs1_addr_q) &&
-            !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
-              (i_fwd_rd_m == rs1_addr_q))) begin
+        end else if (rs1_late_m2_q) begin
             rs1_exec_registered = i_fwd_m_m;
-        end else if (i_fwd_reg_write_w && (i_fwd_rd_w != '0) &&
-                     (i_fwd_rd_w == rs1_addr_q) &&
-                     !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
-                       (i_fwd_rd_m == rs1_addr_q))) begin
+        end else if (rs1_late_w_q) begin
             rs1_exec_registered = i_fwd_m_w;
         end
         rs1_exec_final = rs1_exec_registered;
 
         rs2_exec_registered = rs2_exec_q;
-        if (!i_fwd_mem_read_m && i_fwd_reg_write_m &&
-                     (i_fwd_rd_m != '0) &&
-                     (i_fwd_rd_m == rs2_addr_q)) begin
+        if (rs2_late_m1_q && !i_fwd_mem_read_m) begin
             rs2_exec_registered = i_fwd_e_m;
-        end else if (i_fwd_reg_write_m2 && (i_fwd_rd_m2 != '0) &&
-            (i_fwd_rd_m2 == rs2_addr_q) &&
-            !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
-              (i_fwd_rd_m == rs2_addr_q))) begin
+        end else if (rs2_late_m2_q) begin
             rs2_exec_registered = i_fwd_m_m;
-        end else if (i_fwd_reg_write_w && (i_fwd_rd_w != '0) &&
-                     (i_fwd_rd_w == rs2_addr_q) &&
-                     !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
-                       (i_fwd_rd_m == rs2_addr_q))) begin
+        end else if (rs2_late_w_q) begin
             rs2_exec_registered = i_fwd_m_w;
         end
         rs2_exec_final = rs2_exec_registered;
@@ -241,6 +234,12 @@ module stage_ex(
         if (!i_rst_n) begin
             rs1_exec_q       <= '0;
             rs2_exec_q       <= '0;
+            rs1_late_m1_q    <= 1'b0;
+            rs1_late_m2_q    <= 1'b0;
+            rs1_late_w_q     <= 1'b0;
+            rs2_late_m1_q    <= 1'b0;
+            rs2_late_m2_q    <= 1'b0;
+            rs2_late_w_q     <= 1'b0;
             rs1_addr_q       <= '0;
             rs2_addr_q       <= '0;
             imm_q            <= '0;
@@ -267,6 +266,12 @@ module stage_ex(
         end else if (i_flush_e) begin
             rs1_exec_q       <= '0;
             rs2_exec_q       <= '0;
+            rs1_late_m1_q    <= 1'b0;
+            rs1_late_m2_q    <= 1'b0;
+            rs1_late_w_q     <= 1'b0;
+            rs2_late_m1_q    <= 1'b0;
+            rs2_late_m2_q    <= 1'b0;
+            rs2_late_w_q     <= 1'b0;
             rs1_addr_q       <= '0;
             rs2_addr_q       <= '0;
             imm_q            <= '0;
@@ -295,9 +300,50 @@ module stage_ex(
             // as older producers become available through late forwarding.
             rs1_exec_q       <= rs1_exec_final;
             rs2_exec_q       <= rs2_exec_final;
+            // A held M1 load has no registered result yet.  Retain that one
+            // selection until the miss/response completes; all other selected
+            // values have just been absorbed into the operand registers.
+            rs1_late_m1_q    <= rs1_late_m1_q && i_fwd_mem_read_m &&
+                                  i_fwd_reg_write_m &&
+                                  (i_fwd_rd_m == rs1_addr_q);
+            rs1_late_m2_q    <= 1'b0;
+            rs1_late_w_q     <= 1'b0;
+            rs2_late_m1_q    <= rs2_late_m1_q && i_fwd_mem_read_m &&
+                                  i_fwd_reg_write_m &&
+                                  (i_fwd_rd_m == rs2_addr_q);
+            rs2_late_m2_q    <= 1'b0;
+            rs2_late_w_q     <= 1'b0;
         end else begin
             rs1_exec_q       <= rs1_exec_mux;
             rs2_exec_q       <= rs2_exec_mux;
+            // FWD_E_M names the producer that is currently in EX2 and will be
+            // in M1 after this edge.  A non-fast load-use bubble instead puts
+            // the load in M1 now, so remember that its data arrives in M2.
+            rs1_late_m1_q    <= (i_rs1_fwd_sel == `FWD_E_M);
+            rs1_late_m2_q    <= (i_rs1_fwd_sel != `FWD_E_M) &&
+                                  i_fwd_mem_read_m && i_fwd_reg_write_m &&
+                                  (i_fwd_rd_m != '0) &&
+                                  (i_fwd_rd_m == i_rs1_addr);
+            // MUL data bypasses the ordinary M2 value mux and becomes
+            // architectural only at WB, so a matching MUL in M2 needs one
+            // extra predecoded late selection.  Any younger M1 writer wins.
+            rs1_late_w_q     <= (i_rs1_fwd_sel != `FWD_E_M) &&
+                                  !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+                                    (i_fwd_rd_m == i_rs1_addr)) &&
+                                  i_fwd_is_mul_m2 && i_fwd_reg_write_m2 &&
+                                  (i_fwd_rd_m2 != '0) &&
+                                  (i_fwd_rd_m2 == i_rs1_addr);
+            rs2_late_m1_q    <= (i_rs2_fwd_sel == `FWD_E_M);
+            rs2_late_m2_q    <= (i_rs2_fwd_sel != `FWD_E_M) &&
+                                  i_fwd_mem_read_m && i_fwd_reg_write_m &&
+                                  (i_fwd_rd_m != '0) &&
+                                  (i_fwd_rd_m == i_rs2_addr);
+            rs2_late_w_q     <= (i_rs2_fwd_sel != `FWD_E_M) &&
+                                  !(i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+                                    (i_fwd_rd_m == i_rs2_addr)) &&
+                                  i_fwd_is_mul_m2 && i_fwd_reg_write_m2 &&
+                                  (i_fwd_rd_m2 != '0) &&
+                                  (i_fwd_rd_m2 == i_rs2_addr);
             rs1_addr_q       <= i_rs1_addr;
             rs2_addr_q       <= i_rs2_addr;
             imm_q            <= i_imm;

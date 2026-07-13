@@ -111,11 +111,27 @@ module DCache #(
     // response remains registered; the asynchronous word is exposed only to
     // the timing-bounded LW/simple-ALU late-bypass path.
     logic [31:0] data_word_read_c [0:WORDS_PER_LINE-1];
-    logic        data_write_en_c;
-    logic [INDEX_W-1:0] data_write_index_c;
-    logic [1:0]  data_write_word_c;
-    logic [31:0] data_write_data_c;
-    logic [3:0]  data_write_mask_c;
+    logic        data_write_cmd_en_c;
+    logic [INDEX_W-1:0] data_write_cmd_index_c;
+    logic [1:0]  data_write_cmd_word_c;
+    logic [31:0] data_write_cmd_data_c;
+    logic [3:0]  data_write_cmd_mask_c;
+
+    // Register one write command at the DCache boundary, then distribute it to
+    // four word-local copies.  The old combinational implementation drove the
+    // write-enable pins of all sixteen byte-bank LUTRAMs directly from the tag
+    // lookup/hit chain.  Besides making that chain the WNS path, the shared
+    // write address reached roughly two thousand physical RAM pins.
+    //
+    // Payload registers deliberately have no reset.  The word enable is the
+    // validity state and masks them until a real store-hit/refill command has
+    // been captured.
+    logic [WORDS_PER_LINE-1:0] data_write_word_en_q;
+    logic [INDEX_W-1:0] data_write_index_q [0:WORDS_PER_LINE-1];
+    logic [31:0] data_write_data_q [0:WORDS_PER_LINE-1];
+    logic [3:0]  data_write_mask_q [0:WORDS_PER_LINE-1];
+    logic [31:0] cache_word_raw_c;
+    logic [31:0] cache_word_pending_c;
 
     logic [31:0] miss_addr_q;
     logic [1:0]  miss_target_word_q;
@@ -149,11 +165,10 @@ module DCache #(
                     .clk       (clk),
                     .read_addr (cpu_req_data_indices[word_idx*INDEX_W +: INDEX_W]),
                     .read_data (data_word_read_c[word_idx][byte_idx*8 +: 8]),
-                    .write_en  (data_write_en_c &&
-                                (data_write_word_c == 2'(word_idx)) &&
-                                data_write_mask_c[byte_idx]),
-                    .write_addr(data_write_index_c),
-                    .write_data(data_write_data_c[byte_idx*8 +: 8])
+                    .write_en  (data_write_word_en_q[word_idx] &&
+                                data_write_mask_q[word_idx][byte_idx]),
+                    .write_addr(data_write_index_q[word_idx]),
+                    .write_data(data_write_data_q[word_idx][byte_idx*8 +: 8])
                 );
             end
         end
@@ -176,7 +191,27 @@ module DCache #(
     assign req_hit_c   = req_cacheable_c &&
                          valid_q[cpu_req_tag_indices[0 +: INDEX_W]] &&
                          (&req_tag_match_c);
-    assign cache_word_c = data_word_read_c[req_word_c];
+    assign cache_word_raw_c = data_word_read_c[req_word_c];
+
+    // A store hit is accepted without stalling the following instruction.  In
+    // the cycle before its registered write command reaches the LUTRAM, merge
+    // matching pending bytes into both the ordinary M2 response and the
+    // timing-bounded aligned-LW fast word.  This preserves the existing
+    // zero-bubble store-to-load behavior while moving the physical RAM write
+    // to the next edge.
+    always_comb begin
+        cache_word_pending_c = cache_word_raw_c;
+        if (data_write_word_en_q[req_word_c] &&
+            (data_write_index_q[req_word_c] == req_index_c)) begin
+            for (int byte_idx = 0; byte_idx < 4; byte_idx++) begin
+                if (data_write_mask_q[req_word_c][byte_idx]) begin
+                    cache_word_pending_c[byte_idx*8 +: 8] =
+                        data_write_data_q[req_word_c][byte_idx*8 +: 8];
+                end
+            end
+        end
+    end
+    assign cache_word_c = cache_word_pending_c;
 
     assign miss_index_c = miss_addr_q[TAG_LSB-1:4];
     assign miss_tag_c   = miss_addr_q[31:TAG_LSB];
@@ -190,26 +225,43 @@ module DCache #(
     // low-bit aligned at the CPU/SoC interface; only the cached copy is shifted
     // into its addressed byte lanes here, matching DramBramAdapter semantics.
     always_comb begin
-        data_write_en_c    = 1'b0;
-        data_write_index_c = '0;
-        data_write_word_c  = 2'd0;
-        data_write_data_c  = 32'd0;
-        data_write_mask_c  = 4'b0000;
+        data_write_cmd_en_c    = 1'b0;
+        data_write_cmd_index_c = '0;
+        data_write_cmd_word_c  = 2'd0;
+        data_write_cmd_data_c  = 32'd0;
+        data_write_cmd_mask_c  = 4'b0000;
 
         if (!rst) begin
             if ((state_q == DC_IDLE) && cpu_req_valid && cpu_req_write &&
                 mem_req_ready && req_cacheable_c && req_hit_c) begin
-                data_write_en_c    = 1'b1;
-                data_write_index_c = req_index_c;
-                data_write_word_c  = req_word_c;
-                data_write_data_c  = store_shifted_data_c;
-                data_write_mask_c  = store_shifted_mask_c;
+                data_write_cmd_en_c    = 1'b1;
+                data_write_cmd_index_c = req_index_c;
+                data_write_cmd_word_c  = req_word_c;
+                data_write_cmd_data_c  = store_shifted_data_c;
+                data_write_cmd_mask_c  = store_shifted_mask_c;
             end else if ((state_q == DC_MISS_WAIT) && mem_resp_valid) begin
-                data_write_en_c    = 1'b1;
-                data_write_index_c = miss_index_c;
-                data_write_word_c  = fill_word_q;
-                data_write_data_c  = mem_resp_rdata;
-                data_write_mask_c  = 4'b1111;
+                data_write_cmd_en_c    = 1'b1;
+                data_write_cmd_index_c = miss_index_c;
+                data_write_cmd_word_c  = fill_word_q;
+                data_write_cmd_data_c  = mem_resp_rdata;
+                data_write_cmd_mask_c  = 4'b1111;
+            end
+        end
+    end
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            data_write_word_en_q <= '0;
+        end else begin
+            for (int word_idx = 0; word_idx < WORDS_PER_LINE; word_idx++) begin
+                data_write_word_en_q[word_idx] <= data_write_cmd_en_c &&
+                                                   (data_write_cmd_word_c == 2'(word_idx));
+                if (data_write_cmd_en_c &&
+                    (data_write_cmd_word_c == 2'(word_idx))) begin
+                    data_write_index_q[word_idx] <= data_write_cmd_index_c;
+                    data_write_data_q[word_idx]  <= data_write_cmd_data_c;
+                    data_write_mask_q[word_idx]  <= data_write_cmd_mask_c;
+                end
             end
         end
     end

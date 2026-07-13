@@ -440,6 +440,7 @@ module core(
         .i_fwd_reg_write_m(reg_write_m),
         .i_fwd_rd_m2     (rd_addr_m2),
         .i_fwd_reg_write_m2(reg_write_m2),
+        .i_fwd_is_mul_m2 (is_mul_m2),
         .i_fwd_rd_w      (rd_addr_w),
         .i_fwd_reg_write_w(reg_write_w),
         .i_pc_d_e        (pc_e),
