@@ -1,0 +1,15 @@
+{
+  "design_name": "superScalar_inorder_single_issue_core",
+  "rtl": {
+    "dir": "rtl/core",
+    "top_module": "myCPU"
+  },
+  "clock": {
+    "name": "cpu_clk",
+    "frequency_hz": 50000000
+  },
+  "reset": {
+    "name": "cpu_rst",
+    "active_low": false
+  }
+}

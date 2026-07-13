@@ -1,0 +1,38 @@
+{
+  "$schema": "stage5_rtl_gen",
+  "version": "1.1",
+  "design_name": "superScalar RV32IM in-order single-issue core",
+  "timestamp": "2026-07-13T18:10:00+08:00",
+  "rtl_dir": "rtl/core",
+  "files_generated": [
+    {"filename": "rtl/core/myCPU.sv", "module_name": "myCPU", "type": "top", "lines": 72},
+    {"filename": "rtl/core/core_top.sv", "module_name": "core_top", "type": "top", "lines": 691},
+    {"filename": "rtl/core/pkg/core_config_pkg.sv", "module_name": "core_config_pkg", "type": "package", "lines": 22},
+    {"filename": "rtl/core/pkg/core_types_pkg.sv", "module_name": "core_types_pkg", "type": "package", "lines": 139},
+    {"filename": "rtl/core/frontend/branch_predictor.sv", "module_name": "branch_predictor", "type": "control", "lines": 95},
+    {"filename": "rtl/core/frontend/fetch_queue.sv", "module_name": "fetch_queue", "type": "control", "lines": 60},
+    {"filename": "rtl/core/frontend/frontend.sv", "module_name": "frontend", "type": "control", "lines": 95},
+    {"filename": "rtl/core/decode/decoder.sv", "module_name": "decoder", "type": "control", "lines": 173},
+    {"filename": "rtl/core/issue/regfile.sv", "module_name": "regfile", "type": "datapath", "lines": 36},
+    {"filename": "rtl/core/execute/fixed_execute.sv", "module_name": "fixed_execute", "type": "datapath", "lines": 116},
+    {"filename": "rtl/core/execute/muldiv_unit.sv", "module_name": "muldiv_unit", "type": "datapath", "lines": 128},
+    {"filename": "rtl/core/memory/dcache.sv", "module_name": "dcache", "type": "datapath", "lines": 218},
+    {"filename": "rtl/core/commit/csr_file.sv", "module_name": "csr_file", "type": "register", "lines": 83},
+    {"filename": "rtl/core/control/recovery_ctrl.sv", "module_name": "recovery_ctrl", "type": "control", "lines": 39},
+    {"filename": "rtl/core/perf/perf_counters.sv", "module_name": "perf_counters", "type": "register", "lines": 75}
+  ],
+  "module_count": 15,
+  "register_match": {
+    "spec_register_count": 0,
+    "generated_register_count": 0,
+    "all_offsets_match": true,
+    "all_reset_values_match": true,
+    "mismatches": []
+  },
+  "backup": {
+    "performed": true,
+    "path": "docs/archive/26-07-13/legacy_rtl_core_backup"
+  },
+  "todos": [],
+  "status": "complete"
+}

@@ -245,7 +245,7 @@ set rtl_files [concat \
 # Keep packages and shared type files ahead of users; Vivado will still update
 # compile order after all sources and IP are present.
 set ordered_rtl {}
-foreach special [list BasicTypes.sv DecodeTypes.sv StoreBufferTypes.sv ROBTypes.sv RecoveryTypes.sv PipelineTypes.sv RenameTypes.sv ReadRegTypes.sv IssueTypes.sv] {
+foreach special [list core_config_pkg.sv core_types_pkg.sv] {
     foreach src $rtl_files {
         if {[file tail $src] eq $special} {
             lappend ordered_rtl $src
@@ -262,12 +262,6 @@ add_files -norecurse -fileset sources_1 $ordered_rtl
 foreach src $ordered_rtl {
     set_property file_type SystemVerilog [get_files $src]
 }
-set rtl_include_dir [file normalize [file join $repo_dir rtl include]]
-set_property include_dirs [list $rtl_include_dir] [get_filesets sources_1]
-if {[llength [get_filesets -quiet sim_1]] > 0} {
-    set_property include_dirs [list $rtl_include_dir] [get_filesets sim_1]
-}
-
 add_files -fileset constrs_1 $xdc_file
 set_property top top [get_filesets sources_1]
 

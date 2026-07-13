@@ -20,7 +20,7 @@ SRC_SIM_ARGS = \
 	--cpu-freq-mhz $(CPU_FREQ_MHZ) \
 	$(if $(SRC_SEG_GRACE),--src-seg-grace $(SRC_SEG_GRACE),)
 
-.PHONY: sim-rv32 sim-rv32-all sim-src sim-src-all verilator-build verilator-build-src
+.PHONY: sim-rv32 sim-rv32-base sim-rv32-all sim-src sim-src-all verilator-build verilator-build-src
 
 verilator-build:
 	$(PYTHON) scripts/run_verilator.py rv32 --test rv32ui-p-simple --build --build-only $(if $(BUILD_JOBS),--build-jobs $(BUILD_JOBS),) $(if $(BUILD_CXX),--build-cxx $(BUILD_CXX),)
@@ -30,6 +30,11 @@ verilator-build-src:
 
 sim-rv32:
 	$(PYTHON) scripts/run_verilator.py rv32 $(if $(TEST),--test $(TEST),) $(if $(SUITE),--suite $(SUITE),) $(COMMON_SIM_ARGS)
+
+sim-rv32-base:
+	$(MAKE) sim-rv32 SUITE=rv32ui $(if $(NO_BUILD),NO_BUILD=$(NO_BUILD),) $(if $(MAX_CYCLES),MAX_CYCLES=$(MAX_CYCLES),)
+	$(MAKE) sim-rv32 SUITE=rv32mi NO_BUILD=1 $(if $(MAX_CYCLES),MAX_CYCLES=$(MAX_CYCLES),)
+	$(MAKE) sim-rv32 SUITE=rv32um NO_BUILD=1 $(if $(MAX_CYCLES),MAX_CYCLES=$(MAX_CYCLES),)
 
 sim-rv32-all:
 	$(PYTHON) scripts/run_verilator.py rv32 --all $(COMMON_SIM_ARGS)
