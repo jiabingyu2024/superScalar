@@ -45,6 +45,11 @@ module dmem_regslice (
     always_ff @(posedge clk) begin
         if (rst) begin
             req_valid_q <= 1'b0;
+            req_write_q <= 1'b0;
+            req_addr_q <= '0;
+            req_wdata_q <= '0;
+            req_wstrb_q <= '0;
+            req_uncached_q <= 1'b0;
             resp_valid_q <= 1'b0;
             resp_rdata_q <= '0;
         end else begin
@@ -52,32 +57,17 @@ module dmem_regslice (
             if (m_resp_valid_i) resp_rdata_q <= m_resp_rdata_i;
 
             if (!req_valid_q) begin
-                req_valid_q <= s_req_valid_i;
+                if (s_req_valid_i) begin
+                    req_valid_q <= 1'b1;
+                    req_write_q <= s_req_write_i;
+                    req_addr_q <= s_req_addr_i;
+                    req_wdata_q <= s_req_wdata_i;
+                    req_wstrb_q <= s_req_wstrb_i;
+                    req_uncached_q <= s_req_uncached_i;
+                end
             end else if (m_req_ready_i) begin
                 req_valid_q <= 1'b0;
             end
-        end
-    end
-
-    // Preload the payload whenever the one-entry slice is empty.  Payload is
-    // ignored while req_valid_q is low, so it need not be conditionally clocked
-    // by the long s_req_valid_i path.  This makes every payload-register CE a
-    // local !req_valid_q signal; the Load Queue/DCache request-valid cone only
-    // reaches the single req_valid_q bit.  When downstream back-pressures an
-    // occupied entry, req_valid_q is high and the complete payload still holds.
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            req_write_q <= 1'b0;
-            req_addr_q <= '0;
-            req_wdata_q <= '0;
-            req_wstrb_q <= '0;
-            req_uncached_q <= 1'b0;
-        end else if (!req_valid_q) begin
-            req_write_q <= s_req_write_i;
-            req_addr_q <= s_req_addr_i;
-            req_wdata_q <= s_req_wdata_i;
-            req_wstrb_q <= s_req_wstrb_i;
-            req_uncached_q <= s_req_uncached_i;
         end
     end
 endmodule

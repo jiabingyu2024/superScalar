@@ -789,13 +789,8 @@ module core_top (
                 assert (store_q[store_head_q].valid && store_committed_q[store_head_q]);
             end
             if (load_start_fire && dc_req_uncached) begin
-                if (load_direct_start_fire) begin
-                    assert (!direct_older_store_pending);
-                    assert (exec_q.trans_id == commit_ptr_q);
-                end else begin
-                    assert (!older_store_pending);
-                    assert (load_q[load_head_q].trans_id == commit_ptr_q);
-                end
+                assert (!older_store_pending);
+                assert (load_q[load_head_q].trans_id == commit_ptr_q);
             end
             if (dmem_stall_q) begin
                 assert (dmem_req_valid_o);

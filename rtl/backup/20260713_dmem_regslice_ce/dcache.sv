@@ -39,7 +39,7 @@ module dcache #(
     localparam int unsigned TAG_W = 32 - TAG_LSB;
 
     typedef enum logic [2:0] {
-        DC_INIT, DC_IDLE, DC_UNC_REQ, DC_UNC_WAIT, DC_REFILL_REQ, DC_REFILL_WAIT
+        DC_INIT, DC_IDLE, DC_UNC_WAIT, DC_REFILL_REQ, DC_REFILL_WAIT
     } state_e;
     state_e state_q;
 
@@ -174,20 +174,14 @@ module dcache #(
                             cpu_req_ready_o = 1'b1;
                             access_pulse_o = 1'b1;
                         end else begin
-                            // Capture an uncached load locally first.  Issuing
-                            // it from DC_UNC_REQ on the next cycle prevents the
-                            // Load Queue/arbitration cone from reaching the
-                            // Core/SoC register-slice capture enable.
-                            cpu_req_ready_o = 1'b1;
+                            mem_req_valid_o = 1'b1;
+                            mem_req_write_o = 1'b0;
+                            mem_req_addr_o = {cpu_req_addr_i[31:2], 2'b00};
+                            mem_req_uncached_o = 1'b1;
+                            cpu_req_ready_o = mem_req_ready_i;
                         end
                     end
                 end
-            end
-            DC_UNC_REQ: begin
-                mem_req_valid_o = 1'b1;
-                mem_req_write_o = 1'b0;
-                mem_req_addr_o = {req_addr_q[31:2], 2'b00};
-                mem_req_uncached_o = 1'b1;
             end
             DC_REFILL_REQ: begin
                 mem_req_valid_o = 1'b1;
@@ -256,24 +250,8 @@ module dcache #(
                             lookup_store_mask_q <= store_aligned_mask_c;
                         end else if (!cpu_req_write_i) begin
                             req_addr_q <= cpu_req_addr_i;
-                            state_q <= DC_UNC_REQ;
-                        end
-                    end
-                end
-                DC_UNC_REQ: begin
-                    if (kill_i) begin
-                        // The request is visible to the slice in this state.
-                        // If accepted together with kill, drain its response;
-                        // otherwise cancel it before it leaves the DCache.
-                        if (mem_req_ready_i) begin
                             state_q <= DC_UNC_WAIT;
-                            killed_q <= 1'b1;
-                        end else begin
-                            state_q <= DC_IDLE;
-                            killed_q <= 1'b0;
                         end
-                    end else if (mem_req_ready_i) begin
-                        state_q <= DC_UNC_WAIT;
                     end
                 end
                 DC_UNC_WAIT: begin
