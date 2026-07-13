@@ -19,6 +19,8 @@ module control_unit(
     // output logic                            o_alu1_src,
     // output logic                            o_alu2_src,
     output logic                            o_is_rs2_imm,
+    output logic                            o_uses_rs1,
+    output logic                            o_uses_rs2,
     output logic  [3:0]                     o_inst_spec,
 
     output logic  [3:0]                     o_alu_ctrl,
@@ -50,6 +52,8 @@ module control_unit(
         o_reg_write     = 1'b0;
         o_wb_src        = `WB_SRC_ALU;
         o_is_rs2_imm    = 1'b0;
+        o_uses_rs1      = 1'b0;
+        o_uses_rs2      = 1'b0;
         o_inst_spec     = '0;
         o_alu_ctrl      = `ALU_ADD;
         o_func3         = func3;
@@ -63,6 +67,8 @@ module control_unit(
         unique case (opcode)
             `OP_R_TYPE: begin
                 o_reg_write = 1'b1;
+                o_uses_rs1  = 1'b1;
+                o_uses_rs2  = 1'b1;
                 o_is_m_ext  = (func7 == `FUNC7_MULDIV);
                 o_m_op      = func3;
                 unique case (func3)
@@ -81,6 +87,7 @@ module control_unit(
             `OP_I_TYPE: begin
                 o_reg_write  = 1'b1;
                 o_is_rs2_imm = 1'b1;
+                o_uses_rs1   = 1'b1;
                 unique case (func3)
                     `FUNC3_ADD_SUB: o_alu_ctrl = `ALU_ADD;
                     `FUNC3_SLT:     o_alu_ctrl = `ALU_LT;
@@ -99,6 +106,7 @@ module control_unit(
                 o_reg_write     = 1'b1;
                 o_wb_src        = `WB_SRC_MEM;
                 o_is_rs2_imm    = 1'b1;
+                o_uses_rs1      = 1'b1;
                 o_alu_ctrl      = `ALU_ADD;
                 o_load_unsigned = func3[2];
                 unique case (func3)
@@ -111,6 +119,8 @@ module control_unit(
             `OP_S_TYPE: begin
                 o_mem_write  = 1'b1;
                 o_is_rs2_imm = 1'b1;
+                o_uses_rs1   = 1'b1;
+                o_uses_rs2   = 1'b1;
                 o_alu_ctrl   = `ALU_ADD;
                 unique case (func3)
                     `FUNC3_SB: o_mem_mask = `MASK_BYTE;
@@ -121,6 +131,8 @@ module control_unit(
 
             `OP_B_TYPE: begin
                 o_is_branch = 1'b1;
+                o_uses_rs1  = 1'b1;
+                o_uses_rs2  = 1'b1;
             end
 
             `OP_JAL: begin
@@ -131,6 +143,7 @@ module control_unit(
             `OP_JALR: begin
                 o_reg_write  = 1'b1;
                 o_is_rs2_imm = 1'b1;
+                o_uses_rs1   = 1'b1;
                 o_inst_spec  = `EX_JALR;
                 o_alu_ctrl   = `ALU_ADD;
             end
@@ -175,6 +188,7 @@ module control_unit(
                         // Immediate variants (func3[2]=1): ALU operand comes
                         // from zimm (imm_unit puts it in o_imm).
                         o_is_rs2_imm = func3[2];
+                        o_uses_rs1   = !func3[2];
                     end
                     default: ;
                 endcase

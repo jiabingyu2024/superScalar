@@ -22,6 +22,7 @@ module stage_ex(
     input  logic  [`PC_BUS]                 i_pc,
     input  logic  [`DATA_BUS]               i_fwd_e_m,
     input  logic                            i_fwd_mem_read_m,
+    input  logic  [3:0]                     i_fwd_mem_mask_m,
     input  logic  [`DATA_BUS]               i_fwd_load_m,
     input  logic  [`DATA_BUS]               i_fwd_m_w,
     input  logic  [`DATA_BUS]               i_fwd_m_m,
@@ -125,6 +126,13 @@ module stage_ex(
     logic             load_unsigned_q;
     logic [`PC_BUS]   t1_data;
     logic [`DATA_BUS] alu_res_raw;
+    logic [`DATA_BUS] fast_alu1;
+    logic [`DATA_BUS] fast_alu2;
+    logic [`DATA_BUS] fast_alu_res;
+    logic             fast_alu_op_q;
+    logic             late_load_rs1;
+    logic             late_load_rs2;
+    logic             fast_load_active;
 
     // ---- Forwarding mux ----
     always_comb begin
@@ -178,10 +186,6 @@ module stage_ex(
             rs1_exec_registered = i_fwd_m_w;
         end
         rs1_exec_final = rs1_exec_registered;
-        if (i_fwd_mem_read_m && i_fwd_reg_write_m &&
-            (i_fwd_rd_m != '0) && (i_fwd_rd_m == rs1_addr_q)) begin
-            rs1_exec_final = i_fwd_load_m;
-        end
 
         rs2_exec_registered = rs2_exec_q;
         if (!i_fwd_mem_read_m && i_fwd_reg_write_m &&
@@ -200,10 +204,6 @@ module stage_ex(
             rs2_exec_registered = i_fwd_m_w;
         end
         rs2_exec_final = rs2_exec_registered;
-        if (i_fwd_mem_read_m && i_fwd_reg_write_m &&
-            (i_fwd_rd_m != '0) && (i_fwd_rd_m == rs2_addr_q)) begin
-            rs2_exec_final = i_fwd_load_m;
-        end
 
         t1_data = (inst_spec_q == `EX_JALR) ? rs1_exec_registered : pc_d_e_q;
         a1_data = (inst_spec_q == `EX_AUIPC) ? pc_q :
@@ -321,6 +321,42 @@ module stage_ex(
         .i_alu_ctrl (alu_ctrl_q),
         .o_alu_res  (alu_res_raw)
     );
+
+    // Timing-bounded zero-bubble path. The asynchronous DCache word can reach
+    // only this small ALU subset; shifts, compares, branch, memory, CSR and M
+    // operations use registered/M2 operands and therefore cannot inherit the
+    // former broad LUTRAM-to-EX timing cone.
+    assign fast_alu_op_q = reg_write_q && !mem_read_q && !mem_write_q &&
+                           !is_branch_q && !is_m_ext_q &&
+                           (inst_spec_q == '0) &&
+                           ((alu_ctrl_q == `ALU_ADD) ||
+                            (alu_ctrl_q == `ALU_SUB) ||
+                            (alu_ctrl_q == `ALU_AND) ||
+                            (alu_ctrl_q == `ALU_OR)  ||
+                            (alu_ctrl_q == `ALU_XOR));
+    assign late_load_rs1 = i_fwd_mem_read_m &&
+                           (i_fwd_mem_mask_m == `MASK_WORD) &&
+                           i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+                           (i_fwd_rd_m == rs1_addr_q);
+    assign late_load_rs2 = i_fwd_mem_read_m &&
+                           (i_fwd_mem_mask_m == `MASK_WORD) &&
+                           i_fwd_reg_write_m && (i_fwd_rd_m != '0) &&
+                           (i_fwd_rd_m == rs2_addr_q);
+    assign fast_load_active = fast_alu_op_q &&
+                              (late_load_rs1 || late_load_rs2);
+    assign fast_alu1 = late_load_rs1 ? i_fwd_load_m : rs1_exec_registered;
+    assign fast_alu2 = is_rs2_imm_q ? imm_q :
+                       (late_load_rs2 ? i_fwd_load_m : rs2_exec_registered);
+
+    always_comb begin
+        unique case (alu_ctrl_q)
+            `ALU_AND: fast_alu_res = fast_alu1 & fast_alu2;
+            `ALU_OR:  fast_alu_res = fast_alu1 | fast_alu2;
+            `ALU_XOR: fast_alu_res = fast_alu1 ^ fast_alu2;
+            `ALU_SUB: fast_alu_res = fast_alu1 - fast_alu2;
+            default:  fast_alu_res = fast_alu1 + fast_alu2;
+        endcase
+    end
 
     // ---- Branch unit (produces branch redirect) ----
     logic            branch_error;
@@ -524,7 +560,8 @@ module stage_ex(
                 `EX_ECALL,
                 `EX_EBREAK,
                 `EX_MRET:         o_alu_res = 32'h0;  // 不写 rd
-                default:          o_alu_res = alu_res_raw;
+                default:          o_alu_res = fast_load_active ?
+                                                   fast_alu_res : alu_res_raw;
             endcase
         end
     end

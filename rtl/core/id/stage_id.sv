@@ -29,6 +29,8 @@ module stage_id(
     // output logic                            o_alu1_src,
     // output logic                            o_alu2_src,
     output logic                            o_is_rs2_imm,
+    output logic                            o_uses_rs1,
+    output logic                            o_uses_rs2,
     output logic  [3:0]                     o_inst_spec,
 
     output logic  [3:0]                     o_alu_ctrl,
@@ -69,6 +71,8 @@ module stage_id(
         .o_reg_write     (o_reg_write),
         .o_wb_src        (o_wb_src),
         .o_is_rs2_imm    (o_is_rs2_imm),
+        .o_uses_rs1      (o_uses_rs1),
+        .o_uses_rs2      (o_uses_rs2),
         .o_inst_spec     (o_inst_spec),
         .o_alu_ctrl      (o_alu_ctrl),
         .o_func3         (o_func3),
