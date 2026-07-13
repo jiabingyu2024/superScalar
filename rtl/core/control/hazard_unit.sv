@@ -18,14 +18,12 @@ module hazard_unit(
     input  logic  [`RF_BUS]                 i_rs2_addr_f,
     input  logic  [`RF_BUS]                 i_rs1_addr_d,
     input  logic  [`RF_BUS]                 i_rs2_addr_d,
-    input  logic                            i_mem_read_d,
-    input  logic                            i_mem_write_d,
-    input  logic                            i_is_branch_d,
-    input  logic                            i_is_m_ext_d,
-    input  logic                            i_is_rs2_imm_d,
-    input  logic  [3:0]                     i_inst_spec_d,
+    input  logic                            i_uses_rs1_d,
+    input  logic                            i_uses_rs2_d,
+    input  logic                            i_fast_load_alu_d,
     input  logic  [`RF_BUS]                 i_rd_addr_e,
     input  logic                            i_mem_read_e,
+    input  logic  [3:0]                     i_mem_mask_e,
     input  logic                            i_reg_write_e,//load_use
     input  logic                            i_is_mul_e,
     input  logic  [`RF_BUS]                 i_rd_addr_ex2,
@@ -62,27 +60,19 @@ module hazard_unit(
 
     logic load_use_hazard_raw_e;
     logic load_use_hazard;
-    logic timing_isolated_consumer_d;
     logic load_dep_rs1_d;
     logic load_dep_rs2_d;
     logic mul_use_hazard;
     logic data_hazard;
 
-    // Keep zero-bubble forwarding for short integer consumers, but insert one
-    // bubble before consumers whose EX2 path expands the asynchronous DCache
-    // result into control, CSR, M-extension, or another cache access network.
-    // This breaks the broad timing cones without paying the cost on every
-    // load-use pair. Immediate-form CSR instructions do not consume rs1.
-    assign timing_isolated_consumer_d =
-        i_mem_read_d || i_mem_write_d || i_is_branch_d || i_is_m_ext_d ||
-        (i_inst_spec_d == `EX_JALR) ||
-        ((i_inst_spec_d == `EX_CSR) && !i_is_rs2_imm_d);
-    assign load_dep_rs1_d = (i_rd_addr_e == i_rs1_addr_d);
-    assign load_dep_rs2_d = (i_rd_addr_e == i_rs2_addr_d) &&
-                            (i_is_branch_d || i_mem_write_d || i_is_m_ext_d);
+    // Only aligned LW feeding the timing-bounded ALU bypass remains
+    // zero-bubble. Other immediate load consumers wait one cycle for M2.
+    assign load_dep_rs1_d = i_uses_rs1_d && (i_rd_addr_e == i_rs1_addr_d);
+    assign load_dep_rs2_d = i_uses_rs2_d && (i_rd_addr_e == i_rs2_addr_d);
     assign load_use_hazard_raw_e =
         i_mem_read_e && i_reg_write_e && (i_rd_addr_e != '0) &&
-        timing_isolated_consumer_d && (load_dep_rs1_d || load_dep_rs2_d);
+        (load_dep_rs1_d || load_dep_rs2_d) &&
+        !((i_mem_mask_e == `MASK_WORD) && i_fast_load_alu_d);
     assign load_use_hazard = load_use_hazard_raw_e;
     assign mul_use_hazard =
         (i_is_mul_e && i_reg_write_e && (i_rd_addr_e != '0) &&

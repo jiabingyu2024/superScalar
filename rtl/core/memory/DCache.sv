@@ -4,7 +4,7 @@
 // One byte lane of one cache-line word bank.
 //
 // Keep this as a conventional simple-dual-port distributed-RAM template:
-// - asynchronous read preserves the existing same-cycle DCache hit lookup;
+// - asynchronous read preserves the same-cycle LW-only fast path;
 // - synchronous write matches store-hit and refill updates;
 // - there is deliberately no reset on the memory contents.  valid_q in DCache
 //   is the architectural reset state and masks uninitialized data.
@@ -67,7 +67,7 @@ module DCache #(
     input  logic        cpu_req_uncached,
     output logic        cpu_resp_valid,
     output logic [31:0] cpu_resp_rdata,
-    output logic [31:0] cpu_fast_rdata,
+    output logic [31:0] cpu_fast_word,
 
     output logic        mem_req_valid,
     input  logic        mem_req_ready,
@@ -107,9 +107,9 @@ module DCache #(
     (* ram_style = "distributed" *) logic [4:0] tag_q2 [0:LINE_COUNT-1];
     (* ram_style = "distributed" *) logic [3:0] tag_q3 [0:LINE_COUNT-1];
 
-    // Four word banks, each split into four byte-lane LUTRAMs.  Keeping every
-    // physical memory as a one-dimensional LINE_COUNT x 8 array avoids the previous
-    // three-dimensional data_q array being expanded into 65,536 flip-flops.
+    // Four word banks, each split into four byte-lane LUTRAMs. The ordinary
+    // response remains registered; the asynchronous word is exposed only to
+    // the timing-bounded LW/simple-ALU late-bypass path.
     logic [31:0] data_word_read_c [0:WORDS_PER_LINE-1];
     logic        data_write_en_c;
     logic [INDEX_W-1:0] data_write_index_c;
@@ -272,16 +272,10 @@ module DCache #(
                             (state_q == DC_MISS_REPLAY);
     assign cpu_resp_rdata = resp_rdata_q;
 
-    // Same-cycle hit/replay data for the M1->EX2 late-bypass path.  The normal
-    // registered response remains unchanged for M2/WB and for the external
-    // ready/valid contract.
-    // Data is a don't-care while the request is blocked. Presenting the
-    // asynchronous word independently of tag hit keeps the tag comparator off
-    // the 32-bit fast-data network; cpu_req_ready still prevents a miss or
-    // uncached request from advancing until resp_rdata_q is valid for replay.
-    assign cpu_fast_rdata = (state_q == DC_IDLE) ?
-                            (cache_word_c >> {cpu_req_addr[1:0], 3'b000}) :
-                            resp_rdata_q;
+    // The only combinational cache-data export is an aligned 32-bit word.
+    // Byte/halfword rotation and extension stay on the registered M2 path, so
+    // they cannot expand the late-bypass timing cone.
+    assign cpu_fast_word = (state_q == DC_IDLE) ? cache_word_c : resp_rdata_q;
 
     always_ff @(posedge clk) begin
         if (rst) begin

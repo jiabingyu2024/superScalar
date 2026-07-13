@@ -18,7 +18,7 @@ module core(
     output logic                                     irom_ena,   // assign irom_ena = stall_p_f;
 
     input  logic  [`DATA_BUS]                        dram_rdata,
-    input  logic  [`DATA_BUS]                        dram_fast_rdata,
+    input  logic  [`DATA_BUS]                        dram_fast_word,
     input  logic                                     dram_req_ready,
     output logic                                     dram_wen,
     output logic                                     dram_ren,
@@ -50,6 +50,8 @@ module core(
     logic             reg_write_d;
     logic             wb_src_d;
     logic             is_rs2_imm_d;
+    logic             uses_rs1_d;
+    logic             uses_rs2_d;
     logic [3:0]       inst_spec_d;
     logic [3:0]       alu_ctrl_d;
     logic [2:0]       func3_d;
@@ -144,7 +146,6 @@ module core(
     logic [`M_OP_BUS] m_op_m2;
     logic [`DATA_BUS] mem_data_m2;
     logic [`DATA_BUS] wb_data_m2;
-    logic [`DATA_BUS] load_data_m_fast;
 
     logic [`RF_BUS]   rd_addr_w;
     logic             reg_write_w;
@@ -174,12 +175,21 @@ module core(
     logic             m_busy_e;
     logic             mem_req_m;
     logic             mem_busy_m;
+    logic             fast_load_alu_d;
 
     assign irom_addr = pc_p;
     assign irom_ena  = !stall_p_f;
     assign pc_target_d = pc_d + imm_d;
     assign mem_req_m  = mem_read_m || mem_write_m;
     assign mem_busy_m = mem_req_m && !dram_req_ready;
+    assign fast_load_alu_d = reg_write_d && !mem_read_d && !mem_write_d &&
+                             !is_branch_d && !is_m_ext_d &&
+                             (inst_spec_d == '0) &&
+                             ((alu_ctrl_d == `ALU_ADD) ||
+                              (alu_ctrl_d == `ALU_SUB) ||
+                              (alu_ctrl_d == `ALU_AND) ||
+                              (alu_ctrl_d == `ALU_OR)  ||
+                              (alu_ctrl_d == `ALU_XOR));
 
     stage_pc u_stage_pc (
         .i_clk       (clk),
@@ -230,14 +240,12 @@ module core(
         .i_rs2_addr_f    (inst_f[24:20]),
         .i_rs1_addr_d    (rs1_addr_d),
         .i_rs2_addr_d    (rs2_addr_d),
-        .i_mem_read_d    (mem_read_d),
-        .i_mem_write_d   (mem_write_d),
-        .i_is_branch_d   (is_branch_d),
-        .i_is_m_ext_d    (is_m_ext_d),
-        .i_is_rs2_imm_d  (is_rs2_imm_d),
-        .i_inst_spec_d   (inst_spec_d),
+        .i_uses_rs1_d    (uses_rs1_d),
+        .i_uses_rs2_d    (uses_rs2_d),
+        .i_fast_load_alu_d(fast_load_alu_d),
         .i_rd_addr_e     (rd_addr_e),
         .i_mem_read_e    (mem_read_e),
+        .i_mem_mask_e    (mem_mask_e),
         .i_reg_write_e   (reg_write_e),
         .i_is_mul_e      (is_m_ext_e && !m_op_e[2]),
         .i_rd_addr_ex2   (rd_addr_ex2),
@@ -291,6 +299,8 @@ module core(
         .o_reg_write     (reg_write_d),
         .o_wb_src        (wb_src_d),
         .o_is_rs2_imm    (is_rs2_imm_d),
+        .o_uses_rs1      (uses_rs1_d),
+        .o_uses_rs2      (uses_rs2_d),
         .o_inst_spec     (inst_spec_d),
         .o_alu_ctrl      (alu_ctrl_d),
         .o_func3         (func3_d),
@@ -391,7 +401,8 @@ module core(
         .i_pc            (pc_e),
         .i_fwd_e_m       (alu_res_m),
         .i_fwd_mem_read_m(mem_read_m),
-        .i_fwd_load_m    (load_data_m_fast),
+        .i_fwd_mem_mask_m(mem_mask_m),
+        .i_fwd_load_m    (dram_fast_word),
         .i_fwd_m_w       (wb_data_arch),
         .i_fwd_m_m       (wb_data_m2),
         .i_fwd_rd_m      (rd_addr_m),
@@ -490,13 +501,6 @@ module core(
     assign dram_addr  = mem_addr_m[`RAM_ADDR_BUS];
     assign dram_wdata = a2_data_m;
     assign dram_mask  = mem_mask_m;
-
-    stage_m2 u_stage_m1_fast (
-        .i_mem_mask      (mem_mask_m),
-        .i_load_unsigned (load_unsigned_m),
-        .i_dram_rdata    (dram_fast_rdata),
-        .o_mem_rdata     (load_data_m_fast)
-    );
 
     reg_m1_m2 u_reg_m1_m2 (
         .i_clk           (clk),
