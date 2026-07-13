@@ -88,7 +88,7 @@
 `define M_REMU          3'b111
 
 // fixed-latency constants（与 m_unit 倒计时一致，不要随意修改）
-`define MUL_LATENCY     3
+`define MUL_LATENCY     2
 `define DIV_LATENCY     34
 
 // used in ex

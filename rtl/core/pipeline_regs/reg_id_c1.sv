@@ -61,52 +61,15 @@ module reg_id_c1 (
     output logic [`M_OP_BUS] o_m_op,
     output logic [11:0]      o_csr_addr
 );
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             o_valid         <= 1'b0;
-            o_rs1_data      <= '0;
-            o_rs1_addr      <= '0;
-            o_rs2_data      <= '0;
-            o_rs2_addr      <= '0;
-            o_rd_addr       <= '0;
-            o_imm           <= '0;
-            o_mem_addr      <= '0;
-            o_mem_read      <= 1'b0;
-            o_mem_write     <= 1'b0;
-            o_reg_write     <= 1'b0;
-            o_wb_src        <= `WB_SRC_ALU;
-            o_is_rs2_imm    <= 1'b0;
-            o_inst_spec     <= '0;
-            o_alu_ctrl      <= `ALU_ADD;
-            o_func3         <= '0;
-            o_mem_mask      <= `MASK_WORD;
-            o_load_unsigned <= 1'b0;
-            o_is_branch     <= 1'b0;
-            o_pc            <= '0;
-            o_pc_target     <= '0;
-            o_pc_predict    <= '0;
-            o_predict_taken <= 1'b0;
-            o_is_m_ext      <= 1'b0;
-            o_m_op          <= '0;
-            o_csr_addr      <= '0;
         end else if (i_flush) begin
             o_valid         <= 1'b0;
-            o_mem_read      <= 1'b0;
-            o_mem_write     <= 1'b0;
-            o_reg_write     <= 1'b0;
-            o_is_branch     <= 1'b0;
-            o_is_m_ext      <= 1'b0;
-            o_inst_spec     <= '0;
         end else if (i_hold) begin
             o_valid <= o_valid;
         end else if (i_bubble) begin
             o_valid         <= 1'b0;
-            o_mem_read      <= 1'b0;
-            o_mem_write     <= 1'b0;
-            o_reg_write     <= 1'b0;
-            o_is_branch     <= 1'b0;
-            o_is_m_ext      <= 1'b0;
-            o_inst_spec     <= '0;
         end else begin
             o_valid         <= i_valid;
             o_rs1_data      <= i_rs1_data;

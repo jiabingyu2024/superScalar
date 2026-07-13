@@ -33,6 +33,8 @@ module SocMemBridge #(
     localparam logic [31:0] CNT_ADDR = 32'h8020_0050;
     localparam logic [31:0] CNT_START_CMD = 32'h8000_0000;
     localparam logic [31:0] CNT_STOP_CMD  = 32'hffff_ffff;
+    localparam int unsigned DRAM_ADDR_BITS = $clog2(P_DRAM_ADDR_END -
+                                                    P_DRAM_ADDR_START);
 
     logic dram_sel;
     logic mmio_sel;
@@ -51,7 +53,11 @@ module SocMemBridge #(
     logic cnt_enable_cfg_q;
     logic [31:0] cnt_rdata;
 
-    assign dram_sel = (req_addr >= P_DRAM_ADDR_START) && (req_addr < P_DRAM_ADDR_END);
+    // The DRAM window is a power-of-two region aligned to its size. Compare
+    // only the prefix and pass low address bits straight to the BRAM adapter;
+    // this removes two 32-bit range compares and the base-address subtract.
+    assign dram_sel = req_addr[31:DRAM_ADDR_BITS] ==
+                      P_DRAM_ADDR_START[31:DRAM_ADDR_BITS];
     assign cnt_sel = req_addr == CNT_ADDR;
     assign mmio_sel = (req_addr == SW0_ADDR) || (req_addr == SW1_ADDR) ||
                       (req_addr == KEY_ADDR) || (req_addr == SEG_ADDR) ||
@@ -66,7 +72,7 @@ module SocMemBridge #(
         .req_valid (dram_req_valid),
         .req_ready (dram_req_ready),
         .req_write (req_write),
-        .req_addr  (req_addr - P_DRAM_ADDR_START),
+        .req_addr  (req_addr),
         .req_wdata (req_wdata),
         .req_wstrb (req_wstrb),
         .resp_valid(dram_resp_valid),

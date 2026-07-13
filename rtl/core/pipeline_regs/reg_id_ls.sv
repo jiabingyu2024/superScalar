@@ -38,25 +38,13 @@ module reg_id_ls (
     output logic                  o_mem_write,
     output logic [`RF_BUS]        o_rd_addr
 );
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             o_valid         <= 1'b0;
-            o_mem_addr      <= '0;
-            o_store_data    <= '0;
-            o_offset        <= '0;
             o_addr_pending  <= 1'b0;
-            o_addr_dep_rd   <= '0;
             o_data_pending  <= 1'b0;
-            o_data_dep_rd   <= '0;
-            o_mem_mask      <= `MASK_WORD;
-            o_load_unsigned <= 1'b0;
-            o_mem_read      <= 1'b0;
-            o_mem_write     <= 1'b0;
-            o_rd_addr       <= '0;
         end else if (i_flush) begin
             o_valid     <= 1'b0;
-            o_mem_read  <= 1'b0;
-            o_mem_write <= 1'b0;
         end else if (i_hold) begin
             o_valid <= o_valid;
             if (i_resolve_addr) begin

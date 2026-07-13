@@ -35,7 +35,7 @@ if {[info exists ::env(FPGA_PART)]} {
 set input_clk_mhz 200.000
 set sys_clk_mhz   50.000
 set cpu_clk_mhz   50.000
-set flatten_hierarchy none
+set flatten_hierarchy rebuilt
 set keep_equivalent_registers true
 set enable_power_opt false
 if {[info exists ::env(FPGA_INPUT_CLK_MHZ)]} {
@@ -317,8 +317,9 @@ set_property -dict [list \
     CONFIG.Use_Byte_Write_Enable {true} \
     CONFIG.Byte_Size {8} \
     CONFIG.Operating_Mode_A {READ_FIRST} \
-    CONFIG.Register_PortA_Output_of_Memory_Primitives {false} \
+    CONFIG.Register_PortA_Output_of_Memory_Primitives {true} \
     CONFIG.Register_PortA_Output_of_Memory_Core {false} \
+    CONFIG.Use_REGCEA_Pin {true} \
     CONFIG.Load_Init_File {true} \
     CONFIG.Coe_File $dram_coe \
 ] [get_ips DRAM_0]
@@ -329,8 +330,9 @@ set_ip_config_required MUL_0 {PortAWidth port_a_width} {33}
 set_ip_config_required MUL_0 {PortBType port_b_type} {Signed}
 set_ip_config_required MUL_0 {PortBWidth port_b_width} {33}
 set_ip_config_required MUL_0 {MultType multiplier_type} {Parallel_Multiplier}
+set_ip_config_required MUL_0 {Multiplier_Construction multiplier_construction} {Use_Mults}
 set_ip_config_optional MUL_0 {OptGoal optimization_goal} {Speed}
-set_ip_config_required MUL_0 {PipeStages pipeline_stages} {3}
+set_ip_config_required MUL_0 {PipeStages pipeline_stages} {2}
 set_ip_config_required MUL_0 {Use_Custom_Output_Width use_custom_output_width} {true}
 set_ip_config_required MUL_0 {OutputWidthHigh output_width_high} {65}
 set_ip_config_required MUL_0 {OutputWidthLow output_width_low} {0}

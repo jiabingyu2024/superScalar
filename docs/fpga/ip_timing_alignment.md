@@ -59,7 +59,7 @@ SoC 侧的假设如下：
 
 - `SocMemBridge.req_ready` 对 MMIO 恒为 1，对 DRAM 当前也由 `DramBramAdapter.req_ready=1` 恒为 1。
 - 写请求没有单独写响应。core/DCache 在 `req_valid && req_ready && req_write` 后就认为写已被接受。
-- 读请求通过 `resp_valid` 返回数据。当前 DRAM 读返回 1 拍；MMIO 读也由 `mmio_resp_valid_q` 打 1 拍返回。
+- 读请求通过 `resp_valid` 返回数据。当前 DRAM 采用 memory latch + primitive output register，两拍返回；MMIO 读仍由 `mmio_resp_valid_q` 打 1 拍返回。
 - `SocMemBridge` 只根据地址选择 DRAM 或 MMIO，当前没有 error response。未命中地址读返回 0，写被忽略。
 - `DCache` miss refill 会顺序发 4 个 32-bit 读请求填一条 16-byte cache line；`SocMemBridge` 不支持 burst，只看到 4 次普通单拍读。
 
@@ -78,7 +78,7 @@ SoC 侧的假设如下：
 | IP | Verilator 行为模型 | Vivado Tcl 当前参数 | RTL 消费方合同 | 修改时必须同步检查 |
 | --- | --- | --- | --- | --- |
 | `IROM_0` | `rtl/ip/IROM_0.sv` 在 `ena` 时锁存 `addra`，`douta = mem[addra_q]`。取指侧按 1 拍 ROM 读延迟使用。 | `Single_Port_ROM`，`Enable_A=Use_ENA_Pin`，`Register_PortA_Output_of_Memory_Primitives=false`，`Register_PortA_Output_of_Memory_Core=false`。 | `rtl/soc/student_top.sv` 连接 CPU `irom_addr/irom_data/irom_ena`。CPU 取指状态机默认下一拍可用。 | 若打开 ROM 输出寄存器或改成更深 pipeline，必须调整 CPU fetch/PC 对齐逻辑，并同步改 `rtl/ip/IROM_0.sv`。 |
-| `DRAM_0` | `rtl/ip/DRAM_0.sv` 在读周期 `douta <= mem[addra]`，行为模型是 1 拍读返回。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=false`，`Register_PortA_Output_of_Memory_Core=false`。FPGA DRAM 必须保持 `READ_LATENCY=1`。 | `rtl/soc/DramBramAdapter.sv` 当前把读响应和 byte offset 延后 1 拍。 | 若打开任意输出寄存器或增加 pipeline，必须先确认生成 wrapper 的 `C_READ_LATENCY_A`，再同步调整 adapter 和 `rtl/ip/DRAM_0.sv`。 |
+| `DRAM_0` | `rtl/ip/DRAM_0.sv` 用 `ena` 更新 memory latch，用 `regcea` 在下一边沿更新 `douta`，行为模型是 2 拍读返回。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=true`，`Register_PortA_Output_of_Memory_Core=false`，`Use_REGCEA_Pin=true`。 | `rtl/soc/DramBramAdapter.sv` 用 d1 token 驱动 `regcea`，并把响应 valid 和 byte offset 对齐到 d2。 | 生成后检查 wrapper 中确实存在 `regcea`，并确认 `C_HAS_MEM_OUTPUT_REGS_A=1`、`C_HAS_REGCEA=1`；不能只看 `READ_LATENCY` 数字。 |
 | `MUL_0` | `rtl/ip/MUL_0.sv` 是 33x33 signed multiplier，`pipe0/pipe1/P` 共 3 级寄存输出。 | `mult_gen`，`PipeStages=3`，33 位 signed 输入，自定义 66 位输出。 | 当前五级流水线由 `rtl/core/ex/m_unit.sv` 消费：启动拍锁存 rs1/rs2，等待固定乘法结果拍数；`stage_ex.sv` 通过 `o_m_busy` 请求 `hazard_unit.sv` 冻结 PC/上游流水线。 | 若 Tcl `PipeStages` 改变，必须同步改 `MUL_0.sv` pipeline 深度和 `m_unit.sv` 的等待计数，并确认 `hazard_unit.sv` 在 M busy 期间继续 hold PC。 |
 | `DIV_0` | `rtl/ip/DIV_0.sv` 固定 `DIV_LATENCY=34`，AXI-stream valid 管线后输出 `{quotient, remainder}`。 | `div_gen`，`Latency_Configuration=Manual`，`Latency=34`，`FlowControl=Blocking`，unsigned radix-2 divider，remainder mode。 | 当前五级流水线由 `rtl/core/ex/m_unit.sv` 消费：启动拍送入 AXI-stream valid，按 Vivado 2023.2 生成 demo TB 的约定解包：`div_data[63:32]=quotient`、`div_data[31:0]=remainder`。 | 若 Tcl `Latency`、`FlowControl` 或 output packing 改变，必须同步改 `DIV_0.sv`，并检查 `m_unit.sv` 是否还满足握手、选位、特殊情况修正和 M busy/PC hold 协议。 |
 | `pll` | `rtl/ip/pll.sv` 只服务仿真，不代表真实锁相环时钟收敛和相位行为。 | `clk_wiz` 生成 `clk_out1` 系统时钟和 `clk_out2` CPU 时钟，频率由 `FPGA_SYS_CLK_MHZ/FPGA_CPU_CLK_MHZ` 控制。 | `rtl/soc/top.sv` 用 `locked` 派生 reset，同步释放到 50 MHz 和 CPU 时钟域。 | 若改 CPU 频率，必须重新看 timing report、UART `CLK_FREQ`、counter 换算、跨时钟 reset 和 CDC。 |
@@ -87,17 +87,29 @@ SoC 侧的假设如下：
 
 `DramBramAdapter` 是最容易出现“仿真过、上板不过”的位置，因为它把 CPU/DCache 的 ready-valid 读请求翻译成 Vivado BRAM 的固定延迟读返回。
 
-当前合同：
+当前两拍合同：
 
 ```text
-cycle N:   req_valid && !req_write 被接受，DRAM_0.ena=1，addra 有效
-cycle N+1: dram_rdata_raw 对应 cycle N 的地址，adapter 拉高 resp_valid
+edge N 前:   read_accept=1, ENA=1, REGCEA=0, ADDRA=A
+edge N 后:   memory output latch 得到 A 的数据，read_valid_d1=1
+edge N+1 前: REGCEA=read_valid_d1=1；ENA 可同时接受下一次访问
+edge N+1 后: DOUT 得到 A 的数据，read_valid_d2=1，byte offset 到达 d2
+edge N+2:    DCache 同一采样沿消费稳定的 resp_valid、DOUT 和 byte offset
 ```
 
-因此当前 `DramBramAdapter.sv` 必须：
+这里必须区分 BMG 的 memory output latch 和 primitive output register：`ENA` 只保证
+memory access 发生；打开独立 `REGCEA` 后，下一拍必须再用 d1 token 推动最后一级
+output register。仅仅把 `resp_valid` 延迟两拍、但不给 `REGCEA` 第二个使能边沿，会让
+`douta` 停留在上一次读取的数据。
 
-- 对读请求 valid 打 1 拍后生成 `resp_valid`。
-- 对 `req_addr[1:0]` 的 byte offset 同步打 1 拍。
+因此 `DramBramAdapter.sv` 必须：
+
+- 只在 `req_valid && req_ready && !req_write` 时产生 `read_valid_d1`。
+- 用 `read_valid_d1` 驱动 `DRAM_0.regcea`，并产生 `read_valid_d2`。
+- 用 `read_valid_d2` 生成 `resp_valid`，byte offset 同步延迟到 d2。
+- 当前实现把 `DRAM_0.ena` 常置为 1；请求地址在 `myCPU` 外部请求槽已寄存，
+  因此 ENA 不再承载 valid 语义，读结果只由 `REGCEA`/`resp_valid` token 消费。
+- 写请求仍由 `dram_we` 按寄存后的 valid/write 控制，空闲周期不会修改 memory array。
 - store 写通道保持当拍发给 BRAM，不要被读响应 pipeline 影响。
 - `req_ready` 当前恒为 1；如果未来改成可反压 DRAM，就必须重新审查 DCache miss/fill 状态机。
 
@@ -106,11 +118,13 @@ Vivado Block Memory Generator v8.4 PG058 明确说明：BMG 有两级可选输�
 | `Register_PortA_Output_of_Memory_Primitives` | `Register_PortA_Output_of_Memory_Core` | 预期读返回 | Adapter 响应 |
 | --- | --- | --- | --- |
 | `false` | `false` | 1 拍 | `resp_valid <= read_req_d1`，byte offset 打 1 拍 |
-| `true` | `false` | 2 拍 | `resp_valid <= read_req_d2`，byte offset 打 2 拍 |
-| `false` | `true` | 2 拍 | `resp_valid <= read_req_d2`，byte offset 打 2 拍 |
-| `true` | `true` | 3 拍 | `resp_valid <= read_req_d3`，byte offset 打 3 拍 |
+| `true` | `false` | 2 拍 | d1 驱动独立 `REGCEA`，`resp_valid <= read_req_d2`，byte offset 打 2 拍 |
+| `false` | `true` | 2 拍 | d1 驱动独立 `REGCEA`，`resp_valid <= read_req_d2`，byte offset 打 2 拍 |
+| `true` | `true` | 3 拍 | 两级输出寄存器的 CE 都必须正确推进，响应和 offset 打 3 拍 |
 
-生成工程后仍然要检查 `DRAM_0.xci` 或 `sim/DRAM_0.v` 里的 `C_READ_LATENCY_A` / `READ_LATENCY`，目的是确认当前 bitstream 使用的 IP 已经按最新 Tcl 重新生成，而不是旧 build 的 stale IP。
+生成工程后要检查 `DRAM_0.xci`、XML 或 `sim/DRAM_0.v` 的实际端口和生成参数，
+确认当前 bitstream 使用的 IP 已按最新 Tcl 重新生成。对本配置至少应看到 `regcea`
+端口、primitive output register 和独立 register CE；旧 build 中的 stale XCI 不能作为依据。
 
 ### 修改 DRAM latency 的固定流程
 

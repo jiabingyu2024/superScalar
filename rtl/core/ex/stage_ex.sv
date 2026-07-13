@@ -109,15 +109,11 @@ module stage_ex(
         a2_data = (i_is_rs2_imm || (i_inst_spec == `EX_AUIPC)) ? i_imm : rs2_exec_data;
     end
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             exec_hold_valid_q <= 1'b0;
-            rs1_exec_hold_q   <= '0;
-            rs2_exec_hold_q   <= '0;
         end else if (i_flush_e) begin
             exec_hold_valid_q <= 1'b0;
-            rs1_exec_hold_q   <= '0;
-            rs2_exec_hold_q   <= '0;
         end else if (i_stall_e && !exec_hold_valid_q) begin
             exec_hold_valid_q <= 1'b1;
             rs1_exec_hold_q   <= rs1_exec_mux;
@@ -182,22 +178,17 @@ module stage_ex(
     assign o_m_busy = (i_is_m_ext && !m_done_int) ||
                       (is_clmul_inst && !clmul_done_q);
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             clmul_busy_q  <= 1'b0;
             clmul_done_q  <= 1'b0;
             clmul_issued_q <= 1'b0;
             clmul_count_q <= '0;
-            clmul_a_q     <= '0;
-            clmul_b_q     <= '0;
-            clmul_acc_q   <= '0;
-            clmul_result_q <= '0;
         end else if (i_flush_e) begin
             clmul_busy_q  <= 1'b0;
             clmul_done_q  <= 1'b0;
             clmul_issued_q <= 1'b0;
             clmul_count_q <= '0;
-            clmul_acc_q   <= '0;
         end else begin
             clmul_done_q <= 1'b0;
             if (!is_clmul_inst) begin
@@ -228,7 +219,7 @@ module stage_ex(
         end
     end
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             m_issued <= 1'b0;
         end else if (i_flush_e || m_done_int || !i_is_m_ext) begin

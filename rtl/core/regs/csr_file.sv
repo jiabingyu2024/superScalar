@@ -75,7 +75,7 @@ module csr_file (
     endfunction
 
     // ---- 时序写入 ----
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             mstatus  <= 32'h0000_1800;  // MPP=3（M-mode），其余0
             mtvec_r  <= 32'h0;

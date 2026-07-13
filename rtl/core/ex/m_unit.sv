@@ -2,10 +2,10 @@
 //==============================================================================
 // 模块: m_unit
 // 功能概述：
-//   RV32M 计算单元。例化 MUL_0（3拍，33×33有符号）和 DIV_0（34拍，32位无符号 AXI-Stream）。
-//   MUL/MULH/MULHSU/MULHU 按符号扩展规则选择 MUL_0 实例；DIV/REM 通过绝对值预处理后送
+//   RV32M 计算单元。例化 MUL_0（2拍，33×33有符号）和 DIV_0（34拍，32位无符号 AXI-Stream）。
+//   MUL/MULH/MULHSU/MULHU 在入口选择符号扩展并共享一个 MUL_0；DIV/REM 通过绝对值预处理后送
 //   无符号除法器，结果附加符号修正。有符号溢出（INT_MIN/-1）和除零按 RISC-V 规范处理。
-//   倒计时由内部计数器驱动，与 IP 延迟严格对齐：MUL=3拍，DIV=34拍。
+//   倒计时由内部计数器驱动，与 IP 延迟严格对齐：MUL=2拍，DIV=34拍。
 //   i_start 单拍脉冲启动；o_busy 期间 hazard_unit 冻结上游；o_done 单拍标记结果可采样。
 //==============================================================================
 `include "cpu_defines.svh"
@@ -24,7 +24,7 @@ module m_unit (
     output logic  [`DATA_BUS]               o_res
 );
 
-    localparam int MUL_LATENCY = `MUL_LATENCY;     // 3
+    localparam int MUL_LATENCY = `MUL_LATENCY;     // 2
     localparam int DIV_LATENCY = `DIV_LATENCY;     // 34
     localparam int CNT_W       = $clog2(DIV_LATENCY + 1);
 
@@ -47,20 +47,15 @@ module m_unit (
     assign rs1_ip      = start_pulse ? i_rs1 : rs1_q;
     assign rs2_ip      = start_pulse ? i_rs2 : rs2_q;
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             cnt    <= '0;
             o_busy <= 1'b0;
             o_done <= 1'b0;
-            m_op_q <= '0;
-            rs1_q  <= '0;
-            rs2_q  <= '0;
         end else if (i_flush) begin
             cnt    <= '0;
             o_busy <= 1'b0;
             o_done <= 1'b0;
-            rs1_q  <= '0;
-            rs2_q  <= '0;
         end else if (start_pulse) begin
             cnt    <= init_cnt;
             o_busy <= 1'b1;
@@ -80,31 +75,24 @@ module m_unit (
     end
 
     // ------------------------------------------------------------------ //
-    // MUL 路径（3拍）：3 个 MUL_0 实例分别对应 ss / su / uu 符号组合             //
+    // MUL path: one signed 33x33 multiplier with selectable input extension.  //
     // ------------------------------------------------------------------ //
-    logic signed [65:0] mul_ss_p;   // signed × signed  → MUL, MULH
-    logic signed [65:0] mul_su_p;   // signed × unsigned → MULHSU
-    logic signed [65:0] mul_uu_p;   // unsigned × unsigned → MULHU
+    logic signed [32:0] mul_a_ext;
+    logic signed [32:0] mul_b_ext;
+    logic signed [65:0] mul_p;
 
-    MUL_0 u_mul_ss (
-        .CLK (i_clk),
-        .A   ({rs1_ip[31], rs1_ip}),     // 符号扩展
-        .B   ({rs2_ip[31], rs2_ip}),
-        .P   (mul_ss_p)
-    );
+    assign mul_a_ext = (i_m_op == `M_MULHU) ?
+                       $signed({1'b0, rs1_ip}) :
+                       $signed({rs1_ip[31], rs1_ip});
+    assign mul_b_ext = ((i_m_op == `M_MUL) || (i_m_op == `M_MULH)) ?
+                       $signed({rs2_ip[31], rs2_ip}) :
+                       $signed({1'b0, rs2_ip});
 
-    MUL_0 u_mul_su (
+    MUL_0 u_mul (
         .CLK (i_clk),
-        .A   ({rs1_ip[31], rs1_ip}),     // 符号扩展 rs1
-        .B   ({1'b0,       rs2_ip}),     // 零扩展 rs2
-        .P   (mul_su_p)
-    );
-
-    MUL_0 u_mul_uu (
-        .CLK (i_clk),
-        .A   ({1'b0, rs1_ip}),          // 零扩展
-        .B   ({1'b0, rs2_ip}),
-        .P   (mul_uu_p)
+        .A   (mul_a_ext),
+        .B   (mul_b_ext),
+        .P   (mul_p)
     );
 
     // ------------------------------------------------------------------ //
@@ -137,15 +125,8 @@ module m_unit (
     logic        signed_overflow_q;
     logic [31:0] orig_rs1_q;        // 用于除零时 REM 返回被除数
 
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
-        if (!i_rst_n) begin
-            sign_rs1_q       <= 1'b0;
-            sign_rs2_q       <= 1'b0;
-            is_div_signed_q  <= 1'b0;
-            div_by_zero_q    <= 1'b0;
-            signed_overflow_q<= 1'b0;
-            orig_rs1_q       <= '0;
-        end else if (start_pulse && i_m_op[2]) begin
+    always_ff @(posedge i_clk) begin
+        if (start_pulse && i_m_op[2]) begin
             sign_rs1_q       <= rs1_ip[31];
             sign_rs2_q       <= rs2_ip[31];
             is_div_signed_q  <= is_div_signed;
@@ -206,10 +187,10 @@ module m_unit (
     // ------------------------------------------------------------------ //
     always_comb begin
         unique case (m_op_q)
-            `M_MUL   : o_res = mul_ss_p[31:0];
-            `M_MULH  : o_res = mul_ss_p[63:32];
-            `M_MULHSU: o_res = mul_su_p[63:32];
-            `M_MULHU : o_res = mul_uu_p[63:32];
+            `M_MUL   : o_res = mul_p[31:0];
+            `M_MULH  : o_res = mul_p[63:32];
+            `M_MULHSU: o_res = mul_p[63:32];
+            `M_MULHU : o_res = mul_p[63:32];
             `M_DIV   : o_res = quot_corrected;
             `M_DIVU  : o_res = quot_corrected;
             `M_REM   : o_res = rem_corrected;

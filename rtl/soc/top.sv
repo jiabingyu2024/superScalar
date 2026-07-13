@@ -112,7 +112,6 @@ module top(
         .led(virtual_led_50_d2)
     );
 
-    (* keep_hierarchy = "yes", dont_touch = "true" *)
     student_top student_top_inst(
         .w_cpu_clk(cpu_clk),
         .w_clk_50Mhz(w_clk_50Mhz),

@@ -59,6 +59,23 @@ module myCPU (
     logic        dcache_cpu_resp_valid;
     logic [31:0] dcache_cpu_rdata;
 
+    logic        dcache_mem_req_valid;
+    logic        dcache_mem_req_ready;
+    logic        dcache_mem_req_write;
+    logic [31:0] dcache_mem_req_addr;
+    logic [31:0] dcache_mem_req_wdata;
+    logic [3:0]  dcache_mem_req_wstrb;
+    logic        dcache_mem_req_uncached;
+    logic        mem_req_slot_ready;
+    logic        mem_req_valid_q;
+    logic        mem_req_write_q;
+    logic [31:0] mem_req_addr_q;
+    logic [31:0] mem_req_wdata_q;
+    logic [3:0]  mem_req_wstrb_q;
+    logic        mem_req_uncached_q;
+    logic        mem_resp_valid_q;
+    logic [31:0] mem_resp_rdata_q;
+
     logic [63:0] perf_cycle_q;
     logic [63:0] perf_dcache_access;
     logic [63:0] perf_dcache_miss;
@@ -75,6 +92,41 @@ module myCPU (
 `endif
 
     assign rst_n_int = ~cpu_rst;
+
+    // One elastic request slot cuts the DCache/LS combinational path before
+    // SoC decode and the high-fanout external BRAM controls. The downstream
+    // bridge is normally always ready, so this still accepts one request/cycle.
+    assign mem_req_slot_ready = !mem_req_valid_q || dmem_req_ready;
+    assign dcache_mem_req_ready = mem_req_slot_ready;
+    assign dmem_req_valid    = mem_req_valid_q;
+    assign dmem_req_write    = mem_req_write_q;
+    assign dmem_req_addr     = mem_req_addr_q;
+    assign dmem_req_wdata    = mem_req_wdata_q;
+    assign dmem_req_wstrb    = mem_req_wstrb_q;
+    assign dmem_req_uncached = mem_req_uncached_q;
+
+    always_ff @(posedge cpu_clk) begin
+        if (cpu_rst) begin
+            mem_req_valid_q  <= 1'b0;
+            mem_resp_valid_q <= 1'b0;
+        end else begin
+            if (mem_req_slot_ready) begin
+                mem_req_valid_q <= dcache_mem_req_valid;
+                if (dcache_mem_req_valid) begin
+                    mem_req_write_q    <= dcache_mem_req_write;
+                    mem_req_addr_q     <= dcache_mem_req_addr;
+                    mem_req_wdata_q    <= dcache_mem_req_wdata;
+                    mem_req_wstrb_q    <= dcache_mem_req_wstrb;
+                    mem_req_uncached_q <= dcache_mem_req_uncached;
+                end
+            end
+
+            mem_resp_valid_q <= dmem_resp_valid;
+            if (dmem_resp_valid) begin
+                mem_resp_rdata_q <= dmem_resp_rdata;
+            end
+        end
+    end
 
     always_ff @(posedge cpu_clk) begin
         if (cpu_rst) begin
@@ -126,15 +178,15 @@ module myCPU (
         .cpu_req_uncached  (1'b0),
         .cpu_resp_valid    (dcache_cpu_resp_valid),
         .cpu_resp_rdata    (dcache_cpu_rdata),
-        .mem_req_valid     (dmem_req_valid),
-        .mem_req_ready     (dmem_req_ready),
-        .mem_req_write     (dmem_req_write),
-        .mem_req_addr      (dmem_req_addr),
-        .mem_req_wdata     (dmem_req_wdata),
-        .mem_req_wstrb     (dmem_req_wstrb),
-        .mem_req_uncached  (dmem_req_uncached),
-        .mem_resp_valid    (dmem_resp_valid),
-        .mem_resp_rdata    (dmem_resp_rdata),
+        .mem_req_valid     (dcache_mem_req_valid),
+        .mem_req_ready     (dcache_mem_req_ready),
+        .mem_req_write     (dcache_mem_req_write),
+        .mem_req_addr      (dcache_mem_req_addr),
+        .mem_req_wdata     (dcache_mem_req_wdata),
+        .mem_req_wstrb     (dcache_mem_req_wstrb),
+        .mem_req_uncached  (dcache_mem_req_uncached),
+        .mem_resp_valid    (mem_resp_valid_q),
+        .mem_resp_rdata    (mem_resp_rdata_q),
         .perf_dcache_access(perf_dcache_access),
         .perf_dcache_miss  (perf_dcache_miss),
         .perf_stall_mem    (perf_stall_mem)

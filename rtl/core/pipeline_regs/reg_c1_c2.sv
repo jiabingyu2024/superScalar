@@ -19,15 +19,9 @@ module reg_c1_c2 (
     output logic [3:0]       o_mem_mask,
     output logic             o_load_unsigned
 );
-    always_ff @(posedge i_clk or negedge i_rst_n) begin
+    always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
             o_valid         <= 1'b0;
-            o_rd_addr       <= '0;
-            o_alu_res       <= '0;
-            o_wb_src        <= `WB_SRC_ALU;
-            o_reg_write     <= 1'b0;
-            o_mem_mask      <= `MASK_WORD;
-            o_load_unsigned <= 1'b0;
         end else begin
             o_valid         <= i_valid;
             o_rd_addr       <= i_rd_addr;
@@ -39,4 +33,3 @@ module reg_c1_c2 (
         end
     end
 endmodule
-

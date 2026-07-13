@@ -1,0 +1,126 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 04/16/2025 06:21:44 PM
+// Design Name: 
+// Module Name: top
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+
+
+module top(
+    input  wire i_sys_clk_p         ,
+    input  wire i_sys_clk_n         ,
+    input  wire i_uart_rx           ,
+    output wire o_uart_tx           ,
+
+    output wire [31:0] virtual_led  ,
+    output wire [39:0] virtual_seg
+);
+
+    wire w_clk_50Mhz, cpu_clk;
+    wire w_clk_rst;
+    (* ASYNC_REG = "TRUE" *) logic rst_50m_meta;
+    (* ASYNC_REG = "TRUE" *) logic rst_50m_sync;
+    wire  rst_50m_n;
+
+    wire [7:0] virtual_key;
+    wire [63:0] virtual_sw;
+    (* ASYNC_REG = "TRUE" *) logic [31:0] virtual_led_50_d1;
+    (* ASYNC_REG = "TRUE" *) logic [31:0] virtual_led_50_d2;
+    (* ASYNC_REG = "TRUE" *) logic [39:0] virtual_seg_50_d1;
+    (* ASYNC_REG = "TRUE" *) logic [39:0] virtual_seg_50_d2;
+
+    wire [7:0] rx_data;
+    wire rx_ready;
+    wire tx_start;
+    wire [7:0] tx_data;
+    wire tx_busy;
+
+    pll pll_inst(
+        .clk_in1_p(i_sys_clk_p),
+        .clk_in1_n(i_sys_clk_n),
+        .clk_out1(w_clk_50Mhz),
+        .clk_out2(cpu_clk),
+        .locked(w_clk_rst)
+    );
+
+    always_ff @(posedge w_clk_50Mhz or negedge w_clk_rst) begin
+        if (!w_clk_rst) begin
+            rst_50m_meta <= 1'b1;
+            rst_50m_sync <= 1'b1;
+        end else begin
+            rst_50m_meta <= 1'b0;
+            rst_50m_sync <= rst_50m_meta;
+        end
+    end
+
+    assign rst_50m_n = ~rst_50m_sync;
+
+    always_ff @(posedge w_clk_50Mhz or negedge w_clk_rst) begin
+        if (!w_clk_rst) begin
+            virtual_led_50_d1 <= '0;
+            virtual_led_50_d2 <= '0;
+            virtual_seg_50_d1 <= '0;
+            virtual_seg_50_d2 <= '0;
+        end else begin
+            virtual_led_50_d1 <= virtual_led;
+            virtual_led_50_d2 <= virtual_led_50_d1;
+            virtual_seg_50_d1 <= virtual_seg;
+            virtual_seg_50_d2 <= virtual_seg_50_d1;
+        end
+    end
+
+    uart #(
+        .CLK_FREQ(50000000),
+        .BAUD_RATE(9600)
+    ) uart_inst(
+        .clk(w_clk_50Mhz),
+        .rst_n(rst_50m_n),
+        .rx(i_uart_rx),
+        .rx_data(rx_data),
+        .rx_ready(rx_ready),
+        .tx(o_uart_tx),
+        .tx_data(tx_data),
+        .tx_start(tx_start),
+        .tx_busy(tx_busy)
+    );
+
+    twin_controller twin_controller_inst(
+        .clk(w_clk_50Mhz),
+        .rst_n(rst_50m_n),
+        .rx_ready(rx_ready),
+        .rx_data(rx_data),
+        .tx_start(tx_start),
+        .tx_data(tx_data),
+        .tx_busy(tx_busy),
+        .sw(virtual_sw),
+        .key(virtual_key),
+        .seg(virtual_seg_50_d2),
+        .led(virtual_led_50_d2)
+    );
+
+    (* keep_hierarchy = "yes", dont_touch = "true" *)
+    student_top student_top_inst(
+        .w_cpu_clk(cpu_clk),
+        .w_clk_50Mhz(w_clk_50Mhz),
+        .w_clk_rst(~w_clk_rst),
+        .virtual_key(virtual_key),
+        .virtual_sw(virtual_sw),
+        .virtual_led(virtual_led),
+        .virtual_seg(virtual_seg)
+    );
+
+endmodule

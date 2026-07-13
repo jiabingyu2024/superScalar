@@ -12,37 +12,28 @@ module regfile(
     input wire              i_clk,
     input wire              i_rst_n,
     input wire              i_we,
-    input wire              i_we2,
     input wire [`RF_BUS]    i_rs1_addr,
     input wire [`RF_BUS]    i_rs2_addr,
     input wire [`RF_BUS]    i_w_addr,
     input wire [`DATA_BUS]  i_w_data,
-    input wire [`RF_BUS]    i_w_addr2,
-    input wire [`DATA_BUS]  i_w_data2,
     output wire [`DATA_BUS] o_rs1_data,
     output wire [`DATA_BUS] o_rs2_data
 );
 
-    logic [`DATA_BUS] rf_mem [0:`RF_DEPTH-1];
-    integer idx;
+    // One mirrored LUTRAM per asynchronous read port.  Architectural state is
+    // defined by writes and x0 masking, so resetting the payload is unnecessary.
+    // This removes the half-cycle write path and the high-fanout RF reset tree.
+    (* ram_style = "distributed" *) logic [`DATA_BUS] rf_rs1_mem [0:`RF_DEPTH-1];
+    (* ram_style = "distributed" *) logic [`DATA_BUS] rf_rs2_mem [0:`RF_DEPTH-1];
 
-    always_ff @(negedge i_clk or negedge i_rst_n) begin
-        if (!i_rst_n) begin
-            for (idx = 0; idx < `RF_DEPTH; idx = idx + 1) begin
-                rf_mem[idx] <= '0;
-            end
-        end else begin
-            if (i_we && (i_w_addr != '0)) begin
-                rf_mem[i_w_addr] <= i_w_data;
-            end
-            // Port 2 is the younger EX result and wins a same-rd collision.
-            if (i_we2 && (i_w_addr2 != '0)) begin
-                rf_mem[i_w_addr2] <= i_w_data2;
-            end
+    always_ff @(posedge i_clk) begin
+        if (i_we && (i_w_addr != '0)) begin
+            rf_rs1_mem[i_w_addr] <= i_w_data;
+            rf_rs2_mem[i_w_addr] <= i_w_data;
         end
     end
 
-    assign o_rs1_data = (i_rs1_addr == '0) ? '0 : rf_mem[i_rs1_addr];
-    assign o_rs2_data = (i_rs2_addr == '0) ? '0 : rf_mem[i_rs2_addr];
+    assign o_rs1_data = (i_rs1_addr == '0) ? '0 : rf_rs1_mem[i_rs1_addr];
+    assign o_rs2_data = (i_rs2_addr == '0) ? '0 : rf_rs2_mem[i_rs2_addr];
 
 endmodule

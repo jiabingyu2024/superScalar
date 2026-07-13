@@ -4,10 +4,10 @@
  * @module DRAM
  * @description 32-bit data RAM, depth 65536 words.
  *              Port names match the generated BRAM IP used by the FPGA build.
- *              Single-port RAM with byte write enable. Read cycles update
- *              douta from the requested word on the rising clock edge. Address
- *              alignment and byte lane shifting are handled by the SoC adapter,
- *              so `addra` is already a word address.
+ *              Single-port RAM with byte write enable and a primitive output
+ *              register. ENA updates the memory output latch; REGCEA transfers
+ *              that latch to DOUTA on a later edge. Address alignment and byte
+ *              lane shifting are handled by the SoC adapter.
  */
 module DRAM_0 #(
     parameter int unsigned ADDR_WIDTH = 16,
@@ -18,6 +18,7 @@ module DRAM_0 #(
     input  logic                    clka,
     input  logic [DATA_WIDTH-1:0]   dina,
     input  logic                    ena,
+    input  logic                    regcea,
     input  logic [DATA_WIDTH/8-1:0] wea,
     output logic [DATA_WIDTH-1:0]   douta
 );
@@ -25,9 +26,7 @@ module DRAM_0 #(
     localparam int unsigned DEPTH = (1 << ADDR_WIDTH);
 
     logic [DATA_WIDTH-1:0] mem [0:DEPTH-1];
-    logic                  read_en;
-
-    assign read_en = ena && (wea == '0);
+    logic [DATA_WIDTH-1:0] read_data_latch;
 
     initial begin
         string runtime_init_file;
@@ -40,16 +39,18 @@ module DRAM_0 #(
     end
 
     always_ff @(posedge clka) begin
-        if (read_en) begin
-            douta <= mem[addra];
-        end
-
         if (ena) begin
+            // READ_FIRST behavior: capture the old word before byte writes.
+            read_data_latch <= mem[addra];
             for (int idx = 0; idx < BYTE_COUNT; idx++) begin
                 if (wea[idx]) begin
                     mem[addra][idx*8 +: 8] <= dina[idx*8 +: 8];
                 end
             end
+        end
+
+        if (regcea) begin
+            douta <= read_data_latch;
         end
     end
 

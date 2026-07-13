@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-07-12T12:50:00+08:00",
-  "trigger": "User-requested ID-AGU/C1 Cache/C2 WB microarchitecture migration",
+  "timestamp": "2026-07-12T19:30:00+08:00",
+  "trigger": "053 deep timing analysis Phase A-D optimization execution and DRAM BRAM two-cycle alignment",
   "files_modified": [
     {"path": "rtl/core/core.sv", "change_type": "pipeline_architecture"},
     {"path": "rtl/core/id/agu.sv", "change_type": "new_module"},
@@ -11,10 +11,32 @@
     {"path": "rtl/core/ex/stage_ex.sv", "change_type": "execution_and_iterative_clmul"},
     {"path": "rtl/core/id/control_unit.sv", "change_type": "zb_decode"},
     {"path": "rtl/core/myCPU.sv", "change_type": "performance_counters"},
+    {"path": "rtl/core/memory/DCache.sv", "change_type": "streaming_refill_prefix_decode_local_write_network"},
+    {"path": "rtl/core/ex/m_unit.sv", "change_type": "single_shared_multiplier"},
+    {"path": "rtl/ip/MUL_0.sv", "change_type": "two_cycle_multiplier_model"},
+    {"path": "rtl/include/cpu_defines.svh", "change_type": "multiplier_latency_update"},
+    {"path": "rtl/core/control/bpu_top.sv", "change_type": "synchronous_reset"},
+    {"path": "rtl/core/ex/stage_ex.sv", "change_type": "synchronous_reset_payload_reset_reduction"},
+    {"path": "rtl/core/pc/pc_reg.sv", "change_type": "synchronous_reset"},
+    {"path": "rtl/core/regs/csr_file.sv", "change_type": "synchronous_reset"},
+    {"path": "rtl/core/pipeline_regs/reg_pc_if.sv", "change_type": "synchronous_reset_payload_reset_reduction"},
+    {"path": "rtl/core/pipeline_regs/reg_if_id.sv", "change_type": "synchronous_reset_payload_reset_reduction"},
+    {"path": "rtl/core/pipeline_regs/reg_id_c1.sv", "change_type": "synchronous_reset_payload_reset_reduction"},
+    {"path": "rtl/core/pipeline_regs/reg_id_ex.sv", "change_type": "synchronous_reset"},
+    {"path": "rtl/core/pipeline_regs/reg_ex_m1.sv", "change_type": "synchronous_reset"},
+    {"path": "rtl/core/pipeline_regs/reg_m1_m2.sv", "change_type": "synchronous_reset"},
+    {"path": "rtl/core/pipeline_regs/reg_m2_wb.sv", "change_type": "synchronous_reset"},
+    {"path": "rtl/core/pipeline_regs/reg_c1_c2.sv", "change_type": "synchronous_reset_payload_reset_reduction"},
+    {"path": "rtl/core/pipeline_regs/reg_id_ls.sv", "change_type": "synchronous_reset_payload_reset_reduction"},
+    {"path": "rtl/core/pipeline_regs/reg_ls_wb.sv", "change_type": "synchronous_reset_payload_reset_reduction"},
+    {"path": "rtl/soc/SocMemBridge.sv", "change_type": "dram_prefix_decode"},
+    {"path": "rtl/soc/top.sv", "change_type": "remove_top_dont_touch"},
+    {"path": "rtl/soc/DramBramAdapter.sv", "change_type": "bram_two_cycle_response_alignment"},
+    {"path": "rtl/ip/DRAM_0.sv", "change_type": "primitive_output_register_behavior_model"},
     {"path": "scripts/filelists/core.f", "change_type": "filelist_update"},
     {"path": "fpga/create_vivado_project.tcl", "change_type": "isolated_project_tag"},
     {"path": "fpga/run_vivado_impl.tcl", "change_type": "new_implementation_driver"}
   ],
   "cascade_scope": "full_reverify",
-  "notes": "RV32-all and srcSmoke pass. srcWithMext exceeds IPC 0.8 in 5M and 100M windows."
+  "notes": "Phase A-D optimization batch implemented and archived in docs/archive/2026-07-12/054_dev_v3_0_optimization_execution_report.md. Full RV32, srcSmoke and srcWithMext 5M IPC 0.819108 pass gates verified. Routed Vivado: first batch WNS -3.292 ns/TNS -8977.573 ns/8482 failing endpoints; DSP/prefix second batch WNS -3.442 ns/TNS -8742.284 ns/8201 failing endpoints. A 2-entry LS elastic FIFO passed RV32 but reduced 5M IPC to 0.568933; a fall-through variant exposed an lw miss/replay correctness failure. Both experiments were fully reverted, and the stable RTL was rebuilt and reverified. 250 MHz remains unmet; a future decoupling must preserve zero-added-cycle hits and explicitly align miss replay with C0/C1 pending-load hazards."
 }

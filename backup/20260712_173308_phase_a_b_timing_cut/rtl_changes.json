@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-07-12T17:20:00+08:00",
+  "trigger": "User-requested ID-AGU/C1 Cache/C2 WB migration and DRAM BRAM two-cycle alignment",
+  "files_modified": [
+    {"path": "rtl/core/core.sv", "change_type": "pipeline_architecture"},
+    {"path": "rtl/core/id/agu.sv", "change_type": "new_module"},
+    {"path": "rtl/core/pipeline_regs/reg_id_c1.sv", "change_type": "new_module"},
+    {"path": "rtl/core/pipeline_regs/reg_c1_c2.sv", "change_type": "new_module"},
+    {"path": "rtl/core/control/hazard_unit.sv", "change_type": "control_interface"},
+    {"path": "rtl/core/memory/DCache.sv", "change_type": "critical_word_first"},
+    {"path": "rtl/core/ex/stage_ex.sv", "change_type": "execution_and_iterative_clmul"},
+    {"path": "rtl/core/id/control_unit.sv", "change_type": "zb_decode"},
+    {"path": "rtl/core/myCPU.sv", "change_type": "performance_counters"},
+    {"path": "rtl/soc/DramBramAdapter.sv", "change_type": "bram_two_cycle_response_alignment"},
+    {"path": "rtl/ip/DRAM_0.sv", "change_type": "primitive_output_register_behavior_model"},
+    {"path": "scripts/filelists/core.f", "change_type": "filelist_update"},
+    {"path": "fpga/create_vivado_project.tcl", "change_type": "isolated_project_tag"},
+    {"path": "fpga/run_vivado_impl.tcl", "change_type": "new_implementation_driver"}
+  ],
+  "cascade_scope": "full_reverify",
+  "notes": "DRAM now uses ENA for the memory latch, d1 REGCEA for the primitive output register, and d2 response-valid/byte-offset alignment. Both Verilator models build; full RV32 and srcSmoke pass. srcWithMext is a sampling timeout at both limits: IPC is 0.780028 at 5M and 0.819710 at 100M, with no final pass signature by 100M. The long-window IPC remains above 0.8; recover the short-window loss with the next memory-path optimization batch."
+}
