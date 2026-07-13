@@ -12,6 +12,8 @@ rtl/core/control/recovery_ctrl.sv
 rtl/core/perf/perf_counters.sv
 rtl/core/execute/fixed_execute.sv
 rtl/core/execute/muldiv_unit.sv
+rtl/core/memory/dcache_data_bank.sv
+rtl/core/memory/dmem_regslice.sv
 rtl/core/memory/dcache.sv
 rtl/core/core_top.sv
 rtl/core/myCPU.sv

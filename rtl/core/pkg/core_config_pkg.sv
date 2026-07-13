@@ -13,7 +13,7 @@ package core_config_pkg;
     localparam int unsigned LOAD_QUEUE_DEPTH   = 2;
     localparam int unsigned BTB_ENTRIES        = 64;
     localparam int unsigned RAS_DEPTH          = 8;
-    localparam int unsigned DCACHE_LINES       = 512;
+    localparam int unsigned DCACHE_LINES       = 2048;
     localparam int unsigned DCACHE_LINE_BYTES  = 16;
     localparam logic [31:0] DRAM_START          = 32'h8010_0000;
     localparam logic [31:0] DRAM_END            = 32'h8014_0000;

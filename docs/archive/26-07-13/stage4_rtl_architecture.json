@@ -1,0 +1,49 @@
+{
+  "$schema": "stage4_rtl_architecture",
+  "version": "1.1",
+  "design_name": "superScalar single-issue IPC and 200MHz optimization",
+  "reviewed_inputs": [
+    "stage3_microarch_analysis.json",
+    "053_superscalar_framework_inorder_single_issue_core_architecture.md"
+  ],
+  "rtl_framework": {
+    "style": "pipeline",
+    "description": "Preserve the six logical stages and precise commit boundary; optimize the owned DCache/load service without broadening issue width."
+  },
+  "module_hierarchy": [
+    {"name": "core_top", "parent": "myCPU", "responsibility": "Load queue ownership, active metadata replacement, scoreboard completion", "interfaces": ["dcache_cpu_req_resp"], "parameters": ["LOAD_QUEUE_DEPTH"], "estimated_complexity": "high"},
+    {"name": "dcache", "parent": "core_top", "responsibility": "Pipelined hit service, critical-word-first refill, kill/drain, cache storage", "interfaces": ["cpu_req_resp", "dmem_req_resp"], "parameters": ["DCACHE_LINES", "DCACHE_LINE_BYTES"], "estimated_complexity": "high"},
+    {"name": "dcache_data_bank", "parent": "dcache", "responsibility": "Synchronous byte-write data storage suitable for BRAM inference", "interfaces": ["lookup", "refill_write", "store_write"], "parameters": ["LINE_COUNT"], "estimated_complexity": "medium"}
+  ],
+  "interface_ownership": [
+    {"interface": "cpu_dcache", "owner_module": "dcache", "connected_to": "core_top", "protocol": "single request ready plus pulsed response; response may coincide with next accepted request", "width": "32-bit data"},
+    {"interface": "external_dmem", "owner_module": "dcache", "connected_to": "SocMemBridge", "protocol": "one ID-less outstanding read, stable request under backpressure", "width": "32-bit data + 4-bit byte enable"}
+  ],
+  "parameter_propagation": [
+    {"parameter": "DCACHE_LINES", "defined_at": "core_config_pkg", "propagated_to": ["dcache", "dcache_data_bank"], "compile_time": true},
+    {"parameter": "LOAD_QUEUE_DEPTH", "defined_at": "core_config_pkg", "propagated_to": ["core_top"], "compile_time": true}
+  ],
+  "clock_reset_cdc": {
+    "clock_domains": [{"name": "cpu_clk", "frequency_mhz": 200, "source": "pll.clk_out2"}],
+    "reset_strategy": "Existing active-high synchronous cpu_rst is preserved; cache valid/control reset, data bank not reset.",
+    "cdc_crossings": [],
+    "cdc_owner_module": "student_top/SocMemBridge"
+  },
+  "scaffold_direction": {
+    "arithmetic": "No ALU/MDU widening in this iteration.",
+    "control": "Remove response-only DCache state and add refill_count/response_sent control.",
+    "interface": "Allow response and next CPU request in one cycle without changing external dmem contract.",
+    "memory": "Critical-word-first refill first; parameterized capacity second; synchronous BRAM bank before final timing run."
+  },
+  "implementation_order": [
+    {"priority": 1, "module": "dcache", "reason": "Remove hit response bubble and add early restart.", "dependencies": ["current kill/drain contract"]},
+    {"priority": 2, "module": "core_top", "reason": "Permit old response/new request overlap.", "dependencies": ["dcache response pulse"]},
+    {"priority": 3, "module": "core_config_pkg", "reason": "Sweep cache capacity using the fixed 20M window.", "dependencies": ["functional DCache optimization"]},
+    {"priority": 4, "module": "dcache_data_bank", "reason": "Make data storage 200MHz-friendly and infer BRAM.", "dependencies": ["selected cache capacity"]}
+  ],
+  "architecture_risks": [
+    {"id": 1, "risk": "Response/request overlap can lose active metadata.", "severity": "high", "mitigation": "Explicit update priority plus directed back-to-back load regression."},
+    {"id": 2, "risk": "Early response followed by flush may create duplicate or late completion.", "severity": "high", "mitigation": "One-shot response_sent state and kill/drain assertions."},
+    {"id": 3, "risk": "Capacity increase may worsen timing despite IPC gain.", "severity": "medium", "mitigation": "Use block RAM banking and decide from final routed timing."}
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "test": "rv32um-p-mul",
+  "mode": "rv32",
+  "checker": "rv32_tohost",
+  "status": "PASS",
+  "reason": "tohost wrote 1",
+  "cycles": 2080,
+  "max_cycles": 500000,
+  "correctness": {
+    "tohost_addr": "0x80001000",
+    "tohost_value": "0x00000001"
+  },
+  "perf": {
+    "cpu_freq_mhz": 50,
+    "elapsed_ms_by_cpu_freq": 0.0416,
+    "soc_counter_freq_mhz": 50,
+    "core_cycle": 2080,
+    "commit_count": 504,
+    "ipc": 0.242308,
+    "branch_count": 74,
+    "branch_hit_count": 39,
+    "branch_miss_count": 35,
+    "branch_hit_rate": 0.527027,
+    "branch_miss_rate": 0.472973,
+    "branch_breakdown": {
+      "conditional": {
+        "count": 0,
+        "miss_count": 0,
+        "miss_rate": 0
+      },
+      "jal": {
+        "count": 0,
+        "miss_count": 0,
+        "miss_rate": 0
+      },
+      "jalr": {
+        "count": 0,
+        "miss_count": 0,
+        "miss_rate": 0
+      }
+    },
+    "memory": {
+      "dram_read_count": 0,
+      "dram_write_count": 1,
+      "load_count": 0,
+      "store_count": 2,
+      "mmio_read_count": 0,
+      "mmio_write_count": 0
+    },
+    "dcache": {
+      "access": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate": 0,
+      "miss_rate": 0
+    },
+    "stalls": {
+      "frontend_cycles": 114,
+      "id_cycles": 0,
+      "rn_cycles": 0,
+      "ds_cycles": 0,
+      "is_cycles": 0,
+      "rr_cycles": 0,
+      "ex_cycles": 0,
+      "wb_cycles": 0,
+      "recovery_cycles": 0
+    },
+    "resources": {
+      "rob_full_cycles": 0,
+      "issue_queue_full_cycles": 0,
+      "issue_queue_full_breakdown": {
+        "int_cycles": 0,
+        "mem_cycles": 0,
+        "mul_cycles": 0
+      },
+      "rob_head_block": {
+        "not_done_cycles": 0,
+        "not_done_int_cycles": 0,
+        "not_done_mem_cycles": 0,
+        "not_done_mul_cycles": 0,
+        "not_done_other_cycles": 0,
+        "store_commit_wait_cycles": 0
+      },
+      "free_list_empty_cycles": 0,
+      "store_buffer_full_cycles": 0,
+      "serial_block_cycles": 0
+    },
+    "mem_stalls": {
+      "load_return_block_cycles": 48,
+      "load_access_block_cycles": 0,
+      "store_commit_blocked_by_load_cycles": 0
+    },
+    "width": {
+      "issue_mix": {
+        "int_uops": 0,
+        "mem_uops": 0,
+        "mul_uops": 0
+      },
+      "dispatch": {
+        "w0_cycles": 0,
+        "w1_cycles": 0,
+        "w2_cycles": 0
+      },
+      "issue": {
+        "w0_cycles": 0,
+        "w1_cycles": 0,
+        "w2_cycles": 0
+      },
+      "commit": {
+        "w0_cycles": 0,
+        "w1_cycles": 0,
+        "w2_cycles": 0
+      }
+    },
+    "counter": {
+      "start_cycle": 0,
+      "stop_cycle": 0,
+      "ms": 0
+    },
+    "led": {
+      "first_write_cycle": 0,
+      "last_write_cycle": 0,
+      "first_write": "0x00000000",
+      "last_write": "0x00000000"
+    },
+    "seg": {
+      "first_write_cycle": 0,
+      "last_write_cycle": 0,
+      "last_nonzero_write_cycle": 0,
+      "first_write": "0x00000000",
+      "last_write": "0x00000000",
+      "last_nonzero_write": "0x00000000",
+      "value_at_last_led_write": "0x00000000"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+profile=srcWithMext
+slack_filter=slack<0.0ns
+nworst_per_endpoint=1
+max_paths=100000
+exported_path_count=11644
+raw_report=Z:/home/jiabingyu/prj/26_myprj/superScalar/fpga/build/digital_twin_srcWithMext/reports/all_violating_setup_paths.rpt
+csv=Z:/home/jiabingyu/prj/26_myprj/superScalar/fpga/build/digital_twin_srcWithMext/reports/all_violating_setup_paths.csv

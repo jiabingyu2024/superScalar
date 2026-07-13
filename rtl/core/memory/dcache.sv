@@ -36,41 +36,113 @@ module dcache #(
 );
     localparam int unsigned INDEX_W = $clog2(LINE_COUNT);
     localparam int unsigned TAG_LSB = 4 + INDEX_W;
+    localparam int unsigned TAG_W = 32 - TAG_LSB;
 
     typedef enum logic [2:0] {
-        DC_IDLE, DC_RESP, DC_UNC_WAIT, DC_REFILL_REQ, DC_REFILL_WAIT
+        DC_INIT, DC_IDLE, DC_UNC_WAIT, DC_REFILL_REQ, DC_REFILL_WAIT
     } state_e;
     state_e state_q;
 
-    logic [LINE_COUNT-1:0] valid_q;
-    logic [31:TAG_LSB] tag_q [0:LINE_COUNT-1];
-    logic [31:0] data_q [0:LINE_COUNT-1][0:3];
+    // Valid and tag share one synchronous BRAM.  DC_INIT clears one line per
+    // cycle so reset does not turn the valid array into 2048 flip-flops and a
+    // large dynamic mux.
+    (* ram_style = "block" *) logic [TAG_W:0] tag_q [0:LINE_COUNT-1];
+    logic [TAG_W:0] tag_read_q;
+    logic [INDEX_W-1:0] init_index_q;
     logic [31:0] req_addr_q;
-    logic [1:0] target_word_q, fill_word_q;
-    logic [31:0] resp_data_q, target_data_q;
+    logic [1:0] fill_word_q, refill_count_q;
+    logic [31:0] resp_data_q;
+    logic resp_valid_q;
+    logic lookup_valid_q;
+    logic lookup_write_q;
+    logic [31:0] lookup_addr_q;
+    logic [31:TAG_LSB] lookup_tag_q;
+    logic [INDEX_W-1:0] lookup_index_q;
+    logic [1:0] lookup_word_q;
+    logic [31:0] lookup_store_data_q;
+    logic [3:0] lookup_store_mask_q;
     logic killed_q;
 
-    logic cacheable_c, hit_c;
+    logic bank_read_en;
+    logic [INDEX_W-1:0] bank_read_index;
+    logic [31:0] bank_read_data [0:3];
+    logic bank_write_en;
+    logic [INDEX_W-1:0] bank_write_index;
+    logic [1:0] bank_write_word;
+    logic [31:0] bank_write_data;
+    logic [3:0] bank_write_mask;
+    logic cacheable_c, lookup_hit_c, lookup_load_miss_c, lookup_stall_c;
+    logic metadata_read_en;
     logic [INDEX_W-1:0] index_c;
     logic [31:TAG_LSB] tag_c;
     logic [1:0] word_c;
     logic [31:0] store_aligned_data_c;
     logic [3:0] store_aligned_mask_c;
 
-    assign cacheable_c = !cpu_req_uncached_i && cpu_req_addr_i >= CACHE_START &&
-                         cpu_req_addr_i < CACHE_END;
+    // CACHE_START..CACHE_END is the naturally aligned 256 KiB SoC DRAM
+    // window.  Decode its fixed upper bits instead of synthesizing two
+    // 32-bit magnitude comparators on the load-address critical path.
+    assign cacheable_c = !cpu_req_uncached_i &&
+                         cpu_req_addr_i[31:18] == CACHE_START[31:18];
     assign index_c = cpu_req_addr_i[TAG_LSB-1:4];
     assign tag_c   = cpu_req_addr_i[31:TAG_LSB];
     assign word_c  = cpu_req_addr_i[3:2];
-    assign hit_c   = cacheable_c && valid_q[index_c] && tag_q[index_c] == tag_c;
+    assign lookup_hit_c = lookup_valid_q && tag_read_q[TAG_W] &&
+                          tag_read_q[TAG_W-1:0] == lookup_tag_q;
+    assign lookup_load_miss_c = lookup_valid_q && !lookup_write_q && !lookup_hit_c;
+    // A store lookup occupies one extra cycle so its cache update reaches the
+    // data RAM before a following load can observe that word.
+    assign lookup_stall_c = lookup_valid_q && (lookup_write_q || !lookup_hit_c);
+    assign metadata_read_en = state_q == DC_IDLE && cpu_req_valid_i && cacheable_c;
     assign store_aligned_data_c = cpu_req_wdata_i << {cpu_req_addr_i[1:0], 3'b000};
     assign store_aligned_mask_c = (cpu_req_wstrb_i << cpu_req_addr_i[1:0]) & 4'hf;
     assign idle_o = state_q == DC_IDLE;
 
+    genvar bank;
+    generate
+        for (bank = 0; bank < 4; bank = bank + 1) begin : g_data_bank
+            localparam logic [1:0] BANK_WORD = bank;
+            dcache_data_bank #(.LINE_COUNT(LINE_COUNT)) u_data_bank (
+                .clk(clk), .read_en_i(bank_read_en),
+                .read_index_i(bank_read_index), .read_data_o(bank_read_data[bank]),
+                .write_en_i(bank_write_en && bank_write_word == BANK_WORD),
+                .write_index_i(bank_write_index), .write_data_i(bank_write_data),
+                .write_mask_i(bank_write_mask)
+            );
+        end
+    endgenerate
+
+    always_comb begin
+        // Start the synchronous data-array lookup speculatively.  Read enable
+        // is independent of tag/range comparison and therefore cannot inherit
+        // their delay.  Data from a request that is not accepted is ignored.
+        bank_read_en = state_q == DC_IDLE && cpu_req_valid_i &&
+                       !cpu_req_write_i;
+        bank_read_index = index_c;
+        bank_write_en = 1'b0;
+        bank_write_index = lookup_index_q;
+        bank_write_word = lookup_word_q;
+        bank_write_data = lookup_store_data_q;
+        bank_write_mask = lookup_store_mask_q;
+        if (lookup_valid_q && lookup_write_q && lookup_hit_c) begin
+            bank_write_en = 1'b1;
+        end else if (state_q == DC_REFILL_WAIT && mem_resp_valid_i &&
+                     !killed_q && !kill_i) begin
+            bank_write_en = 1'b1;
+            bank_write_index = req_addr_q[TAG_LSB-1:4];
+            bank_write_word = fill_word_q;
+            bank_write_data = mem_resp_rdata_i;
+            bank_write_mask = 4'hf;
+        end
+    end
+
     always_comb begin
         cpu_req_ready_o = 1'b0;
-        cpu_resp_valid_o = 1'b0;
-        cpu_resp_rdata_o = resp_data_q;
+        cpu_resp_valid_o = (resp_valid_q ||
+                            (lookup_valid_q && !lookup_write_q && lookup_hit_c)) &&
+                           !kill_i;
+        cpu_resp_rdata_o = (lookup_valid_q && !lookup_write_q && lookup_hit_c) ?
+                           bank_read_data[lookup_word_q] : resp_data_q;
         mem_req_valid_o = 1'b0;
         mem_req_write_o = 1'b0;
         mem_req_addr_o = 32'd0;
@@ -82,7 +154,12 @@ module dcache #(
 
         unique case (state_q)
             DC_IDLE: begin
-                if (cpu_req_valid_i) begin
+                if (lookup_stall_c) begin
+                    // The preceding synchronous metadata lookup missed.  No
+                    // younger request may be accepted until refill owns the
+                    // single memory port.
+                    miss_pulse_o = lookup_load_miss_c;
+                end else if (cpu_req_valid_i) begin
                     if (cpu_req_write_i) begin
                         mem_req_valid_o = 1'b1;
                         mem_req_write_o = 1'b1;
@@ -93,10 +170,10 @@ module dcache #(
                         cpu_req_ready_o = mem_req_ready_i;
                         access_pulse_o = cacheable_c && mem_req_ready_i;
                     end else begin
-                        cpu_req_ready_o = 1'b1;
-                        access_pulse_o = cacheable_c;
-                        miss_pulse_o = cacheable_c && !hit_c;
-                        if (!cacheable_c) begin
+                        if (cacheable_c) begin
+                            cpu_req_ready_o = 1'b1;
+                            access_pulse_o = 1'b1;
+                        end else begin
                             mem_req_valid_o = 1'b1;
                             mem_req_write_o = 1'b0;
                             mem_req_addr_o = {cpu_req_addr_i[31:2], 2'b00};
@@ -105,10 +182,6 @@ module dcache #(
                         end
                     end
                 end
-            end
-            DC_RESP: begin
-                cpu_resp_valid_o = !killed_q;
-                cpu_resp_rdata_o = resp_data_q;
             end
             DC_REFILL_REQ: begin
                 mem_req_valid_o = 1'b1;
@@ -120,54 +193,73 @@ module dcache #(
         endcase
     end
 
-    integer lane;
     always_ff @(posedge clk) begin
         if (rst) begin
-            state_q <= DC_IDLE;
-            valid_q <= '0;
+            state_q <= DC_INIT;
+            init_index_q <= '0;
             req_addr_q <= '0;
-            target_word_q <= '0;
             fill_word_q <= '0;
+            refill_count_q <= '0;
             resp_data_q <= '0;
-            target_data_q <= '0;
+            resp_valid_q <= 1'b0;
+            lookup_valid_q <= 1'b0;
+            lookup_write_q <= 1'b0;
+            lookup_addr_q <= '0;
+            lookup_tag_q <= '0;
+            lookup_index_q <= '0;
+            lookup_word_q <= '0;
+            lookup_store_data_q <= '0;
+            lookup_store_mask_q <= '0;
+            tag_read_q <= '0;
             killed_q <= 1'b0;
         end else begin
+            // Responses are one-cycle events.  Keeping the cache in DC_IDLE on
+            // a hit permits a new request to replace the completing load.
+            resp_valid_q <= 1'b0;
+            lookup_valid_q <= 1'b0;
+            if (metadata_read_en) begin
+                tag_read_q <= tag_q[index_c];
+            end
             if (kill_i && state_q != DC_IDLE) killed_q <= 1'b1;
             unique case (state_q)
+                DC_INIT: begin
+                    tag_q[init_index_q] <= '0;
+                    if (init_index_q == INDEX_W'(LINE_COUNT - 1)) begin
+                        init_index_q <= '0;
+                        state_q <= DC_IDLE;
+                    end else begin
+                        init_index_q <= init_index_q + 1'b1;
+                    end
+                end
                 DC_IDLE: begin
                     killed_q <= 1'b0;
-                    if (cpu_req_valid_i && cpu_req_write_i && mem_req_ready_i) begin
-                        if (hit_c) begin
-                            for (lane = 0; lane < 4; lane = lane + 1) begin
-                                if (store_aligned_mask_c[lane])
-                                    data_q[index_c][word_c][lane*8 +: 8] <=
-                                        store_aligned_data_c[lane*8 +: 8];
-                            end
-                        end
-                    end else if (cpu_req_valid_i && !cpu_req_write_i && cpu_req_ready_o) begin
-                        req_addr_q <= cpu_req_addr_i;
-                        target_word_q <= word_c;
-                        if (cacheable_c && hit_c) begin
-                            resp_data_q <= data_q[index_c][word_c];
-                            state_q <= DC_RESP;
-                        end else if (cacheable_c) begin
-                            fill_word_q <= 2'd0;
-                            target_data_q <= 32'd0;
-                            state_q <= DC_REFILL_REQ;
-                        end else begin
+                    if (lookup_load_miss_c) begin
+                        req_addr_q <= lookup_addr_q;
+                        fill_word_q <= lookup_word_q;
+                        refill_count_q <= 2'd0;
+                        state_q <= DC_REFILL_REQ;
+                    end else if (!lookup_stall_c && cpu_req_valid_i && cpu_req_ready_o) begin
+                        if (cacheable_c) begin
+                            lookup_valid_q <= 1'b1;
+                            lookup_write_q <= cpu_req_write_i;
+                            lookup_addr_q <= cpu_req_addr_i;
+                            lookup_tag_q <= tag_c;
+                            lookup_index_q <= index_c;
+                            lookup_word_q <= word_c;
+                            lookup_store_data_q <= store_aligned_data_c;
+                            lookup_store_mask_q <= store_aligned_mask_c;
+                        end else if (!cpu_req_write_i) begin
+                            req_addr_q <= cpu_req_addr_i;
                             state_q <= DC_UNC_WAIT;
                         end
                     end
-                end
-                DC_RESP: begin
-                    state_q <= DC_IDLE;
-                    killed_q <= 1'b0;
                 end
                 DC_UNC_WAIT: begin
                     if (mem_resp_valid_i) begin
                         if (!killed_q && !kill_i) begin
                             resp_data_q <= mem_resp_rdata_i;
-                            state_q <= DC_RESP;
+                            resp_valid_q <= 1'b1;
+                            state_q <= DC_IDLE;
                         end else begin
                             state_q <= DC_IDLE;
                             killed_q <= 1'b0;
@@ -196,16 +288,17 @@ module dcache #(
                             state_q <= DC_IDLE;
                             killed_q <= 1'b0;
                         end else begin
-                            data_q[req_addr_q[TAG_LSB-1:4]][fill_word_q] <= mem_resp_rdata_i;
-                            if (fill_word_q == target_word_q) target_data_q <= mem_resp_rdata_i;
-                            if (fill_word_q == 2'd3) begin
-                                valid_q[req_addr_q[TAG_LSB-1:4]] <= 1'b1;
-                                tag_q[req_addr_q[TAG_LSB-1:4]] <= req_addr_q[31:TAG_LSB];
-                                resp_data_q <= (target_word_q == fill_word_q) ?
-                                               mem_resp_rdata_i : target_data_q;
-                                state_q <= DC_RESP;
+                            if (refill_count_q == 2'd0) begin
+                                resp_data_q <= mem_resp_rdata_i;
+                                resp_valid_q <= 1'b1;
+                            end
+                            if (refill_count_q == 2'd3) begin
+                                tag_q[req_addr_q[TAG_LSB-1:4]] <=
+                                    {1'b1, req_addr_q[31:TAG_LSB]};
+                                state_q <= DC_IDLE;
                             end else begin
                                 fill_word_q <= fill_word_q + 1'b1;
+                                refill_count_q <= refill_count_q + 1'b1;
                                 state_q <= DC_REFILL_REQ;
                             end
                         end

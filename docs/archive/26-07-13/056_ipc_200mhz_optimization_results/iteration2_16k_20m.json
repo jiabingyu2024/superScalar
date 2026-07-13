@@ -1,0 +1,190 @@
+{
+  "test": "srcWithMext",
+  "mode": "src",
+  "checker": "src_lampseg",
+  "status": "TIMEOUT",
+  "reason": "max cycles reached",
+  "cycles": 20000000,
+  "max_cycles": 20000000,
+  "correctness": {
+    "summary": {
+      "final_symbol": "unknown",
+      "final_symbol_cn": "未知",
+      "right_8_lamps_all_on": false,
+      "right_8_lamps_value": "0x00020001",
+      "rv32i_pass_counter": 37,
+      "rv32i_fail_counter": 0,
+      "rv32i_count_from_seg": 37,
+      "mext_count_from_seg": 8
+    },
+    "led_readable": {
+      "last_raw": "0x00020001",
+      "first_raw": "0x00000001",
+      "final_symbol": "unknown",
+      "final_symbol_cn": "未知",
+      "pass_marker_matched": false,
+      "fail_marker_matched": false,
+      "pass_cycle": 0
+    },
+    "right_lamps": {
+      "available": true,
+      "mask": "0x03030303",
+      "value": "0x00020001",
+      "all_on": false,
+      "lamps": [
+        {"index": 1, "name": "lamp1_rv32i_or_base", "mask": "0x00000001", "on": true},
+        {"index": 2, "name": "lamp2", "mask": "0x00000002", "on": false},
+        {"index": 3, "name": "lamp3_perf_or_matrix", "mask": "0x00000100", "on": false},
+        {"index": 4, "name": "lamp4", "mask": "0x00000200", "on": false},
+        {"index": 5, "name": "lamp5", "mask": "0x00010000", "on": false},
+        {"index": 6, "name": "lamp6_csr_or_trap", "mask": "0x00020000", "on": true},
+        {"index": 7, "name": "lamp7", "mask": "0x01000000", "on": false},
+        {"index": 8, "name": "lamp8", "mask": "0x02000000", "on": false}
+      ]
+    },
+    "seg_readable": {
+      "last_raw": "0x37800000",
+      "last_nonzero_raw": "0x37800000",
+      "value_at_last_led_raw": "0x37800000",
+      "test_count_high_matches_expected": true,
+      "counter_low_matches_counter_ms": false,
+      "expected_high_mask": "0xfff00000",
+      "expected_high_value": "0x37800000",
+      "expected_counter_low_mask": "0x000fffff",
+      "expected_counter_low_value": "0x00000399"
+    },
+    "counters": {
+      "rv32i_pass_counter_seen": true,
+      "rv32i_pass_counter_last": 37,
+      "rv32i_pass_counter_expected": 37,
+      "rv32i_fail_counter_seen": false,
+      "rv32i_fail_counter_last": 0,
+      "counter_ms": 399,
+      "counter_start_cycle": 2416,
+      "counter_stop_cycle": 0
+    }
+  },
+  "perf": {
+    "cpu_freq_mhz": 50,
+    "elapsed_ms_by_cpu_freq": 400,
+    "soc_counter_freq_mhz": 50,
+    "core_cycle": 19999998,
+    "commit_count": 12513762,
+    "ipc": 0.625688,
+    "branch_count": 379604,
+    "branch_hit_count": 374808,
+    "branch_miss_count": 4796,
+    "branch_hit_rate": 0.987366,
+    "branch_miss_rate": 0.0126342,
+    "branch_breakdown": {
+      "conditional": {
+        "count": 0,
+        "miss_count": 0,
+        "miss_rate": 0
+      },
+      "jal": {
+        "count": 0,
+        "miss_count": 0,
+        "miss_rate": 0
+      },
+      "jalr": {
+        "count": 0,
+        "miss_count": 0,
+        "miss_rate": 0
+      }
+    },
+    "memory": {
+      "dram_read_count": 324360,
+      "dram_write_count": 749216,
+      "load_count": 4013269,
+      "store_count": 749220,
+      "mmio_read_count": 0,
+      "mmio_write_count": 4
+    },
+    "dcache": {
+      "access": 4387783,
+      "hit": 4306693,
+      "miss": 81090,
+      "hit_rate": 0.981519,
+      "miss_rate": 0.0184809
+    },
+    "stalls": {
+      "frontend_cycles": 14403,
+      "id_cycles": 0,
+      "rn_cycles": 0,
+      "ds_cycles": 0,
+      "is_cycles": 0,
+      "rr_cycles": 0,
+      "ex_cycles": 0,
+      "wb_cycles": 0,
+      "recovery_cycles": 0
+    },
+    "resources": {
+      "rob_full_cycles": 0,
+      "issue_queue_full_cycles": 0,
+      "issue_queue_full_breakdown": {
+        "int_cycles": 0,
+        "mem_cycles": 0,
+        "mul_cycles": 0
+      },
+      "rob_head_block": {
+        "not_done_cycles": 0,
+        "not_done_int_cycles": 0,
+        "not_done_mem_cycles": 0,
+        "not_done_mul_cycles": 0,
+        "not_done_other_cycles": 0,
+        "store_commit_wait_cycles": 0
+      },
+      "free_list_empty_cycles": 0,
+      "store_buffer_full_cycles": 0,
+      "serial_block_cycles": 0
+    },
+    "mem_stalls": {
+      "load_return_block_cycles": 7466836,
+      "load_access_block_cycles": 4771,
+      "store_commit_blocked_by_load_cycles": 0
+    },
+    "width": {
+      "issue_mix": {
+        "int_uops": 0,
+        "mem_uops": 0,
+        "mul_uops": 0
+      },
+      "dispatch": {
+        "w0_cycles": 0,
+        "w1_cycles": 0,
+        "w2_cycles": 0
+      },
+      "issue": {
+        "w0_cycles": 0,
+        "w1_cycles": 0,
+        "w2_cycles": 0
+      },
+      "commit": {
+        "w0_cycles": 0,
+        "w1_cycles": 0,
+        "w2_cycles": 0
+      }
+    },
+    "counter": {
+      "start_cycle": 2416,
+      "stop_cycle": 0,
+      "ms": 399
+    },
+    "led": {
+      "first_write_cycle": 2097,
+      "last_write_cycle": 3327,
+      "first_write": "0x00000001",
+      "last_write": "0x00020001"
+    },
+    "seg": {
+      "first_write_cycle": 2394,
+      "last_write_cycle": 2394,
+      "last_nonzero_write_cycle": 2394,
+      "first_write": "0x37800000",
+      "last_write": "0x37800000",
+      "last_nonzero_write": "0x37800000",
+      "value_at_last_led_write": "0x37800000"
+    }
+  }
+}

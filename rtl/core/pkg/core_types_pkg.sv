@@ -128,7 +128,6 @@ package core_types_pkg;
 
     typedef struct packed {
         logic valid;
-        logic committed;
         logic [TRANS_ID_W-1:0] trans_id;
         logic [7:0] store_seq;
         logic [31:0] addr;

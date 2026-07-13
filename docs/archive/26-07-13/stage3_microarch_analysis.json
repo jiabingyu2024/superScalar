@@ -1,0 +1,56 @@
+{
+  "$schema": "stage3_microarch_analysis",
+  "version": "1.1",
+  "design_name": "superScalar single-issue IPC and 200MHz optimization",
+  "reviewed_inputs": [
+    "052_cva6_inorder_single_issue_core_microarchitecture.md",
+    "053_superscalar_framework_inorder_single_issue_core_architecture.md",
+    "055_inorder_single_issue_core_implementation_and_regression_report.md"
+  ],
+  "datapath": {
+    "summary": "The measured bottleneck is the blocking load path: a one-outstanding load service, a response bubble on hits, full-line-before-response refill, and an 8KiB direct-mapped cache.",
+    "storage_elements": [
+      {"name": "scoreboard", "type": "fifo", "depth": 8, "width": 0, "description": "In-order transaction window", "basis": "spec_stated"},
+      {"name": "load_queue", "type": "fifo", "depth": 2, "width": 0, "description": "Load metadata and frozen store forwarding", "basis": "spec_stated"},
+      {"name": "dcache", "type": "sram", "depth": 512, "width": 128, "description": "Baseline 8KiB direct-mapped cache; parameter sweep up to 2048 lines", "basis": "inferred"}
+    ],
+    "buffering_behavior": "Keep one external read owner but pipeline cache hits and return the critical refill word before the remaining line words complete.",
+    "arithmetic_units": [],
+    "data_flow": "LoadQueue -> DCache lookup -> hit/critical refill response -> completion bypass -> scoreboard -> commit"
+  },
+  "control": {
+    "summary": "Replace the response-only state with a pulse, allow response plus next load start, and add refill word count/early-response state.",
+    "fsm_list": [
+      {"name": "dcache_fsm", "states": ["IDLE", "UNC_WAIT", "REFILL_REQ", "REFILL_WAIT"], "reset_state": "IDLE", "key_transitions": "Hit remains IDLE with registered response; miss refills critical word first and responds once before final line validation.", "complexity": "complex", "basis": "inferred"}
+    ],
+    "scheduling": "Committed stores retain priority; a load response may release the active slot while the next queued load starts in the same cycle.",
+    "update_ordering": "Old response completion precedes new active metadata installation; line valid is written only after refill_count reaches three."
+  },
+  "performance_constraints": {
+    "clock_freq_mhz": 200,
+    "throughput": "Target srcWithMext IPC >= 0.8; pipelined hit throughput one load per cycle after fill.",
+    "latency": "Return critical miss word on its first DRAM response; avoid a dedicated hit response bubble.",
+    "pipeline_stages": 6,
+    "folding_factor": "Single issue and single commit remain fixed.",
+    "basis": "spec_stated"
+  },
+  "low_power": {
+    "clock_gating": "No new clock gating in this iteration; prefer BRAM inference over resettable flop arrays.",
+    "power_domains": [{"name": "cpu_clk", "always_on": true, "retention_required": false, "description": "Core and data memory clock domain"}],
+    "retention_requirements": "Cache data is not reset; valid bits define usability."
+  },
+  "hazards_and_ordering": [
+    {"type": "data_hazard", "description": "Response and next request may share a cycle.", "affected_modules": ["core_top", "dcache"], "resolution": "Complete old transaction before replacing active metadata.", "basis": "inferred"},
+    {"type": "backpressure", "description": "Background refill still owns the ID-less external read channel.", "affected_modules": ["dcache", "DramBramAdapter"], "resolution": "Block new memory requests until all four words drain.", "basis": "spec_stated"},
+    {"type": "control_hazard", "description": "Flush may occur before or after early response.", "affected_modules": ["dcache", "scoreboard"], "resolution": "Kill/drain prevents post-flush fill and duplicate completion.", "basis": "spec_stated"}
+  ],
+  "verification_sensitive": [
+    {"behavior": "Critical word response is emitted exactly once.", "why_sensitive": "Duplicate completion can corrupt a reused transaction ID.", "suggested_coverage": "Miss each of four word offsets plus flush before/after first response."},
+    {"behavior": "Response and new hit request overlap.", "why_sensitive": "Incorrect NBA priority can clear the newly installed active load.", "suggested_coverage": "Back-to-back independent and dependent loads."},
+    {"behavior": "Line valid only after all refill words.", "why_sensitive": "Premature hit exposes stale array contents.", "suggested_coverage": "Access another word in the line during and immediately after refill."}
+  ],
+  "architecture_risks": [
+    {"id": 1, "risk": "Large asynchronous data arrays may fail 200MHz or infer excessive LUTRAM.", "severity": "high", "mitigation": "Use synchronous byte-write banks and verify routed inference."},
+    {"id": 2, "risk": "A larger scoreboard can improve memory overlap but lengthen the RAW critical path.", "severity": "medium", "mitigation": "Keep depth 8 until routed timing and stall data justify change."}
+  ]
+}
