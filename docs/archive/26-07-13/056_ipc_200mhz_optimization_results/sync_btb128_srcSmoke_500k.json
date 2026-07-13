@@ -1,7 +1,7 @@
 {
-  "test": "srcWithMext",
+  "test": "srcSmoke",
   "mode": "src",
-  "checker": "src_lampseg",
+  "checker": "src_ledonly",
   "status": "TIMEOUT",
   "reason": "max cycles reached",
   "cycles": 500000,
@@ -11,15 +11,15 @@
       "final_symbol": "unknown",
       "final_symbol_cn": "未知",
       "right_8_lamps_all_on": false,
-      "right_8_lamps_value": "0x00020001",
+      "right_8_lamps_value": "0x00000000",
       "rv32i_pass_counter": 37,
       "rv32i_fail_counter": 0,
       "rv32i_count_from_seg": 37,
-      "mext_count_from_seg": 8
+      "mext_count_from_seg": 0
     },
     "led_readable": {
-      "last_raw": "0x00020001",
-      "first_raw": "0x00000001",
+      "last_raw": "0x00000000",
+      "first_raw": "0x00000000",
       "final_symbol": "unknown",
       "final_symbol_cn": "未知",
       "pass_marker_matched": false,
@@ -27,30 +27,30 @@
       "pass_cycle": 0
     },
     "right_lamps": {
-      "available": true,
-      "mask": "0x03030303",
-      "value": "0x00020001",
+      "available": false,
+      "mask": "0x00000000",
+      "value": "0x00000000",
       "all_on": false,
       "lamps": [
-        {"index": 1, "name": "lamp1_rv32i_or_base", "mask": "0x00000001", "on": true},
+        {"index": 1, "name": "lamp1_rv32i_or_base", "mask": "0x00000001", "on": false},
         {"index": 2, "name": "lamp2", "mask": "0x00000002", "on": false},
         {"index": 3, "name": "lamp3_perf_or_matrix", "mask": "0x00000100", "on": false},
         {"index": 4, "name": "lamp4", "mask": "0x00000200", "on": false},
         {"index": 5, "name": "lamp5", "mask": "0x00010000", "on": false},
-        {"index": 6, "name": "lamp6_csr_or_trap", "mask": "0x00020000", "on": true},
+        {"index": 6, "name": "lamp6_csr_or_trap", "mask": "0x00020000", "on": false},
         {"index": 7, "name": "lamp7", "mask": "0x01000000", "on": false},
         {"index": 8, "name": "lamp8", "mask": "0x02000000", "on": false}
       ]
     },
     "seg_readable": {
-      "last_raw": "0x37800000",
-      "last_nonzero_raw": "0x37800000",
-      "value_at_last_led_raw": "0x37800000",
+      "last_raw": "0x37000000",
+      "last_nonzero_raw": "0x37000000",
+      "value_at_last_led_raw": "0x00000000",
       "test_count_high_matches_expected": true,
       "counter_low_matches_counter_ms": false,
-      "expected_high_mask": "0xfff00000",
-      "expected_high_value": "0x37800000",
-      "expected_counter_low_mask": "0x000fffff",
+      "expected_high_mask": "0xff000000",
+      "expected_high_value": "0x37000000",
+      "expected_counter_low_mask": "0x00ffffff",
       "expected_counter_low_value": "0x00000009"
     },
     "counters": {
@@ -60,7 +60,7 @@
       "rv32i_fail_counter_seen": false,
       "rv32i_fail_counter_last": 0,
       "counter_ms": 9,
-      "counter_start_cycle": 4594,
+      "counter_start_cycle": 3681,
       "counter_stop_cycle": 0
     }
   },
@@ -69,13 +69,13 @@
     "elapsed_ms_by_cpu_freq": 10,
     "soc_counter_freq_mhz": 50,
     "core_cycle": 499998,
-    "commit_count": 345018,
-    "ipc": 0.690036,
-    "branch_count": 11368,
-    "branch_hit_count": 11070,
-    "branch_miss_count": 298,
-    "branch_hit_rate": 0.973786,
-    "branch_miss_rate": 0.0262139,
+    "commit_count": 285895,
+    "ipc": 0.57179,
+    "branch_count": 115240,
+    "branch_hit_count": 93228,
+    "branch_miss_count": 22012,
+    "branch_hit_rate": 0.80899,
+    "branch_miss_rate": 0.19101,
     "branch_breakdown": {
       "conditional": {
         "count": 0,
@@ -94,22 +94,22 @@
       }
     },
     "memory": {
-      "dram_read_count": 100,
-      "dram_write_count": 21892,
-      "load_count": 86149,
-      "store_count": 21896,
+      "dram_read_count": 36,
+      "dram_write_count": 2967,
+      "load_count": 10198,
+      "store_count": 2978,
       "mmio_read_count": 0,
-      "mmio_write_count": 4
+      "mmio_write_count": 11
     },
     "dcache": {
-      "access": 108028,
-      "hit": 108003,
-      "miss": 25,
-      "hit_rate": 0.999769,
-      "miss_rate": 0.000231421
+      "access": 13155,
+      "hit": 13146,
+      "miss": 9,
+      "hit_rate": 0.999316,
+      "miss_rate": 0.000684151
     },
     "stalls": {
-      "frontend_cycles": 909,
+      "frontend_cycles": 66039,
       "id_cycles": 0,
       "rn_cycles": 0,
       "ds_cycles": 0,
@@ -140,8 +140,8 @@
       "serial_block_cycles": 0
     },
     "mem_stalls": {
-      "load_return_block_cycles": 142079,
-      "load_access_block_cycles": 11506,
+      "load_return_block_cycles": 10797,
+      "load_access_block_cycles": 1474,
       "store_commit_blocked_by_load_cycles": 0
     },
     "width": {
@@ -167,24 +167,24 @@
       }
     },
     "counter": {
-      "start_cycle": 4594,
+      "start_cycle": 3681,
       "stop_cycle": 0,
       "ms": 9
     },
     "led": {
-      "first_write_cycle": 4275,
-      "last_write_cycle": 5678,
-      "first_write": "0x00000001",
-      "last_write": "0x00020001"
+      "first_write_cycle": 0,
+      "last_write_cycle": 0,
+      "first_write": "0x00000000",
+      "last_write": "0x00000000"
     },
     "seg": {
-      "first_write_cycle": 4570,
-      "last_write_cycle": 4570,
-      "last_nonzero_write_cycle": 4570,
-      "first_write": "0x37800000",
-      "last_write": "0x37800000",
-      "last_nonzero_write": "0x37800000",
-      "value_at_last_led_write": "0x37800000"
+      "first_write_cycle": 3613,
+      "last_write_cycle": 3613,
+      "last_nonzero_write_cycle": 3613,
+      "first_write": "0x37000000",
+      "last_write": "0x37000000",
+      "last_nonzero_write": "0x37000000",
+      "value_at_last_led_write": "0x00000000"
     }
   }
 }

@@ -35,8 +35,6 @@ module decoder (
         uop_o.rd              = fetch_i.instr[11:7];
         uop_o.pred_next_pc    = fetch_i.pred_next_pc;
         uop_o.pred_kind       = fetch_i.pred_kind;
-        uop_o.pred_hit        = fetch_i.pred_hit;
-        uop_o.pred_counter    = fetch_i.pred_counter;
         uop_o.fu              = FU_NONE;
         uop_o.alu_op          = ALU_ADD;
         uop_o.branch_op       = BR_NONE;

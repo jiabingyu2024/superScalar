@@ -36,24 +36,18 @@ module dcache #(
 );
     localparam int unsigned INDEX_W = $clog2(LINE_COUNT);
     localparam int unsigned TAG_LSB = 4 + INDEX_W;
-    // CACHE_END is exclusive and the cacheable DRAM window is naturally
-    // aligned.  Bits above CACHE_ADDR_W are already checked by cacheable_c,
-    // so only the remaining local alias bits belong in the tag RAM.
-    localparam int unsigned CACHE_ADDR_W = $clog2(CACHE_END - CACHE_START);
-    localparam int unsigned TAG_W = CACHE_ADDR_W - TAG_LSB;
+    localparam int unsigned TAG_W = 32 - TAG_LSB;
 
     typedef enum logic [2:0] {
         DC_INIT, DC_IDLE, DC_UNC_REQ, DC_UNC_WAIT, DC_REFILL_REQ, DC_REFILL_WAIT
     } state_e;
     state_e state_q;
 
-    // Valid and tag share one synchronous BRAM.  The dedicated bank module
-    // exposes one physical write port, allowing Vivado to honor ram_style=block
-    // while DC_INIT still invalidates one line per cycle.
-    logic [TAG_W:0] tag_read_data;
-    logic tag_write_en;
-    logic [INDEX_W-1:0] tag_write_index;
-    logic [TAG_W:0] tag_write_data;
+    // Valid and tag share one synchronous BRAM.  DC_INIT clears one line per
+    // cycle so reset does not turn the valid array into 2048 flip-flops and a
+    // large dynamic mux.
+    (* ram_style = "block" *) logic [TAG_W:0] tag_q [0:LINE_COUNT-1];
+    logic [TAG_W:0] tag_read_q;
     logic [INDEX_W-1:0] init_index_q;
     logic [31:0] req_addr_q;
     logic [1:0] fill_word_q, refill_count_q;
@@ -62,7 +56,7 @@ module dcache #(
     logic lookup_valid_q;
     logic lookup_write_q;
     logic [31:0] lookup_addr_q;
-    logic [CACHE_ADDR_W-1:TAG_LSB] lookup_tag_q;
+    logic [31:TAG_LSB] lookup_tag_q;
     logic [INDEX_W-1:0] lookup_index_q;
     logic [1:0] lookup_word_q;
     logic [31:0] lookup_store_data_q;
@@ -80,7 +74,7 @@ module dcache #(
     logic cacheable_c, lookup_hit_c, lookup_load_miss_c, lookup_stall_c;
     logic metadata_read_en;
     logic [INDEX_W-1:0] index_c;
-    logic [CACHE_ADDR_W-1:TAG_LSB] tag_c;
+    logic [31:TAG_LSB] tag_c;
     logic [1:0] word_c;
     logic [31:0] store_aligned_data_c;
     logic [3:0] store_aligned_mask_c;
@@ -91,10 +85,10 @@ module dcache #(
     assign cacheable_c = !cpu_req_uncached_i &&
                          cpu_req_addr_i[31:18] == CACHE_START[31:18];
     assign index_c = cpu_req_addr_i[TAG_LSB-1:4];
-    assign tag_c   = cpu_req_addr_i[CACHE_ADDR_W-1:TAG_LSB];
+    assign tag_c   = cpu_req_addr_i[31:TAG_LSB];
     assign word_c  = cpu_req_addr_i[3:2];
-    assign lookup_hit_c = lookup_valid_q && tag_read_data[TAG_W] &&
-                          tag_read_data[TAG_W-1:0] == lookup_tag_q;
+    assign lookup_hit_c = lookup_valid_q && tag_read_q[TAG_W] &&
+                          tag_read_q[TAG_W-1:0] == lookup_tag_q;
     assign lookup_load_miss_c = lookup_valid_q && !lookup_write_q && !lookup_hit_c;
     // A store lookup occupies one extra cycle so its cache update reaches the
     // data RAM before a following load can observe that word.
@@ -103,25 +97,6 @@ module dcache #(
     assign store_aligned_data_c = cpu_req_wdata_i << {cpu_req_addr_i[1:0], 3'b000};
     assign store_aligned_mask_c = (cpu_req_wstrb_i << cpu_req_addr_i[1:0]) & 4'hf;
     assign idle_o = state_q == DC_IDLE;
-
-    // DC_INIT and the last refill beat are mutually exclusive writers.  Their
-    // address/data mux is outside the RAM inference template so the array maps
-    // to one block RAM instead of hundreds of cascaded RAM64M primitives.
-    assign tag_write_en = state_q == DC_INIT ||
-                          (state_q == DC_REFILL_WAIT && mem_resp_valid_i &&
-                           !killed_q && !kill_i && refill_count_q == 2'd3);
-    assign tag_write_index = state_q == DC_INIT ? init_index_q :
-                             req_addr_q[TAG_LSB-1:4];
-    assign tag_write_data = state_q == DC_INIT ? '0 :
-                            {1'b1, req_addr_q[CACHE_ADDR_W-1:TAG_LSB]};
-
-    dcache_tag_bank #(
-        .LINE_COUNT(LINE_COUNT), .TAG_WIDTH(TAG_W + 1)
-    ) u_tag_bank (
-        .clk(clk), .read_en_i(metadata_read_en), .read_index_i(index_c),
-        .read_data_o(tag_read_data), .write_en_i(tag_write_en),
-        .write_index_i(tag_write_index), .write_data_i(tag_write_data)
-    );
 
     genvar bank;
     generate
@@ -241,15 +216,20 @@ module dcache #(
             lookup_word_q <= '0;
             lookup_store_data_q <= '0;
             lookup_store_mask_q <= '0;
+            tag_read_q <= '0;
             killed_q <= 1'b0;
         end else begin
             // Responses are one-cycle events.  Keeping the cache in DC_IDLE on
             // a hit permits a new request to replace the completing load.
             resp_valid_q <= 1'b0;
             lookup_valid_q <= 1'b0;
+            if (metadata_read_en) begin
+                tag_read_q <= tag_q[index_c];
+            end
             if (kill_i && state_q != DC_IDLE) killed_q <= 1'b1;
             unique case (state_q)
                 DC_INIT: begin
+                    tag_q[init_index_q] <= '0;
                     if (init_index_q == INDEX_W'(LINE_COUNT - 1)) begin
                         init_index_q <= '0;
                         state_q <= DC_IDLE;
@@ -335,6 +315,8 @@ module dcache #(
                                 resp_valid_q <= 1'b1;
                             end
                             if (refill_count_q == 2'd3) begin
+                                tag_q[req_addr_q[TAG_LSB-1:4]] <=
+                                    {1'b1, req_addr_q[31:TAG_LSB]};
                                 state_q <= DC_IDLE;
                             end else begin
                                 fill_word_q <= fill_word_q + 1'b1;

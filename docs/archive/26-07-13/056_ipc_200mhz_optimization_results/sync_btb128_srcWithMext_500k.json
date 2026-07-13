@@ -69,13 +69,13 @@
     "elapsed_ms_by_cpu_freq": 10,
     "soc_counter_freq_mhz": 50,
     "core_cycle": 499998,
-    "commit_count": 345018,
-    "ipc": 0.690036,
+    "commit_count": 345025,
+    "ipc": 0.69005,
     "branch_count": 11368,
-    "branch_hit_count": 11070,
-    "branch_miss_count": 298,
-    "branch_hit_rate": 0.973786,
-    "branch_miss_rate": 0.0262139,
+    "branch_hit_count": 11073,
+    "branch_miss_count": 295,
+    "branch_hit_rate": 0.97405,
+    "branch_miss_rate": 0.02595,
     "branch_breakdown": {
       "conditional": {
         "count": 0,
@@ -96,20 +96,20 @@
     "memory": {
       "dram_read_count": 100,
       "dram_write_count": 21892,
-      "load_count": 86149,
+      "load_count": 86150,
       "store_count": 21896,
       "mmio_read_count": 0,
       "mmio_write_count": 4
     },
     "dcache": {
-      "access": 108028,
-      "hit": 108003,
+      "access": 108029,
+      "hit": 108004,
       "miss": 25,
       "hit_rate": 0.999769,
-      "miss_rate": 0.000231421
+      "miss_rate": 0.000231419
     },
     "stalls": {
-      "frontend_cycles": 909,
+      "frontend_cycles": 900,
       "id_cycles": 0,
       "rn_cycles": 0,
       "ds_cycles": 0,
@@ -140,8 +140,8 @@
       "serial_block_cycles": 0
     },
     "mem_stalls": {
-      "load_return_block_cycles": 142079,
-      "load_access_block_cycles": 11506,
+      "load_return_block_cycles": 142085,
+      "load_access_block_cycles": 11504,
       "store_commit_blocked_by_load_cycles": 0
     },
     "width": {
@@ -173,7 +173,7 @@
     },
     "led": {
       "first_write_cycle": 4275,
-      "last_write_cycle": 5678,
+      "last_write_cycle": 5676,
       "first_write": "0x00000001",
       "last_write": "0x00020001"
     },

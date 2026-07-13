@@ -16,15 +16,18 @@ module regfile (
     input  logic [31:0] write_data_i
 );
     logic [31:0] regs_q [0:31];
+    integer i;
+
     assign rs1_data_o = (rs1_addr_i == 0) ? 32'd0 : regs_q[rs1_addr_i];
     assign rs2_data_o = (rs2_addr_i == 0) ? 32'd0 : regs_q[rs2_addr_i];
 
-    // RV32 does not define reset values for x1..x31.  Resetting all 1024 data
-    // bits created a global high-fanout reset path without adding architectural
-    // state.  Only x0 is physically maintained at zero.
     always_ff @(posedge clk) begin
-        if (write_valid_i && write_addr_i != 0) regs_q[write_addr_i] <= write_data_i;
-        regs_q[0] <= 32'd0;
+        if (rst) begin
+            for (i = 0; i < 32; i = i + 1) regs_q[i] <= 32'd0;
+        end else begin
+            if (write_valid_i && write_addr_i != 0) regs_q[write_addr_i] <= write_data_i;
+            regs_q[0] <= 32'd0;
+        end
     end
 
 `ifndef SYNTHESIS

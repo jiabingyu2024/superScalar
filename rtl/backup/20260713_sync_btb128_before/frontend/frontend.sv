@@ -20,8 +20,6 @@ module frontend (
     input  logic predictor_update_taken_i,
     input  logic [31:0] predictor_update_target_i,
     input  core_types_pkg::pred_kind_e predictor_update_kind_i,
-    input  logic predictor_update_pred_hit_i,
-    input  logic [1:0] predictor_update_pred_counter_i,
     input  logic predictor_commit_call_i,
     input  logic predictor_commit_return_i,
     input  logic [31:0] predictor_commit_link_i
@@ -33,47 +31,33 @@ module frontend (
     logic [COUNT_W-1:0] queue_count;
     logic [31:0] fetch_pc_q;
     logic pending_valid_q;
-    logic [31:0] pending_pc_q;
-    logic [31:0] request_pc_c;
-    logic predictor_result_valid, predicted_hit;
+    logic [31:0] pending_pc_q, pending_pred_next_q;
+    pred_kind_e pending_pred_kind_q;
     logic [31:0] predicted_next_pc;
     pred_kind_e predicted_kind;
-    logic [1:0] predicted_counter;
     fetch_entry_t push_entry;
     logic queue_push, queue_pop;
 
     branch_predictor u_branch_predictor (
-        .clk(clk), .rst(rst), .predict_read_en_i(irom_ena_o),
-        .predict_pc_i(request_pc_c), .predict_valid_o(predictor_result_valid),
+        .clk(clk), .rst(rst), .predict_pc_i(fetch_pc_q),
         .predict_next_pc_o(predicted_next_pc), .predict_kind_o(predicted_kind),
-        .predict_hit_o(predicted_hit), .predict_counter_o(predicted_counter),
         .update_valid_i(predictor_update_valid_i), .update_pc_i(predictor_update_pc_i),
         .update_taken_i(predictor_update_taken_i), .update_target_i(predictor_update_target_i),
-        .update_kind_i(predictor_update_kind_i),
-        .update_pred_hit_i(predictor_update_pred_hit_i),
-        .update_pred_counter_i(predictor_update_pred_counter_i),
-        .commit_call_i(predictor_commit_call_i),
+        .update_kind_i(predictor_update_kind_i), .commit_call_i(predictor_commit_call_i),
         .commit_return_i(predictor_commit_return_i), .commit_link_i(predictor_commit_link_i)
     );
 
-    // The previous synchronous predictor response chooses the address for the
-    // next lockstep IROM+BTB read.  When no response is pending (reset,
-    // redirect, or a queue-credit stall), fetch_pc_q preserves that address.
-    assign request_pc_c = (pending_valid_q && predictor_result_valid) ?
-                          predicted_next_pc : fetch_pc_q;
-    assign irom_addr_o = request_pc_c;
+    assign irom_addr_o = fetch_pc_q;
     assign irom_ena_o = !rst && !redirect_valid_i &&
                         ((queue_count + COUNT_W'(pending_valid_q)) < COUNT_W'(FETCH_QUEUE_DEPTH));
-    assign queue_push = pending_valid_q && predictor_result_valid && !redirect_valid_i;
+    assign queue_push = pending_valid_q && !redirect_valid_i;
     assign queue_pop = fetch_valid_o && fetch_ready_i && !redirect_valid_i;
     always_comb begin
         push_entry = '0;
         push_entry.pc = pending_pc_q;
         push_entry.instr = irom_data_i;
-        push_entry.pred_next_pc = predicted_next_pc;
-        push_entry.pred_kind = predicted_kind;
-        push_entry.pred_hit = predicted_hit;
-        push_entry.pred_counter = predicted_counter;
+        push_entry.pred_next_pc = pending_pred_next_q;
+        push_entry.pred_kind = pending_pred_kind_q;
     end
 
     fetch_queue u_fetch_queue (
@@ -87,25 +71,25 @@ module frontend (
             fetch_pc_q <= RESET_PC;
             pending_valid_q <= 1'b0;
             pending_pc_q <= '0;
+            pending_pred_next_q <= '0;
+            pending_pred_kind_q <= PRED_NONE;
         end else if (redirect_valid_i) begin
             fetch_pc_q <= redirect_target_i;
             pending_valid_q <= 1'b0;
         end else begin
             pending_valid_q <= irom_ena_o;
-            if (pending_valid_q && predictor_result_valid)
-                fetch_pc_q <= predicted_next_pc;
             if (irom_ena_o) begin
-                pending_pc_q <= request_pc_c;
+                pending_pc_q <= fetch_pc_q;
+                pending_pred_next_q <= predicted_next_pc;
+                pending_pred_kind_q <= predicted_kind;
+                fetch_pc_q <= predicted_next_pc;
             end
         end
     end
 
 `ifndef SYNTHESIS
     always_ff @(posedge clk) begin
-        if (!rst) begin
-            assert (queue_count + COUNT_W'(pending_valid_q) <= COUNT_W'(FETCH_QUEUE_DEPTH));
-            assert (pending_valid_q == predictor_result_valid);
-        end
+        if (!rst) assert (queue_count + COUNT_W'(pending_valid_q) <= COUNT_W'(FETCH_QUEUE_DEPTH));
     end
 `endif
 endmodule

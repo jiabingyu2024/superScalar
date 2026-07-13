@@ -68,8 +68,6 @@ module core_top (
     logic branch_predictor_update_valid_q;
     logic [31:0] branch_target, branch_actual_next, branch_pc_q;
     pred_kind_e branch_kind;
-    logic branch_pred_hit;
-    logic [1:0] branch_pred_counter;
 
     store_entry_t store_q [0:STORE_BUFFER_DEPTH-1];
     logic [STORE_BUFFER_DEPTH-1:0] store_committed_q;
@@ -81,9 +79,10 @@ module core_top (
     logic load_active_q;
     load_entry_t load_active_meta_q;
 
-    logic [31:0] src1_value, src2_value, src1_mem_value;
-    logic src1_ready, src2_ready, src1_mem_ready, src1_found, src2_found;
+    logic [31:0] src1_value, src2_value, src1_nonload_value;
+    logic src1_ready, src2_ready, src1_found, src2_found;
     logic [TRANS_ID_W-1:0] src1_tid, src2_tid;
+    logic load_src1_bypass_hit;
     logic [31:0] csr_src_value;
     logic issue_fu_ready, issue_fire;
     logic exec_load_enqueue, exec_store_enqueue;
@@ -222,8 +221,6 @@ module core_top (
         .predictor_update_pc_i(branch_pc_q), .predictor_update_taken_i(branch_taken),
         .predictor_update_target_i(predictor_update_target),
         .predictor_update_kind_i(branch_kind),
-        .predictor_update_pred_hit_i(branch_pred_hit),
-        .predictor_update_pred_counter_i(branch_pred_counter),
         .predictor_commit_call_i(predictor_commit_call),
         .predictor_commit_return_i(predictor_commit_return),
         .predictor_commit_link_i(commit_entry.link_addr)
@@ -274,6 +271,7 @@ module core_top (
         src2_found = 1'b0;
         src1_tid = '0;
         src2_tid = '0;
+        load_src1_bypass_hit = 1'b0;
         if (id_uop_q.uses_rs1 && id_uop_q.rs1 != 0 &&
             producer_valid_q[id_uop_q.rs1]) begin
             src1_found = 1'b1;
@@ -288,24 +286,13 @@ module core_top (
             src2_ready = scoreboard_q[producer_tid_q[id_uop_q.rs2]].done;
             src2_value = scoreboard_q[producer_tid_q[id_uop_q.rs2]].result;
         end
-        // The memory-address resolver starts from architecturally registered
-        // sources.  Fixed/MDU completions may still bypass below, but a DCache
-        // completion never drives either its data or ready control.
-        src1_mem_ready = src1_ready;
-        src1_mem_value = src1_value;
         if (src1_found) begin
             if (fixed_completion_valid && fixed_completion.trans_id == src1_tid) begin
-                src1_ready = 1'b1;
-                src1_value = fixed_completion.result;
-                src1_mem_ready = 1'b1;
-                src1_mem_value = fixed_completion.result;
+                src1_ready = 1'b1; src1_value = fixed_completion.result;
             end else if (load_completion_valid && load_completion_meta.trans_id == src1_tid) begin
                 src1_ready = 1'b1; src1_value = load_result;
             end else if (mdu_resp_valid && mdu_resp_tid == src1_tid) begin
-                src1_ready = 1'b1;
-                src1_value = mdu_resp_result;
-                src1_mem_ready = 1'b1;
-                src1_mem_value = mdu_resp_result;
+                src1_ready = 1'b1; src1_value = mdu_resp_result;
             end
         end
         if (src2_found) begin
@@ -316,6 +303,16 @@ module core_top (
             end else if (mdu_resp_valid && mdu_resp_tid == src2_tid) begin
                 src2_ready = 1'b1; src2_value = mdu_resp_result;
             end
+        end
+        // Memory-address generation deliberately excludes the same-cycle load
+        // completion bypass.  A dependent load/store pauses for this one case
+        // and consumes the registered scoreboard value on the following cycle,
+        // preventing DCache BRAM data from traversing the resolver plus AGU.
+        src1_nonload_value = src1_value;
+        if (src1_found && load_completion_valid &&
+            load_completion_meta.trans_id == src1_tid) begin
+            load_src1_bypass_hit = 1'b1;
+            src1_nonload_value = scoreboard_q[src1_tid].result;
         end
     end
 
@@ -345,11 +342,10 @@ module core_top (
     // A full window may still allocate when its done head commits this cycle.
     // issue_ptr == commit_ptr in that case; textual NBA priority makes the new
     // allocation win after the old head is cleared.
-    assign issue_fire = id_valid_q &&
-                        (((id_uop_q.fu == FU_LOAD) || (id_uop_q.fu == FU_STORE)) ?
-                         src1_mem_ready : src1_ready) &&
-                        src2_ready && issue_fu_ready &&
+    assign issue_fire = id_valid_q && src1_ready && src2_ready && issue_fu_ready &&
                         ((scoreboard_count_q < SB_CNT_W'(SCOREBOARD_DEPTH)) || commit_fire) &&
+                        !(((id_uop_q.fu == FU_LOAD) || (id_uop_q.fu == FU_STORE)) &&
+                          load_src1_bypass_hit) &&
                         !branch_resolve_valid_c && !redirect_valid;
 
     fixed_execute u_fixed_execute (
@@ -426,12 +422,8 @@ module core_top (
                     direct_older_store_pending = 1'b1;
             end
         end
-        // Present a younger request before the active load's hit is known.
-        // DCache may start its synchronous tag/data read speculatively; ready
-        // still controls ownership transfer, so a miss leaves the request in
-        // the queue.  This removes hit-result -> next-BRAM-enable timing while
-        // retaining one accepted cache hit per cycle.
-        load_direct_candidate = !full_flush && exec_load_enqueue && load_count_q == 0 &&
+        load_direct_candidate = !full_flush && exec_load_enqueue &&
+                                (!load_active_q || dc_resp_valid) && load_count_q == 0 &&
                                 (addr_is_dram(exec_mem_addr_q) ||
                                  (!direct_older_store_pending &&
                                   exec_q.trans_id == commit_ptr_q));
@@ -448,7 +440,8 @@ module core_top (
             dc_req_write = 1'b0;
             dc_req_addr = exec_mem_addr_q;
             dc_req_uncached = !addr_is_dram(exec_mem_addr_q);
-        end else if (!full_flush && load_count_q != 0 && !load_forward_complete &&
+        end else if (!full_flush && (!load_active_q || dc_resp_valid) &&
+                     load_count_q != 0 && !load_forward_complete &&
                      (addr_is_dram(load_q[0].addr) ||
                       (!older_store_pending &&
                        load_q[0].trans_id == commit_ptr_q))) begin
@@ -594,8 +587,6 @@ module core_top (
             branch_actual_next <= '0;
             branch_pc_q <= '0;
             branch_kind <= PRED_NONE;
-            branch_pred_hit <= 1'b0;
-            branch_pred_counter <= 2'b01;
             store_head_q <= '0;
             store_tail_q <= '0;
             store_count_q <= '0;
@@ -630,8 +621,6 @@ module core_top (
                 branch_actual_next <= branch_actual_next_c;
                 branch_pc_q <= exec_q.uop.pc;
                 branch_kind <= branch_kind_c;
-                branch_pred_hit <= exec_q.uop.pred_hit;
-                branch_pred_counter <= exec_q.uop.pred_counter;
             end
             if (full_flush) begin
                 issue_ptr_q <= '0;
@@ -660,14 +649,12 @@ module core_top (
                 if (issue_fire && !id_uop_q.exception_valid && id_uop_q.fu != FU_SYSTEM) begin
                     exec_q.trans_id <= issue_ptr_q;
                     exec_q.uop <= id_uop_q;
-                    exec_q.op1 <= ((id_uop_q.fu == FU_LOAD) ||
-                                   (id_uop_q.fu == FU_STORE)) ?
-                                  src1_mem_value : src1_value;
+                    exec_q.op1 <= src1_value;
                     exec_q.op2 <= src2_value;
                     // Early AGU retiming: the memory stage receives a
                     // registered effective address instead of placing a
                     // 32-bit add in front of cache metadata/RAM controls.
-                    exec_mem_addr_q <= src1_mem_value + id_uop_q.imm;
+                    exec_mem_addr_q <= src1_nonload_value + id_uop_q.imm;
                 end
 
                 if (fixed_completion_valid && scoreboard_q[fixed_completion.trans_id].occupied) begin
@@ -701,6 +688,7 @@ module core_top (
                 end
 
                 if (issue_fire) begin
+                    scoreboard_q[issue_ptr_q] <= '0;
                     scoreboard_q[issue_ptr_q].occupied <= 1'b1;
                     scoreboard_q[issue_ptr_q].done <= id_uop_q.exception_valid || id_uop_q.fu == FU_SYSTEM;
                     scoreboard_q[issue_ptr_q].pc <= id_uop_q.pc;
@@ -717,7 +705,6 @@ module core_top (
                     scoreboard_q[issue_ptr_q].exception_valid <= id_uop_q.exception_valid;
                     scoreboard_q[issue_ptr_q].exception_cause <= id_uop_q.exception_cause;
                     scoreboard_q[issue_ptr_q].exception_tval <= id_uop_q.exception_tval;
-                    scoreboard_q[issue_ptr_q].store_slot_valid <= 1'b0;
                     scoreboard_q[issue_ptr_q].is_call <= (id_uop_q.is_jal || id_uop_q.is_jalr) &&
                                                         (id_uop_q.rd == 5'd1 || id_uop_q.rd == 5'd5);
                     scoreboard_q[issue_ptr_q].is_return <= id_uop_q.is_jalr &&

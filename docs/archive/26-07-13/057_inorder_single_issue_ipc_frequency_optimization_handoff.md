@@ -297,3 +297,213 @@ python3 scripts/cluster_timing_paths.py \
 | “接近 2 秒”最终成绩 | 未证明 |
 
 本阶段到此收口。后续从第 8 节开始即可，不需要重新做 iteration6 的全量路径提取。
+
+## 12. 2026-07-13 21:49 routed 结果与 WNS=-0.786 ns 后续优化
+
+用户随后提供了 E 盘 `digital_twin_srcWithMext` 的新 routed 工程。该 DCP 对应的三份关键 RTL 与工作区语义一致，已经包含 DMem payload CE 本地化和 uncached-load `DC_UNC_REQ` 隔离，因此本节是 iteration6 之后的新一轮路径排序，不是旧报告重复分析。
+
+### 12.1 新 routed 基线
+
+| 项目 | 结果 |
+|---|---:|
+| 约束频率/周期 | 200 MHz / 5.000 ns |
+| WNS | -0.786 ns |
+| TNS | -1277.522 ns |
+| setup failing endpoints | 4401 |
+| hold failing endpoints | 0 |
+| 全量 CSV 行数 | 4402（含表头） |
+| 全量 raw RPT `Slack (VIOLATED)` 数 | 4401 |
+
+原始 routed report 的最差路径已经不再是 `dmem_regslice` payload CE，说明上一轮边界打拍达到了预期。新的最差路径为：
+
+1. `load_head_q → u_dcache/tag_read_q/D`，WNS=-0.786 ns，11 级逻辑；其中 tag 阵列虽然声明 `ram_style="block"`，但综合日志明确报告 infeasible，实际映射为 2K×18、384 个 RAM64M，产生级联 LUTRAM 地址/读数据路径。
+2. DCache data BRAM output → `exec_mem_addr_q/D`，WNS=-0.725 ns；路径经过 load completion、Scoreboard result 选择、源操作数旁路和 AGU。
+3. DCache data BRAM output → `scoreboard_q[*].csr_src/D`，WNS=-0.710 ns；绝大多数是非 CSR 指令仍无条件保存 `csr_src` 造成的无效数据路径。
+4. `cpu_rst_sync → RegFile/Store Queue/Load Queue/Scoreboard payload reset`，最差约 -0.650 ns；这些 payload 在 valid/occupied 为零时没有架构意义。
+
+全部 4401 条路径均已导出并聚类，而不是只保留 top20：
+
+- `056_ipc_200mhz_optimization_results/iteration8_wns0786_before_opt_all_violating_setup_paths.csv`
+- `056_ipc_200mhz_optimization_results/iteration8_wns0786_before_opt_all_violating_setup_paths_summary.txt`
+- `056_ipc_200mhz_optimization_results/iteration8_wns0786_before_opt_path_clusters.md`
+- E 盘 build report 目录中的 `wns_0786_before_opt_all_violating_setup_paths.rpt` 保留 4401 条 Vivado 原始全文。
+
+聚类结果为 363 个细粒度族、36 个模块级起点→终点组合，模块级计数总和为 4401。
+
+### 12.2 本轮 RTL 处理
+
+| 修改 | 文件 | 覆盖的关键路径 | 功能/性能边界 |
+|---|---|---|---|
+| 独立 tag BRAM bank，统一为单写口+同步读模板 | `dcache_tag_bank.sv`、`dcache.sv` | `load_head/addr → 384×RAM64M → tag_read_q` 以及 LUTRAM 拥塞 | lookup 拍数不变；`DC_INIT` 与 refill 写入语义不变 |
+| Load Queue 改为 slot0 固定队头的 2-entry shift FIFO | `core_top.sv` | 210 条以 `load_head_q` 为起点的违例 | 不增加 hit 周期；支持 pop、enqueue 和二者同拍 |
+| memory AGU 不使用同拍 load completion 数据旁路 | `core_top.sv` | DCache BRAM → resolver → `exec_mem_addr_q/D` | 仅 load→下一条 load/store 地址依赖增加 1 拍；普通 ALU load-use 旁路保留 |
+| CSR 源数据改用 RF+WB bypass 专用路径，并只对 CSR 写入 | `core_top.sv` | 181 条 DCache BRAM → `csr_src/D` | CSR 原有 serialize 合同不变 |
+| 仅复位 valid/occupied，不复位无效 payload；x1..x31 不复位 | `core_top.sv`、`regfile.sv` | 大量 reset→RegFile/Queue/Scoreboard payload `/R` | RV32 只规定 x0 恒为零；queue payload 只在 valid=1 时读取 |
+
+新增 `rtl/core/memory/dcache_tag_bank.sv` 已加入 `scripts/filelists/core.f`。E 盘源码树与工作区已同步。首次在旧 XPR 中直接重跑曾报 `[Synth 8-439] module 'dcache_tag_bank' not found`；随后已用 `fpga/register_filelist_sources.tcl` 把缺失文件注册进 `digital_twin_srcWithMext.xpr`（`added=1`）并更新 compile order。后续也可以通过 `fpga/run_implementation.tcl ... 1` 自动刷新 filelist，不能直接用 21:49 的旧 DCP 判断本轮效果。
+
+### 12.3 修改后的短回归
+
+| 项目 | 结果 |
+|---|---:|
+| Verilator myCPU build | PASS |
+| Verilator student_top build | PASS |
+| RV32UI | 40/40 PASS |
+| RV32MI | 4/4 PASS |
+| RV32UM | 8/8 PASS |
+| `srcSmoke`, 500k | 预期 TIMEOUT；RV32I=37、fail=0；IPC=0.574176 |
+| `srcWithMext`, 500k | 预期 TIMEOUT；RV32I=37、M=8、fail=0；commit=345018、IPC=0.690036 |
+
+本轮前的同源 500k `srcWithMext` IPC 为 0.690042；修改后只减少 3 次提交，差值约 0.000006，未观察到可见 IPC 回退。
+
+### 12.4 尚未宣称的结果
+
+按“后续由用户综合”的要求，本轮没有重新启动 synthesis/implementation。因此：
+
+- 不能把结构性消除路径写成已经 timing closed；
+- 必须从 synthesis log 核对 `u_tag_bank/mem_q` 是否推断为 RAMB，且不再出现 DCache tag 的 `ram_style infeasible`；
+- 新 route 后仍要导出全部负 slack 路径，检查 WNS、TNS、端点总数以及新的次关键路径；
+- 只有本轮候选 RTL 不再变化后，才运行 `srcSmoke/srcWithMext` 全量回归。
+
+## 13. 2026-07-13 22:21 routed 结果与 WNS=-0.999 ns 后续优化
+
+E 盘工程在补齐 `dcache_tag_bank.sv` 后完成了新的 synthesis/implementation。综合日志确认 tag bank 已推断为一个 2K×18 RAMB36，DCache 的 LUTRAM 降至 176 LUT，因此第 12 节的“tag 阵列被实现成 384 个 RAM64M”问题已经解决。新的 WNS=-0.999 ns 不是该旧问题残留，而是 RAMB 输出后的 hit 判定及 load completion 控制跨越了 Core 多个组合域。
+
+### 13.1 全量违例提取
+
+| 项目 | 结果 |
+|---|---:|
+| 约束频率/周期 | 200 MHz / 5.000 ns |
+| WNS | -0.999 ns |
+| TNS | -1630.295 ns |
+| setup failing endpoints | 4567 |
+| hold failing endpoints | 0 |
+| 全量 CSV 行数 | 4568（含表头） |
+| 精细路径族 | 253 |
+| 模块级起点→终点组合 | 27 |
+
+全部 4567 条负 slack setup 路径均已提取，而不是只分析 timing summary 的前几条：
+
+- `056_ipc_200mhz_optimization_results/iteration9_wns0999_before_opt_all_violating_setup_paths.csv`
+- `056_ipc_200mhz_optimization_results/iteration9_wns0999_before_opt_all_violating_setup_paths_summary.txt`
+- `056_ipc_200mhz_optimization_results/iteration9_wns0999_before_opt_path_clusters.md`
+- 33 MiB Vivado 原始全文保留在 E 盘 build report 目录：`wns_0999_before_opt_all_violating_setup_paths.rpt`
+
+按起点统计，tag BRAM 输出占 3085 条，Scoreboard `fu` 状态占 903 条，`cpu_rst_sync` 占 202 条，其余 377 条分散在 MemBridge、execute、decode 等路径。前三类合计 4190 条，占全部违例的 91.7%。
+
+### 13.2 最差路径的真实组合链
+
+最差路径为：
+
+```text
+u_dcache/u_tag_bank/mem_q_reg/CLKBWRCLK
+  → 17-bit tag equality（2×CARRY4）
+  → lookup_hit_c / dc_resp_valid
+  → load_completion_valid
+  → Scoreboard result/source resolver
+  → memory source ready/value select
+  → 32-bit AGU（9×CARRY4）
+  → exec_mem_addr_q[*]/D
+```
+
+该路径 data path 为 5.940 ns、16 级逻辑，WNS=-0.999 ns。它暴露出第 12 节“memory AGU 不使用 load 数据”的处理只隔离了数据值，没有隔离 `load_completion_valid` 对 ready/选择控制的影响；因此综合后 tag hit 仍能控制下一条 memory uop 的 AGU 寄存器。
+
+其余高频族也具有同一根因：
+
+1. tag BRAM → `scoreboard_q[*].csr_src/R`，最差 -0.923 ns：每次发射先执行整项 `scoreboard <= '0`，使 `issue_fire` 驱动大量无效 payload 的复位端。
+2. tag BRAM → exception payload CE，最差 -0.918 ns：同样由 hit→completion→issue/entry 更新控制扇出形成。
+3. tag BRAM → DCache data BRAM enable，最差 -0.880 ns：只有确认当前 load hit 后才呈递下一请求，导致当前 hit 控制下一拍同步 RAM read enable。
+4. tag BRAM → Load Queue payload CE，最差 -0.867 ns：load completion/queue pop 与同拍 enqueue 的控制继续传播到整个 payload。
+
+### 13.3 本轮 RTL 优化
+
+| 修改 | 文件 | 切断的路径 | 保持的功能/IPC合同 |
+|---|---|---|---|
+| tag 只保存 DRAM 窗口内部真正可能混叠的地址位 | `dcache.sv` | 17-bit equality 的 2×CARRY4；tag 从 17+valid 缩为 3+valid | `cacheable_c` 已先比较固定的 `[31:18]`；DRAM 为自然对齐的 256 KiB `[0x8010_0000,0x8014_0000)`，不产生地址别名 |
+| 为 memory uop 增加独立 `src1_mem_ready/src1_mem_value` resolver | `core_top.sv` | tag hit/load completion 控制与数据 → AGU | ALU/MDU→memory 同拍旁路保留；load→普通 ALU/branch 同拍旁路保留；只有 load→下一条 load/store 地址等待 Scoreboard 登记结果 |
+| active load 尚未返回时即可向 DCache 预呈递队首/直接 load | `core_top.sv` | 当前 hit → 下一请求 tag/data BRAM read enable | `dc_req_ready` 仍是唯一 ownership/pop 条件；miss 时请求保留，hit 流水吞吐不降 |
+| 删除每次 issue 的整项 `scoreboard_q[issue_ptr_q] <= '0` | `core_top.sv` | `issue_fire` → 256-bit payload reset/CE 扇出 | 所有有架构意义的字段逐项赋值；显式清 `store_slot_valid`；CSR 源仍只在 CSR uop 时写入 |
+
+如果把第一项误用于非自然对齐或非 2 的幂大小的 cacheable window，会产生 tag alias；因此该优化依赖当前固定的 256 KiB DRAM 地址合同。若以后修改 `DRAM_START/DRAM_END`，必须同步增加 elaboration 检查或恢复完整物理 tag。
+
+### 13.4 load wakeup A/B 取舍
+
+为判断是否应彻底切断 load completion 的同拍旁路，曾临时关闭全部 load→consumer wakeup。固定 500k `srcWithMext` 结果如下：
+
+| 候选 | commit | IPC | 相对当前候选 |
+|---|---:|---:|---:|
+| 保留普通 consumer 的 load completion bypass | 345018 | 0.690036 | 基准 |
+| 关闭全部 load completion bypass | 305291 | 0.610582 | commit/IPC 下降约 11.5% |
+
+因此没有采用“全局延迟 load wakeup”的简单做法。最终 RTL 只从 memory AGU 域隔离 load completion，普通 ALU、分支等消费者仍可同拍唤醒；A/B 临时版本已经恢复且未同步到最终候选。
+
+### 13.5 修改后验证与当前边界
+
+| 项目 | 结果 |
+|---|---:|
+| Verilator myCPU build | PASS |
+| Verilator student_top build | PASS |
+| RV32UI | 40/40 PASS |
+| RV32MI | 4/4 PASS |
+| RV32UM | 8/8 PASS |
+| `srcSmoke`, 500k | 预期 TIMEOUT；RV32I=37、fail=0；commit=287088、IPC=0.574176 |
+| `srcWithMext`, 500k | 预期 TIMEOUT；RV32I=37、M=8、fail=0；commit=345018、IPC=0.690036 |
+
+工作区的 `core_top.sv`、`dcache.sv` 已同步至 E 盘源码树，`cmp` 校验一致。按照“减少 Vivado 调用、中间只跑短窗”的约束，本节修改后没有再次启动 implementation，因此当前只证明了功能与结构性断路，不能声称 WNS 已收敛或 200 MHz 已关闭。
+
+下一次只需对当前候选运行一次新的 implementation，并重新提取全部负 slack 路径。重点检查：
+
+1. 最差路径中不再出现 `tag BRAM → exec_mem_addr_q`。
+2. `tag BRAM → data BRAM EN` 和 `tag BRAM → csr_src/R` 两族消失或显著收缩。
+3. tag comparator 不再出现原来的 2×CARRY4；tag bank 仍保持 RAMB 推断。
+4. 若新 WNS 转移到 reset、MulDiv 或 MemBridge，再按 iteration9 CSV 的全量计数排序处理，不能只追 top path。
+5. 只有 RTL 与 timing 都不再变化后，才运行两个 src 全量回归。
+
+## 14. 128 项同步 BRAM 分支预测器适配
+
+### 14.1 修改前的问题
+
+原 `branch_predictor.sv` 用 `predict_pc_i` 对 `tag_q/target_q/counter_q/kind_q` 进行异步数组读取，并在同拍完成 tag compare、方向/目标选择和 `fetch_pc_q` 更新。Vivado 将其实现为 24 个 RAM64X1D tag、2 个 RAM64X1D counter、1 个 RAM64M kind 和 11 个 RAM64M target，而不是 BRAM。该实现没有采用 052 文档中建议的 FPGA 同步 RAM 路径。
+
+### 14.2 新的逐拍合同
+
+BTB/BHT 容量由 64 项改为 128 项。tag、target、kind 和 2-bit counter 合并为一个 128×59-bit、`ram_style="block"` 的同步 simple-dual-port bank；valid 使用独立 128-bit 控制向量复位，bank payload 不复位。RAS 仍为 8 项寄存器小栈。
+
+```text
+Cycle N:   request_pc 同时送 IROM 和 predictor BRAM
+Cycle N+1: instruction(request_pc) 与 predictor_entry(request_pc) 同拍返回
+           → tag compare/方向/target/RAS 选择
+           → instruction+PC+prediction 压入 Fetch Queue
+           → predicted_next_pc 同时成为下一次 IROM+predictor 地址
+```
+
+流水填满后仍可每拍接受一个取指请求。Queue credit 不足时同时关闭 IROM 和 predictor read enable，并用 `fetch_pc_q` 保存尚未发出的 successor。redirect 优先清 pending/FQ，旧 IROM 与 predictor response 同时丢弃，下一次从 redirect target 锁步启动。
+
+为了避免同步 bank 在 update 端增加一次读改写，预测时的 `pred_hit/pred_counter` 随 `fetch_entry_t → uop_t → exec_q` 带到 Branch EX。EX resolve 后直接计算饱和计数器新值并写 bank。同拍 lookup/update 同 index 时使用显式 collision bypass，使行为不依赖 RAMB 的 READ_FIRST/WRITE_FIRST 配置。
+
+涉及文件：
+
+- `rtl/core/frontend/branch_predictor.sv`
+- `rtl/core/frontend/frontend.sv`
+- `rtl/core/pkg/core_config_pkg.sv`
+- `rtl/core/pkg/core_types_pkg.sv`
+- `rtl/core/decode/decoder.sv`
+- `rtl/core/core_top.sv`
+
+修改前备份：`rtl/backup/20260713_sync_btb128_before/`。
+
+### 14.3 修改后短回归
+
+| 项目 | 结果 |
+|---|---:|
+| Verilator myCPU build | PASS |
+| Verilator student_top build | PASS |
+| RV32UI | 40/40 PASS |
+| RV32MI | 4/4 PASS |
+| RV32UM | 8/8 PASS |
+| `srcSmoke`, 500k | TIMEOUT 窗口；RV32I=37、fail=0；commit=285895、IPC=0.571790 |
+| `srcWithMext`, 500k | TIMEOUT 窗口；RV32I=37、M=8、fail=0；commit=345025、IPC=0.690050 |
+
+同窗口 `srcWithMext` 修改前为 commit=345018、IPC=0.690036、branch miss=298；修改后 branch miss=295，没有观察到目标用例 IPC 回退。`srcSmoke` 修改前 IPC=0.574176，修改后为 0.571790，说明扩大 index 后的 alias 分布和同步更新时序对不同程序并非必然单调改善，后续不得仅凭容量推断收益。
+
+本节没有调用 Vivado。下一次 synthesis 必须确认 `entry_mem` 推断为 RAMB36，并确认旧的 `RAM64X1D/RAM64M` predictor payload 消失；implementation 后再检查 BRAM output→tag compare→next IROM/BTB address 是否成为新的前端关键路径。全量 src 回归仍留到 RTL/timing 最终收敛后执行。

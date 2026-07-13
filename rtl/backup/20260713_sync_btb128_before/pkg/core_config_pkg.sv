@@ -11,7 +11,7 @@ package core_config_pkg;
     localparam int unsigned SCOREBOARD_DEPTH   = 8;
     localparam int unsigned STORE_BUFFER_DEPTH = 4;
     localparam int unsigned LOAD_QUEUE_DEPTH   = 2;
-    localparam int unsigned BTB_ENTRIES        = 128;
+    localparam int unsigned BTB_ENTRIES        = 64;
     localparam int unsigned RAS_DEPTH          = 8;
     localparam int unsigned DCACHE_LINES       = 2048;
     localparam int unsigned DCACHE_LINE_BYTES  = 16;

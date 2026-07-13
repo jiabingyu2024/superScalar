@@ -34,5 +34,20 @@
     "path": "docs/archive/26-07-13/legacy_rtl_core_backup"
   },
   "todos": [],
+  "latest_update": {
+    "timestamp": "2026-07-13T23:23:01+08:00",
+    "scope": "128-entry synchronous BRAM BTB/BHT and lockstep IROM predictor lookup",
+    "files_modified": [
+      "rtl/core/frontend/branch_predictor.sv",
+      "rtl/core/frontend/frontend.sv",
+      "rtl/core/pkg/core_config_pkg.sv",
+      "rtl/core/pkg/core_types_pkg.sv",
+      "rtl/core/decode/decoder.sv",
+      "rtl/core/core_top.sv"
+    ],
+    "backup_path": "rtl/backup/20260713_sync_btb128_before",
+    "generation_status": "complete",
+    "verification_status": "Verilator builds pass; RV32UI 40/40, RV32MI 4/4, RV32UM 8/8 pass; src 500k windows completed without fail marker"
+  },
   "status": "complete"
 }

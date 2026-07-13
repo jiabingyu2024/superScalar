@@ -68,8 +68,6 @@ module core_top (
     logic branch_predictor_update_valid_q;
     logic [31:0] branch_target, branch_actual_next, branch_pc_q;
     pred_kind_e branch_kind;
-    logic branch_pred_hit;
-    logic [1:0] branch_pred_counter;
 
     store_entry_t store_q [0:STORE_BUFFER_DEPTH-1];
     logic [STORE_BUFFER_DEPTH-1:0] store_committed_q;
@@ -222,8 +220,6 @@ module core_top (
         .predictor_update_pc_i(branch_pc_q), .predictor_update_taken_i(branch_taken),
         .predictor_update_target_i(predictor_update_target),
         .predictor_update_kind_i(branch_kind),
-        .predictor_update_pred_hit_i(branch_pred_hit),
-        .predictor_update_pred_counter_i(branch_pred_counter),
         .predictor_commit_call_i(predictor_commit_call),
         .predictor_commit_return_i(predictor_commit_return),
         .predictor_commit_link_i(commit_entry.link_addr)
@@ -594,8 +590,6 @@ module core_top (
             branch_actual_next <= '0;
             branch_pc_q <= '0;
             branch_kind <= PRED_NONE;
-            branch_pred_hit <= 1'b0;
-            branch_pred_counter <= 2'b01;
             store_head_q <= '0;
             store_tail_q <= '0;
             store_count_q <= '0;
@@ -630,8 +624,6 @@ module core_top (
                 branch_actual_next <= branch_actual_next_c;
                 branch_pc_q <= exec_q.uop.pc;
                 branch_kind <= branch_kind_c;
-                branch_pred_hit <= exec_q.uop.pred_hit;
-                branch_pred_counter <= exec_q.uop.pred_counter;
             end
             if (full_flush) begin
                 issue_ptr_q <= '0;

@@ -10,14 +10,20 @@ module branch_predictor #(
 ) (
     input  logic       clk,
     input  logic       rst,
+    input  logic       predict_read_en_i,
     input  logic [31:0] predict_pc_i,
+    output logic       predict_valid_o,
     output logic [31:0] predict_next_pc_o,
     output core_types_pkg::pred_kind_e predict_kind_o,
+    output logic       predict_hit_o,
+    output logic [1:0] predict_counter_o,
     input  logic       update_valid_i,
     input  logic [31:0] update_pc_i,
     input  logic       update_taken_i,
     input  logic [31:0] update_target_i,
     input  core_types_pkg::pred_kind_e update_kind_i,
+    input  logic       update_pred_hit_i,
+    input  logic [1:0] update_pred_counter_i,
     input  logic       commit_call_i,
     input  logic       commit_return_i,
     input  logic [31:0] commit_link_i
@@ -25,35 +31,69 @@ module branch_predictor #(
     import core_types_pkg::*;
     localparam int unsigned INDEX_W = $clog2(ENTRIES);
     localparam int unsigned RAS_W   = $clog2(RAS_DEPTH);
+    localparam int unsigned TAG_W   = 32 - INDEX_W - 2;
+    localparam int unsigned ENTRY_W = TAG_W + 32 + 2 + 2;
 
+    // Predictor payload is one synchronous simple-dual-port memory.  At 128
+    // entries ENTRY_W is 59 bits, which maps naturally to one RAMB36 instead
+    // of the former parallel RAM64X1D/RAM64M distributed memories.
+    (* ram_style = "block" *) logic [ENTRY_W-1:0] entry_mem [0:ENTRIES-1];
     logic [ENTRIES-1:0] valid_q;
-    logic [31:INDEX_W+2] tag_q [0:ENTRIES-1];
-    logic [31:0] target_q [0:ENTRIES-1];
-    logic [1:0] counter_q [0:ENTRIES-1];
-    pred_kind_e kind_q [0:ENTRIES-1];
     logic [31:0] ras_q [0:RAS_DEPTH-1];
     logic [RAS_W:0] ras_count_q;
     logic [RAS_W-1:0] ras_top_c;
     logic [INDEX_W-1:0] pred_idx, upd_idx;
-    logic pred_hit;
+    logic [31:0] read_pc_q;
+    logic [ENTRY_W-1:0] read_entry_q, update_entry_c;
+    logic read_entry_valid_q, read_valid_q;
+    logic collision_q;
+    logic [ENTRY_W-1:0] collision_entry_q, selected_entry_c;
+    logic selected_valid_c;
+    logic [TAG_W-1:0] selected_tag_c;
+    logic [31:0] selected_target_c;
+    pred_kind_e selected_kind_c;
+    logic [1:0] selected_counter_c, update_counter_c;
 
     assign pred_idx = predict_pc_i[INDEX_W+1:2];
     assign upd_idx  = update_pc_i[INDEX_W+1:2];
-    assign pred_hit = valid_q[pred_idx] && (tag_q[pred_idx] == predict_pc_i[31:INDEX_W+2]);
     assign ras_top_c = RAS_W'(ras_count_q - 1'b1);
+    assign update_entry_c = {update_pc_i[31:INDEX_W+2], update_target_i,
+                             update_kind_i, update_counter_c};
+    assign selected_entry_c = collision_q ? collision_entry_q : read_entry_q;
+    assign selected_valid_c = collision_q ? 1'b1 : read_entry_valid_q;
+    assign {selected_tag_c, selected_target_c, selected_kind_c,
+            selected_counter_c} = selected_entry_c;
+    assign predict_valid_o = read_valid_q;
+    assign predict_hit_o = read_valid_q && selected_valid_c &&
+                           selected_tag_c == read_pc_q[31:INDEX_W+2];
 
     always_comb begin
-        predict_next_pc_o = predict_pc_i + 32'd4;
+        if (update_kind_i != PRED_COND) begin
+            update_counter_c = 2'b11;
+        end else if (!update_pred_hit_i) begin
+            update_counter_c = update_taken_i ? 2'b10 : 2'b01;
+        end else if (update_taken_i && update_pred_counter_i != 2'b11) begin
+            update_counter_c = update_pred_counter_i + 1'b1;
+        end else if (!update_taken_i && update_pred_counter_i != 2'b00) begin
+            update_counter_c = update_pred_counter_i - 1'b1;
+        end else begin
+            update_counter_c = update_pred_counter_i;
+        end
+    end
+
+    always_comb begin
+        predict_next_pc_o = read_pc_q + 32'd4;
         predict_kind_o = PRED_NONE;
-        if (pred_hit) begin
-            predict_kind_o = kind_q[pred_idx];
-            unique case (kind_q[pred_idx])
-                PRED_COND: if (counter_q[pred_idx][1]) predict_next_pc_o = target_q[pred_idx];
+        predict_counter_o = selected_counter_c;
+        if (predict_hit_o) begin
+            predict_kind_o = selected_kind_c;
+            unique case (selected_kind_c)
+                PRED_COND: if (selected_counter_c[1]) predict_next_pc_o = selected_target_c;
                 PRED_RETURN: begin
                     if (ras_count_q != 0) predict_next_pc_o = ras_q[ras_top_c];
-                    else predict_next_pc_o = target_q[pred_idx];
+                    else predict_next_pc_o = selected_target_c;
                 end
-                PRED_JUMP: predict_next_pc_o = target_q[pred_idx];
+                PRED_JUMP: predict_next_pc_o = selected_target_c;
                 default: begin end
             endcase
         end
@@ -63,22 +103,21 @@ module branch_predictor #(
         if (rst) begin
             valid_q <= '0;
             ras_count_q <= '0;
+            read_valid_q <= 1'b0;
+            collision_q <= 1'b0;
         end else begin
+            read_valid_q <= predict_read_en_i;
+            collision_q <= predict_read_en_i && update_valid_i &&
+                           pred_idx == upd_idx;
+            if (predict_read_en_i) begin
+                read_pc_q <= predict_pc_i;
+                read_entry_q <= entry_mem[pred_idx];
+                read_entry_valid_q <= valid_q[pred_idx];
+                collision_entry_q <= update_entry_c;
+            end
             if (update_valid_i) begin
                 valid_q[upd_idx] <= 1'b1;
-                tag_q[upd_idx] <= update_pc_i[31:INDEX_W+2];
-                target_q[upd_idx] <= update_target_i;
-                kind_q[upd_idx] <= update_kind_i;
-                if (update_kind_i == PRED_COND) begin
-                    if (!valid_q[upd_idx] || tag_q[upd_idx] != update_pc_i[31:INDEX_W+2])
-                        counter_q[upd_idx] <= update_taken_i ? 2'b10 : 2'b01;
-                    else if (update_taken_i && counter_q[upd_idx] != 2'b11)
-                        counter_q[upd_idx] <= counter_q[upd_idx] + 1'b1;
-                    else if (!update_taken_i && counter_q[upd_idx] != 2'b00)
-                        counter_q[upd_idx] <= counter_q[upd_idx] - 1'b1;
-                end else begin
-                    counter_q[upd_idx] <= 2'b11;
-                end
+                entry_mem[upd_idx] <= update_entry_c;
             end
             if (commit_call_i) begin
                 if (ras_count_q < (RAS_W+1)'(RAS_DEPTH)) begin
@@ -92,4 +131,11 @@ module branch_predictor #(
             end
         end
     end
+
+`ifndef SYNTHESIS
+    initial begin
+        assert (ENTRIES >= 2 && (ENTRIES & (ENTRIES - 1)) == 0);
+        assert (RAS_DEPTH >= 2 && (RAS_DEPTH & (RAS_DEPTH - 1)) == 0);
+    end
+`endif
 endmodule

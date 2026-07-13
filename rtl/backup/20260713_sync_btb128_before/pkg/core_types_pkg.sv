@@ -41,8 +41,6 @@ package core_types_pkg;
         logic [31:0] instr;
         logic [31:0] pred_next_pc;
         pred_kind_e  pred_kind;
-        logic        pred_hit;
-        logic [1:0]  pred_counter;
     } fetch_entry_t;
 
     typedef struct packed {
@@ -65,8 +63,6 @@ package core_types_pkg;
         logic        is_jalr;
         logic [31:0] pred_next_pc;
         pred_kind_e  pred_kind;
-        logic        pred_hit;
-        logic [1:0]  pred_counter;
         sys_op_e     sys_op;
         csr_op_e     csr_op;
         logic [11:0] csr_addr;

@@ -1,0 +1,8 @@
+profile=srcWithMext
+report_tag=wns_0786_before_opt
+slack_filter=slack<0.0ns
+nworst_per_endpoint=1
+max_paths=100000
+exported_path_count=4401
+raw_report=E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/reports/wns_0786_before_opt_all_violating_setup_paths.rpt
+csv=E:/Resources/03_competitions/26_03_jcs/2607round/superScalar/fpga/build/digital_twin_srcWithMext/reports/wns_0786_before_opt_all_violating_setup_paths.csv
