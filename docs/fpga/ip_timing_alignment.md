@@ -80,8 +80,8 @@ SoC 侧的假设如下：
 | --- | --- | --- | --- | --- |
 | `IROM_0` | `rtl/ip/IROM_0.sv` 在 `ena/enb` 时分别用 `clka/clkb` 锁存 `addra/addrb`，`douta/doutb = mem[addr*_q]`。取指侧按 1 拍 ROM 读延迟使用。 | `Dual_Port_ROM`，`Assume_Synchronous_Clk=true`，A/B 端口同接 CPU 时钟，均使用 enable pin，A/B 端口输出寄存器均关闭。 | `rtl/soc/student_top.sv` 连接 CPU `irom_addrA/B`、`irom_dataA/B`、`irom_enaA/B`，并把 `clka/clkb` 都接到 `w_cpu_clk`。CPU 取指状态机默认下一拍可用。 | 若打开 ROM 输出寄存器、改成更深 pipeline 或让 A/B 口异步时钟，必须调整 CPU fetch/PC 对齐逻辑，并同步改 `rtl/ip/IROM_0.sv`。 |
 | `DRAM_0` | `rtl/ip/DRAM_0.sv` 已拆分 memory latch 与 primitive output register：`ena` 更新 latch，`regcea` 更新 `douta`，写边沿按 READ_FIRST 锁存旧 word。 | `Single_Port_RAM`，`Operating_Mode_A=READ_FIRST`，`Use_Byte_Write_Enable=true`，`Register_PortA_Output_of_Memory_Primitives=true`，`Register_PortA_Output_of_Memory_Core=false`，`Use_REGCEA_Pin=true`。重新生成后应得到 `C_HAS_MEM_OUTPUT_REGS_A=1`、`C_HAS_ENA=1`、`C_HAS_REGCEA=1`。 | Adapter 用 request 驱动 `ENA`、用 `read_valid_d1` 驱动 `REGCEA`，并以 d2 对齐 `resp_valid/read_offset`。 | 必须重新生成 Vivado IP 和 bitstream；若生成 XML 中 `C_HAS_REGCEA` 不是 1，则不得上板。 |
-| `MUL_0` | `rtl/ip/MUL_0.sv` 是 33x33 signed multiplier，`pipe0 -> P` 共 2 级寄存输出。 | `mult_gen`，`Multiplier_Construction=Use_Mults`、`OptGoal=Speed`、`PipeStages=2`，33 位 signed 输入，自定义 66 位输出。 | `rtl/core/execute/MulDivPipe.sv` 用同深度的 `mul_valid_q/mul_uop_q` 对齐 product 和 owner。 | 若 Tcl `PipeStages` 改变，必须同步改行为模型和 metadata valid 深度；若删除 DSP 构造约束，默认可能退回 LUT multiplier。 |
-| `DIV_0` | `rtl/ip/DIV_0.sv` 固定 `DIV_LATENCY=16`，AXI-stream valid 管线后输出 `{quotient, remainder}`。 | `div_gen`，`Latency_Configuration=Manual`，`Latency=16`，`FlowControl=Blocking`，unsigned radix-2 divider，remainder mode。 | `rtl/core/execute/MulDivPipe.sv` 不按固定计数完成，而是等待 `m_axis_dout_tvalid`，并按 `div_data[63:32]=quotient`、`div_data[31:0]=remainder` 解包。 | 若 Tcl `Latency`、`FlowControl` 或 output packing 改变，必须同步改行为模型；Blocking latency 可能受握手影响，RTL 必须继续以 `tvalid` 为完成依据。 |
+| `MUL_0` | `rtl/ip/MUL_0.sv` 是 33x33 signed multiplier，`pipe0 -> pipe1 -> P` 共 3 级寄存输出。 | `mult_gen`，`Multiplier_Construction=Use_Mults`、`OptGoal=Speed`、`PipeStages=3`，33 位 signed 输入，自定义 66 位输出。 | `rtl/core/ex/stage_ex.sv` 用 3 级 `mul_valid_pipe/mul_op_pipe` 对齐 product 和 owner。 | 若 Tcl `PipeStages` 改变，必须同步改行为模型和 metadata valid 深度；不得删除 DSP 构造约束，否则 IP 会退回 LUT multiplier。 |
+| `DIV_0` | `rtl/ip/DIV_0.sv` 固定 `DIV_LATENCY=34`，AXI-stream valid 管线后输出 `{quotient, remainder}`。 | `div_gen`，`Latency_Configuration=Manual`，`Latency=34`，`FlowControl=Blocking`，unsigned radix-2 divider，remainder mode。 | `rtl/core/ex/m_unit.sv` 发单拍 input valid，以固定 34 拍计数产生 `o_done`，并按 `div_raw[63:32]=quotient`、`div_raw[31:0]=remainder` 解包；当前未消费 IP 的 ready/output-valid。 | 若 Tcl `Latency`、`FlowControl` 或 output packing 改变，必须同步改行为模型和 `m_unit` 的计数/握手；不得只改 IP。 |
 | `pll` | `rtl/ip/pll.sv` 只服务仿真，不代表真实锁相环时钟收敛和相位行为。 | `clk_wiz` 生成 `clk_out1` 系统时钟和 `clk_out2` CPU 时钟，频率由 `FPGA_SYS_CLK_MHZ/FPGA_CPU_CLK_MHZ` 控制。 | `rtl/soc/top.sv` 用 `locked` 派生 reset，同步释放到 50 MHz 和 CPU 时钟域。 | 若改 CPU 频率，必须重新看 timing report、UART `CLK_FREQ`、counter 换算、跨时钟 reset 和 CDC。 |
 
 ## DRAM Adapter 特别注意
@@ -306,14 +306,14 @@ cycle N+1: IROM_0 输出 cycle N 地址对应的 irom_dataA/B
 
 ## MUL / DIV IP 与 core 的对齐
 
-乘除法 IP 虽然实例化在 `rtl/core/execute/MulDivPipe.sv`，但它们仍然是 Vivado Tcl 生成的 FPGA IP。后续改 M 扩展时要同时维护这三层：
+乘法 IP 的有效实例在 `rtl/core/ex/stage_ex.sv`，除法 IP 在 `rtl/core/ex/m_unit.sv`；它们都是 Vivado Tcl 生成的 FPGA IP。后续改 M 扩展时要同时维护这三层：
 
 ```text
 fpga/create_vivado_project.tcl
   -> Vivado 真实 MUL_0 / DIV_0 IP 参数
 rtl/ip/MUL_0.sv, rtl/ip/DIV_0.sv
   -> Verilator 行为模型
-rtl/core/execute/MulDivPipe.sv
+rtl/core/ex/stage_ex.sv, rtl/core/ex/m_unit.sv
   -> core 等待、valid、结果选位和特殊情况处理
 ```
 
@@ -321,22 +321,22 @@ rtl/core/execute/MulDivPipe.sv
 
 当前合同：
 
-- Tcl: `mult_gen`，`Multiplier_Construction=Use_Mults`、`OptGoal=Speed`、`PipeStages=2`，`A/B` 为 33-bit signed，输出 `P[65:0]`。
-- 行为模型: `pipe0 -> P`，等价 2 个寄存级。
-- `CoreMulDivPipe`: `mul_valid_q/mul_uop_q/mul_op_q` 深度均为 `MUL_LATENCY=2`，用 valid owner 和 `P` 同拍完成。
+- Tcl: `mult_gen`，`Multiplier_Construction=Use_Mults`、`OptGoal=Speed`、`PipeStages=3`，`A/B` 为 33-bit signed，输出 `P[65:0]`。
+- 行为模型: `pipe0 -> pipe1 -> P`，等价 3 个寄存级。
+- `stage_ex`: `mul_valid_pipe[2:0]` 和 `mul_op_pipe[0:2]` 与 `P` 同拍完成；`mul_result_fifo` 接收完成结果。
 
 修改乘法周期时必须同步：
 
 | 修改项 | 必须同步改 |
 | --- | --- |
-| `PipeStages` 从 2 改成 N | `rtl/ip/MUL_0.sv` 改成 N 级 pipeline；`MulDivPipe.sv` 的 `MUL_LATENCY` 和 metadata valid/payload 深度同步改。 |
-| 输出位宽/输入 signedness 改变 | Tcl `PortAWidth/PortBWidth/Use_Custom_Output_Width`、行为模型端口、`MulDivPipe.sv` 的 `mul_product` 位宽和 `MULH/MULHU/MULHSU` 选位同时改。 |
-| DSP/LUT 构造改变 | Tcl `Multiplier_Construction` 和 `OptGoal` 必须显式冻结；33x33 两级宽乘法不得依赖 `Use_LUTs` 默认值。 |
+| `PipeStages` 从 3 改成 N | `rtl/ip/MUL_0.sv` 改成 N 级 pipeline；`stage_ex.sv` 的 `mul_valid_pipe/mul_op_pipe` 深度和结果有效拍同步改。 |
+| 输出位宽/输入 signedness 改变 | Tcl `PortAWidth/PortBWidth/Use_Custom_Output_Width`、行为模型端口、`stage_ex.sv` 的 `mul_product` 位宽和 `MULH/MULHU/MULHSU` 选位同时改。 |
+| DSP/LUT 构造改变 | Tcl `Multiplier_Construction` 和 `OptGoal` 必须显式冻结；33x33 三拍宽乘法不得依赖工具默认值。 |
 
 建议把乘法 latency 写成唯一参数，例如：
 
 ```text
-MUL_LATENCY = Vivado PipeStages = rtl/ip/MUL_0 pipeline depth = MulDivPipe metadata depth
+MUL_LATENCY = Vivado PipeStages = rtl/ip/MUL_0 pipeline depth = stage_ex metadata depth = 3
 ```
 
 若 `MUL_LATENCY=0` 或组合乘法，要重新审查 timing，尤其是 FPGA CPU 频率可能会被乘法组合路径卡住。
@@ -345,11 +345,11 @@ MUL_LATENCY = Vivado PipeStages = rtl/ip/MUL_0 pipeline depth = MulDivPipe metad
 
 当前合同：
 
-- Tcl: `div_gen`，`Latency=16`，`FlowControl=Blocking`，`Radix2`，unsigned 输入，remainder mode。
-- 行为模型: `DIV_LATENCY=16`，输入 valid 后经过 valid 管线输出 `{quotient, remainder}`。
-- `CoreMulDivPipe`: 对正常除法等待 `m_axis_dout_tvalid`，对除 0 和 `INT_MIN / -1` 由 core 内部走 `MD_SPECIAL`，不启动 IP。
+- Tcl: `div_gen`，`Latency=34`，`FlowControl=Blocking`，`Radix2`，unsigned 输入，remainder mode。
+- 行为模型: `DIV_LATENCY=34`，输入 valid 后经过 valid 管线输出 `{quotient, remainder}`。
+- `m_unit`: input valid 为单拍脉冲，以 `DIV_LATENCY=34` 固定计数产生 `o_done`；IP 的 input ready 和 output valid 当前未消费。除 0 和 `INT_MIN / -1` 仍按相同 34 拍等待，但结果由 core 特殊值覆盖。
 
-官方 PG151 约束是：32-bit quotient 加 integer remainder 不能换成只支持 fractional output 的 High Radix；Radix-2 在 `clocks_per_division=1` 时允许 manual latency 从 0 到 fully-pipelined latency。`16` 因而是合法但主动降频换延迟的配置，不能用旧工程 timing report 推断其 Fmax。
+官方 PG151 约束是：32-bit quotient 加 integer remainder 不能换成只支持 fractional output 的 High Radix；Radix-2 在 `clocks_per_division=1` 时允许 manual latency 从 0 到 fully-pipelined latency。当前固定使用 `34`，不能用旧工程 timing report 推断其他 latency 的 Fmax。
 
 Vivado 2023.2 实测注意事项：
 
@@ -363,10 +363,10 @@ Vivado 2023.2 实测注意事项：
 
 | 修改项 | 必须同步改 |
 | --- | --- |
-| Tcl `Latency` 改变 | `rtl/ip/DIV_0.sv DIV_LATENCY` 改成同值；`MulDivPipe` 继续等 `div_valid`，不增加固定倒计数。 |
-| Tcl `FlowControl` 改变 | 行为模型必须模拟 `tready/tvalid`；`MulDivPipe` 当前只在 divider idle 时发一个 input pulse，若允许 IP 输入反压，必须把 start 改成完整握手。 |
-| 输出 packing 改变 | 行为模型和 `MulDivPipe` 的 `div_quot_u=div_data[63:32]`、`div_rem_u=div_data[31:0]` 必须同时改。 |
-| signed divider 改为 IP 内部处理 | `MulDivPipe` 当前在 IP 外部取绝对值和修正符号；不要和 signed IP 重复修正。 |
+| Tcl `Latency` 改变 | `rtl/ip/DIV_0.sv DIV_LATENCY` 与 `m_unit.sv` 的固定计数必须改成同值，并重新验证 `o_done` 采样拍。 |
+| Tcl `FlowControl` 改变 | 行为模型必须模拟 `tready/tvalid`；`m_unit` 当前只发一个 input pulse且不看 ready，若 IP 可能反压，必须改成完整握手。 |
+| 输出 packing 改变 | 行为模型和 `m_unit.sv` 的 `quot_raw=div_raw[63:32]`、`rem_raw=div_raw[31:0]` 必须同时改。 |
+| signed divider 改为 IP 内部处理 | `m_unit` 当前在 IP 外部取绝对值和修正符号；不要和 signed IP 重复修正。 |
 
 M 扩展验证不能只跑一个 `mul`。至少覆盖 `mul/mulh/mulhsu/mulhu/div/divu/rem/remu`、除 0、`0x8000_0000 / -1`、连续两条 M 指令，以及 M 指令后紧跟使用结果的相关场景。
 
@@ -397,7 +397,7 @@ M 扩展验证不能只跑一个 `mul`。至少覆盖 `mul/mulh/mulhsu/mulhu/div
 5. 查消费方 RTL：
    - IROM: `student_top.sv` 地址截位和 core fetch 状态机。
    - DRAM: `DramBramAdapter.sv`、`SocMemBridge.sv`、`DCache.sv`。
-   - MUL/DIV: `MulDivPipe.sv` metadata 深度、valid 握手、结果选位。
+   - MUL/DIV: `stage_ex.sv`、`m_unit.sv` 的 metadata 深度、固定计数/valid 握手和结果选位。
    - PLL/CDC: `top.sv`、`student_top.sv`、`counter.sv`、`digital_twin_cdc.xdc`。
 6. 如果 `myCPU` 外部端口变了，先改 `student_top.sv` wrapper；不要让板级 `top.sv` 直接理解 core 内部协议。
 7. 如果地址空间变了，同步改 `SocMemBridge`、`DCache` cacheable 区间、测试程序 linker/COE 生成和文档。
@@ -418,8 +418,8 @@ M 扩展验证不能只跑一个 `mul`。至少覆盖 `mul/mulh/mulhsu/mulhu/div
 | 改 load/store 接口 | `myCPU.sv`、`student_top.sv`、`SocMemBridge.sv`、`DramBramAdapter.sv`、`DCache.sv` | 对齐 ready-valid、写响应、outstanding、byte lane、uncached 语义。 |
 | 改 DRAM latency/depth/byte enable | `DramBramAdapter.sv`、`rtl/ip/DRAM_0.sv`、Tcl、`DCache.sv` | 按 wrapper 真实 `READ_LATENCY` 调整响应 pipeline 和 offset pipeline。 |
 | 改 MMIO 地址或新增外设 | `SocMemBridge.sv`、测试程序、文档 | 更新地址译码、读写返回、reset 值和 side effect。 |
-| 改 MUL latency/位宽 | `MulDivPipe.sv`、`rtl/ip/MUL_0.sv`、Tcl | 对齐 `PipeStages`、metadata 深度、结果位宽和选位。 |
-| 改 DIV latency/flow control | `MulDivPipe.sv`、`rtl/ip/DIV_0.sv`、Tcl | 对齐 `Latency`、`tready/tvalid` 和 `{quotient,remainder}` packing。 |
+| 改 MUL latency/位宽 | `stage_ex.sv`、`rtl/ip/MUL_0.sv`、Tcl | 对齐 `PipeStages`、metadata 深度、结果位宽和选位。 |
+| 改 DIV latency/flow control | `m_unit.sv`、`rtl/ip/DIV_0.sv`、Tcl | 对齐 `Latency`、固定计数、`tready/tvalid` 和 `{quotient,remainder}` packing。 |
 | 改 CPU 时钟频率 | Tcl PLL、`top.sv`、counter、UART、timing report | 更新 `FPGA_CPU_CLK_MHZ`，重看 CPU 域 timing 和 CDC 分组。 |
 | 引入多发射/乱序/多 outstanding | `SocMemBridge.sv`、`DramBramAdapter.sv`、`DCache.sv` | 当前 SoC 无 id/tag/乱序返回支持，需要重新设计内存桥。 |
 

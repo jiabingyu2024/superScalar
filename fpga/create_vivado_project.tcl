@@ -326,6 +326,7 @@ set_ip_config_required MUL_0 {PortAWidth port_a_width} {33}
 set_ip_config_required MUL_0 {PortBType port_b_type} {Signed}
 set_ip_config_required MUL_0 {PortBWidth port_b_width} {33}
 set_ip_config_required MUL_0 {MultType multiplier_type} {Parallel_Multiplier}
+set_ip_config_required MUL_0 {Multiplier_Construction multiplier_construction} {Use_Mults}
 set_ip_config_optional MUL_0 {OptGoal optimization_goal} {Speed}
 set_ip_config_required MUL_0 {PipeStages pipeline_stages} {3}
 set_ip_config_required MUL_0 {Use_Custom_Output_Width use_custom_output_width} {true}

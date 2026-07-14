@@ -20,20 +20,38 @@ module regfile(
     output wire [`DATA_BUS] o_rs2_data
 );
 
-    logic [`DATA_BUS] rf_mem [0:`RF_DEPTH-1];
+    // A resettable 32x32 array expands to 1024 flip-flops and a very large
+    // reset tree.  Architectural registers other than x0 have no required
+    // reset value, while an FPGA INIT keeps simulation/board startup
+    // deterministic.  The distributed-RAM style gives two replicated async
+    // read ports and one synchronous write port without changing ID timing.
+    (* ram_style = "distributed" *) logic [`DATA_BUS] rf_mem [0:`RF_DEPTH-1];
     integer idx;
 
-    always_ff @(negedge i_clk) begin
-        if (!i_rst_n) begin
-            for (idx = 0; idx < `RF_DEPTH; idx = idx + 1) begin
-                rf_mem[idx] <= '0;
-            end
-        end else if (i_we && (i_w_addr != '0)) begin
+    initial begin
+        for (idx = 0; idx < `RF_DEPTH; idx = idx + 1) begin
+            rf_mem[idx] = '0;
+        end
+    end
+
+    // Keep every architectural register on the CPU rising edge.  The former
+    // falling-edge write made all WB-to-register-file paths half-cycle paths
+    // at 200 MHz.  Explicit write-through below preserves the usual
+    // write-first behavior for an instruction decoded in the same cycle as
+    // its producer reaches WB, without changing pipeline latency.
+    always_ff @(posedge i_clk) begin
+        if (i_we && (i_w_addr != '0)) begin
             rf_mem[i_w_addr] <= i_w_data;
         end
     end
 
-    assign o_rs1_data = (i_rs1_addr == '0) ? '0 : rf_mem[i_rs1_addr];
-    assign o_rs2_data = (i_rs2_addr == '0) ? '0 : rf_mem[i_rs2_addr];
+    assign o_rs1_data = (i_rs1_addr == '0) ? '0 :
+                        ((i_we && (i_w_addr != '0) &&
+                          (i_w_addr == i_rs1_addr)) ? i_w_data :
+                         rf_mem[i_rs1_addr]);
+    assign o_rs2_data = (i_rs2_addr == '0) ? '0 :
+                        ((i_we && (i_w_addr != '0) &&
+                          (i_w_addr == i_rs2_addr)) ? i_w_data :
+                         rf_mem[i_rs2_addr]);
 
 endmodule
