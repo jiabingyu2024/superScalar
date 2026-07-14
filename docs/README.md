@@ -15,6 +15,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | `sim/verilator_plan.md` | 后续 Verilator 命令形态、测试选择方式、filelist 组织。 |
+| `sim/difftest/README.md` | 提交级参考模型差分、调试命令、结果判定和故障注入验证。 |
 
 ## FPGA 文档
 

@@ -31,6 +31,23 @@ module core_top (
     output logic [63:0] perf_stall_mem_o,
     output logic [63:0] perf_stall_muldiv_o,
     output logic [63:0] perf_stall_load_use_o
+`ifdef VERILATOR_TB
+    ,
+    output logic        dbg_commit_valid_o,
+    output logic [31:0] dbg_commit_pc_o,
+    output logic [31:0] dbg_commit_inst_o,
+    output logic        dbg_commit_wen_o,
+    output logic [4:0]  dbg_commit_rd_o,
+    output logic [31:0] dbg_commit_wdata_o,
+    output logic        dbg_commit_is_load_o,
+    output logic        dbg_commit_is_store_o,
+    output logic        dbg_commit_is_trap_o,
+    output logic [31:0] dbg_commit_cause_o,
+    output logic [31:0] dbg_commit_next_pc_o,
+    output logic [31:0] dbg_commit_mem_addr_o,
+    output logic [31:0] dbg_commit_mem_wdata_o,
+    output logic [3:0]  dbg_commit_mem_wstrb_o
+`endif
 );
     import core_config_pkg::*;
     import core_types_pkg::*;
@@ -147,6 +164,14 @@ module core_top (
     integer fwd_lane;
     integer merge_lane;
     integer committed_tmp;
+
+`ifdef VERILATOR_TB
+    logic [31:0] dbg_mem_addr_q [0:SCOREBOARD_DEPTH-1];
+    logic [31:0] dbg_mem_wdata_q [0:SCOREBOARD_DEPTH-1];
+    logic [3:0] dbg_mem_wstrb_q [0:SCOREBOARD_DEPTH-1];
+    logic [31:0] dbg_next_pc_q [0:SCOREBOARD_DEPTH-1];
+    integer dbg_i;
+`endif
 
     function automatic logic store_is_older(
         input logic [7:0] cutoff,
@@ -605,6 +630,153 @@ module core_top (
 
     assign predictor_commit_call = commit_normal && commit_entry.is_call;
     assign predictor_commit_return = commit_normal && commit_entry.is_return;
+
+`ifdef VERILATOR_TB
+    // Sample the pre-NBA ROB head. The C++ harness observes these registered
+    // outputs after the same rising edge, so every pulse names the instruction
+    // that actually retired rather than the next scoreboard entry.
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            dbg_commit_valid_o <= 1'b0;
+            dbg_commit_pc_o <= '0;
+            dbg_commit_inst_o <= '0;
+            dbg_commit_wen_o <= 1'b0;
+            dbg_commit_rd_o <= '0;
+            dbg_commit_wdata_o <= '0;
+            dbg_commit_is_load_o <= 1'b0;
+            dbg_commit_is_store_o <= 1'b0;
+            dbg_commit_is_trap_o <= 1'b0;
+            dbg_commit_cause_o <= '0;
+            dbg_commit_next_pc_o <= '0;
+            dbg_commit_mem_addr_o <= '0;
+            dbg_commit_mem_wdata_o <= '0;
+            dbg_commit_mem_wstrb_o <= '0;
+            for (dbg_i = 0; dbg_i < SCOREBOARD_DEPTH; dbg_i = dbg_i + 1) begin
+                dbg_mem_addr_q[dbg_i] <= '0;
+                dbg_mem_wdata_q[dbg_i] <= '0;
+                dbg_mem_wstrb_q[dbg_i] <= '0;
+                dbg_next_pc_q[dbg_i] <= '0;
+            end
+        end else begin
+            dbg_commit_valid_o <= commit_fire;
+            if (commit_fire) begin
+                dbg_commit_pc_o <= commit_entry.pc;
+                dbg_commit_inst_o <= commit_entry.instr;
+                dbg_commit_wen_o <= commit_normal && commit_entry.writes_rd &&
+                                    commit_entry.rd != 0;
+                dbg_commit_rd_o <= commit_entry.rd;
+                dbg_commit_wdata_o <= (commit_entry.sys_op == SYS_CSR) ?
+                                      csr_result : commit_entry.result;
+                dbg_commit_is_load_o <= commit_entry.fu == FU_LOAD;
+                dbg_commit_is_store_o <= commit_entry.fu == FU_STORE;
+                dbg_commit_is_trap_o <= commit_entry.exception_valid;
+                dbg_commit_cause_o <= {27'd0, commit_entry.exception_cause};
+                dbg_commit_mem_addr_o <= dbg_mem_addr_q[commit_ptr_q];
+                dbg_commit_mem_wdata_o <= dbg_mem_wdata_q[commit_ptr_q];
+                dbg_commit_mem_wstrb_o <= dbg_mem_wstrb_q[commit_ptr_q];
+                if (commit_entry.exception_valid)
+                    dbg_commit_next_pc_o <= csr_mtvec;
+                else if (commit_entry.sys_op == SYS_MRET)
+                    dbg_commit_next_pc_o <= csr_mepc;
+                else
+                    dbg_commit_next_pc_o <= dbg_next_pc_q[commit_ptr_q];
+            end
+            if (issue_fire)
+                dbg_next_pc_q[issue_ptr_q] <= id_uop_q.pc + 32'd4;
+            if (branch_resolve_valid_c)
+                dbg_next_pc_q[exec_q.trans_id] <= branch_actual_next_c;
+            if (exec_q.valid && (exec_q.uop.fu == FU_LOAD ||
+                                 exec_q.uop.fu == FU_STORE)) begin
+                dbg_mem_addr_q[exec_q.trans_id] <= exec_mem_addr_q;
+                dbg_mem_wdata_q[exec_q.trans_id] <=
+                    exec_q.uop.fu == FU_STORE ? exec_q.op2 : 32'd0;
+                if (exec_q.uop.fu == FU_STORE) begin
+                    unique case (exec_q.uop.mem_size)
+                        MEM_BYTE: dbg_mem_wstrb_q[exec_q.trans_id] <= 4'b0001;
+                        MEM_HALF: dbg_mem_wstrb_q[exec_q.trans_id] <= 4'b0011;
+                        default:  dbg_mem_wstrb_q[exec_q.trans_id] <= 4'b1111;
+                    endcase
+                end else begin
+                    dbg_mem_wstrb_q[exec_q.trans_id] <= 4'b0000;
+                end
+            end
+        end
+    end
+
+`ifdef ENABLE_DIFFTEST
+    // OpenXiangShan DiffTest probes sample the same pre-NBA retirement state as
+    // the registered C++ debug bundle. They are absent from synthesis builds.
+    DiffExtInstrCommit u_difftest_commit (
+        .clock(clk),
+        .enable(commit_fire),
+        .io_valid(commit_fire),
+        .io_skip(1'b0),
+        .io_isRVC(1'b0),
+        .io_rfwen(commit_normal && commit_entry.writes_rd && commit_entry.rd != 0),
+        .io_fpwen(1'b0),
+        .io_vecwen(1'b0),
+        .io_v0wen(1'b0),
+        .io_wpdest(commit_entry.rd),
+        .io_wdest({3'b000, commit_entry.rd}),
+        .io_otherwpdest_0('0), .io_otherwpdest_1('0),
+        .io_otherwpdest_2('0), .io_otherwpdest_3('0),
+        .io_otherwpdest_4('0), .io_otherwpdest_5('0),
+        .io_otherwpdest_6('0), .io_otherwpdest_7('0),
+        .io_otherwpdest_8('0), .io_otherwpdest_9('0),
+        .io_otherwpdest_10('0), .io_otherwpdest_11('0),
+        .io_otherwpdest_12('0), .io_otherwpdest_13('0),
+        .io_otherwpdest_14('0), .io_otherwpdest_15('0),
+        .io_pc({32'd0, commit_entry.pc}),
+        .io_instr(commit_entry.instr),
+        .io_robIdx({{(10-TRANS_ID_W){1'b0}}, commit_ptr_q}),
+        .io_lqIdx('0),
+        .io_sqIdx('0),
+        .io_isLoad(commit_entry.fu == FU_LOAD),
+        .io_isStore(commit_entry.fu == FU_STORE),
+        .io_nFused(8'd0),
+        .io_special(8'd0),
+        .io_coreid(8'd0),
+        .io_index(8'd0)
+    );
+
+    DiffExtCommitData u_difftest_commit_data (
+        .clock(clk),
+        .enable(commit_fire),
+        .io_valid(commit_fire),
+        .io_data({32'd0, (commit_entry.sys_op == SYS_CSR) ?
+                           csr_result : commit_entry.result}),
+        .io_coreid(8'd0),
+        .io_index(8'd0)
+    );
+
+    DiffExtArchEvent u_difftest_arch_event (
+        .clock(clk),
+        .enable(commit_fire && commit_entry.exception_valid),
+        .io_valid(commit_entry.exception_valid),
+        .io_interrupt(32'd0),
+        .io_exception(32'b1 << commit_entry.exception_cause),
+        .io_exceptionPC({32'd0, commit_entry.pc}),
+        .io_exceptionInst(commit_entry.instr),
+        .io_hasNMI(1'b0),
+        .io_virtualInterruptIsHvictlInject(1'b0),
+        .io_irToHS(1'b0),
+        .io_irToVS(1'b0),
+        .io_coreid(8'd0)
+    );
+
+    DiffExtTrapEvent u_difftest_trap_event (
+        .clock(clk),
+        .enable(commit_fire),
+        .io_hasTrap(commit_entry.exception_valid),
+        .io_cycleCnt(cycle_q),
+        .io_instrCnt(commit_count_q),
+        .io_hasWFI(1'b0),
+        .io_code({59'd0, commit_entry.exception_cause}),
+        .io_pc({32'd0, commit_entry.pc}),
+        .io_coreid(8'd0)
+    );
+`endif
+`endif
 
     always_ff @(posedge clk) begin
         if (rst) begin
