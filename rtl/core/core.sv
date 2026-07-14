@@ -18,6 +18,7 @@ module core(
     output logic                                     irom_ena,   // assign irom_ena = stall_p_f;
 
     input  logic  [`DATA_BUS]                        dram_rdata,
+    input  logic  [`DATA_BUS]                        dram_m1_rdata,
     input  logic  [`DATA_BUS]                        dram_fast_word,
     input  logic                                     dram_req_ready,
     output logic                                     dram_wen,
@@ -25,6 +26,9 @@ module core(
     output logic  [`RAM_ADDR_BUS]                    dram_addr,
     output logic  [35:0]                             dram_tag_indices,
     output logic  [35:0]                             dram_data_indices,
+    output logic  [`RAM_ADDR_BUS]                    dram_probe_addr,
+    output logic                                     dram_probe_advance,
+    output logic                                     dram_probe_kill,
     output logic  [`DATA_BUS]                        dram_wdata,
     output logic  [3:0]                              dram_mask
 
@@ -155,10 +159,9 @@ module core(
     logic [`DATA_BUS] alu_res_m2;
     logic             wb_src_m2;
     logic             reg_write_m2;
-    logic [3:0]       mem_mask_m2;
-    logic             load_unsigned_m2;
     logic             is_mul_m2;
     logic [`M_OP_BUS] m_op_m2;
+    logic [`DATA_BUS] mem_data_m;
     logic [`DATA_BUS] mem_data_m2;
     logic [`DATA_BUS] wb_data_m2;
 
@@ -172,6 +175,7 @@ module core(
     logic [1:0]       mul_fifo_head;
     logic [1:0]       mul_fifo_tail;
     logic [2:0]       mul_fifo_count;
+    logic             mul_fifo_nonempty;
     logic             mul_wb_consume;
     logic             mul_fifo_enqueue;
     logic             mul_fifo_dequeue;
@@ -521,8 +525,6 @@ module core(
         .o_rd_addr       (rd_addr_m),
         .o_alu_res       (alu_res_m),
         .o_mem_addr      (mem_addr_m),
-        .o_cache_tag_indices(dram_tag_indices),
-        .o_cache_data_indices(dram_data_indices),
         .o_a2_data       (a2_data_m),
         .o_mem_read      (mem_read_m),
         .o_mem_write     (mem_write_m),
@@ -547,8 +549,28 @@ module core(
     assign dram_wen   = mem_write_m;
     assign dram_ren   = mem_read_m;
     assign dram_addr  = mem_addr_m[`RAM_ADDR_BUS];
+    // Start the DCache lookup while the memory instruction is still in EX2.
+    // The lookup result is captured on the same edge as the instruction enters
+    // M1, so M1 sees registered tag/data without adding a hit-latency cycle.
+    // Four physical index copies preserve the bounded LUTRAM address fanout.
+    assign dram_probe_addr    = mem_addr_e[`RAM_ADDR_BUS];
+    assign dram_tag_indices   = {4{mem_addr_e[12:4]}};
+    assign dram_data_indices  = {4{mem_addr_e[12:4]}};
+    assign dram_probe_advance = !stall_e_m;
+    assign dram_probe_kill    = flush_e_m;
     assign dram_wdata = a2_data_m;
     assign dram_mask  = mem_mask_m;
+
+    // Format the accepted load while it is still in M1, then capture the
+    // architectural value on the existing M1/M2 edge. Consumers one slot
+    // later now forward from a local register instead of traversing the DCache
+    // response register, load extension and WB mux in one 250 MHz cycle.
+    stage_m2 u_stage_m1_load_format (
+        .i_mem_mask      (mem_mask_m),
+        .i_load_unsigned (load_unsigned_m),
+        .i_dram_rdata    (dram_m1_rdata),
+        .o_mem_rdata     (mem_data_m)
+    );
 
     reg_m1_m2 u_reg_m1_m2 (
         .i_clk           (clk),
@@ -557,27 +579,18 @@ module core(
         .i_stall         (stall_m_w),
         .i_rd_addr       (rd_addr_m),
         .i_alu_res       (alu_res_m),
-        .i_mem_mask      (mem_mask_m),
+        .i_mem_data      (mem_data_m),
         .i_wb_src        (wb_src_m),
         .i_reg_write     (reg_write_m),
-        .i_load_unsigned (load_unsigned_m),
         .i_is_mul        (is_mul_m),
         .i_m_op          (m_op_m),
         .o_rd_addr       (rd_addr_m2),
         .o_alu_res       (alu_res_m2),
-        .o_mem_mask      (mem_mask_m2),
+        .o_mem_data      (mem_data_m2),
         .o_wb_src        (wb_src_m2),
         .o_reg_write     (reg_write_m2),
-        .o_load_unsigned (load_unsigned_m2),
         .o_is_mul        (is_mul_m2),
         .o_m_op          (m_op_m2)
-    );
-
-    stage_m2 u_stage_m2 (
-        .i_mem_mask      (mem_mask_m2),
-        .i_load_unsigned (load_unsigned_m2),
-        .i_dram_rdata    (dram_rdata),
-        .o_mem_rdata     (mem_data_m2)
     );
 
     // Select the architectural result before the M2/WB register.  The WB
@@ -609,9 +622,9 @@ module core(
 
     assign mul_wb_consume = is_mul_w && reg_write_w;
     assign mul_fifo_enqueue = mul_result_valid &&
-                              !(mul_wb_consume && (mul_fifo_count == 0));
-    assign mul_fifo_dequeue = mul_wb_consume && (mul_fifo_count != 0);
-    assign mul_result_for_wb = (mul_fifo_count != 0) ?
+                              !(mul_wb_consume && !mul_fifo_nonempty);
+    assign mul_fifo_dequeue = mul_wb_consume && mul_fifo_nonempty;
+    assign mul_result_for_wb = mul_fifo_nonempty ?
                                mul_result_fifo[mul_fifo_head] : mul_result;
     assign wb_data_arch = is_mul_w ? mul_result_for_wb : wb_data_w;
 
@@ -620,6 +633,7 @@ module core(
             mul_fifo_head  <= '0;
             mul_fifo_tail  <= '0;
             mul_fifo_count <= '0;
+            mul_fifo_nonempty <= 1'b0;
         end else begin
             if (mul_fifo_enqueue) begin
                 mul_result_fifo[mul_fifo_tail] <= mul_result;
@@ -630,8 +644,14 @@ module core(
             end
 
             unique case ({mul_fifo_enqueue, mul_fifo_dequeue})
-                2'b10: mul_fifo_count <= mul_fifo_count + 3'd1;
-                2'b01: mul_fifo_count <= mul_fifo_count - 3'd1;
+                2'b10: begin
+                    mul_fifo_count <= mul_fifo_count + 3'd1;
+                    mul_fifo_nonempty <= 1'b1;
+                end
+                2'b01: begin
+                    mul_fifo_count <= mul_fifo_count - 3'd1;
+                    mul_fifo_nonempty <= (mul_fifo_count != 3'd1);
+                end
                 default: mul_fifo_count <= mul_fifo_count;
             endcase
         end

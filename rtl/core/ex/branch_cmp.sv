@@ -38,14 +38,14 @@ module branch_cmp(
 
     logic        branch_taken;
     logic [`PC_BUS] branch_target;
+    logic [`PC_BUS] jalr_target;
     logic [`PC_BUS] pc_plus4;
     logic [`PC_BUS] right_pc;
-    logic           taken_target_mismatch;
-    logic           fallthrough_mismatch;
 
     always_comb begin
         branch_taken  = 1'b0;
         branch_target = i_pc_target;
+        jalr_target   = (i_t1_data + i_t2_data) & ~32'd1;
         pc_plus4      = i_pc_d_e + 32'd4;
 
         if (i_is_branch) begin
@@ -62,15 +62,9 @@ module branch_cmp(
             branch_taken = 1'b1;
         end else if (i_inst_spec == `EX_JALR) begin
             branch_taken  = 1'b1;
-            branch_target = (i_t1_data + i_t2_data) & ~32'd1;
+            branch_target = jalr_target;
         end
 
-        // Compare both registered candidate PCs with the prediction in
-        // parallel, then let branch_taken select the already reduced result.
-        // This keeps load-dependent branch data out of a second 32-bit
-        // right_pc-versus-prediction comparator on the EX2 critical path.
-        taken_target_mismatch = (branch_target != i_pc_predict);
-        fallthrough_mismatch  = (pc_plus4 != i_pc_predict);
         right_pc        = branch_taken ? branch_target : pc_plus4;
         o_update_en     = i_is_branch || (i_inst_spec == `EX_JAL) || (i_inst_spec == `EX_JALR);
         o_update_taken  = branch_taken;
@@ -78,8 +72,17 @@ module branch_cmp(
         o_update_target = right_pc;
         o_bpu_target    = branch_target;
         o_right_pc      = right_pc;
-        o_error         = o_update_en &&
-                          (branch_taken ? taken_target_mismatch :
-                                          fallthrough_mismatch);
+        // Keep each branch class in its own mismatch cone. JAL/JALR are
+        // unconditionally taken, so they do not need the conditional-branch
+        // taken mux in front of the prediction comparison.
+        o_error = 1'b0;
+        if (i_is_branch) begin
+            o_error = branch_taken ? (i_pc_target != i_pc_predict) :
+                                     (pc_plus4 != i_pc_predict);
+        end else if (i_inst_spec == `EX_JAL) begin
+            o_error = (i_pc_target != i_pc_predict);
+        end else if (i_inst_spec == `EX_JALR) begin
+            o_error = (jalr_target != i_pc_predict);
+        end
     end
 endmodule

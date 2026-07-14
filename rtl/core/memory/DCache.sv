@@ -37,7 +37,10 @@ endmodule
 // Timing contract:
 // - External memory is a single-outstanding ready/valid port. Reads complete
 //   only when mem_resp_valid is asserted; writes complete on req handshake.
-// - Cacheable hit data is registered on the clock edge that lets M1 advance, so
+// - Cache lookup starts from the EX address. Tag fragments, valid and the
+//   selected word are registered on the edge that moves the request into M1;
+//   this removes LUTRAM from M1 ready/forwarding without adding a hit cycle.
+// - Cacheable hit data is registered again on the edge that lets M1 advance, so
 //   the existing M2 stage can consume it in the next cycle.
 // - Returned load data is shifted down by the original byte offset, matching the
 //   current DramBramAdapter contract used by stage_m2.
@@ -62,11 +65,15 @@ module DCache #(
     input  logic [31:0] cpu_req_addr,
     input  logic [(4*$clog2(LINE_COUNT))-1:0] cpu_req_tag_indices,
     input  logic [(4*$clog2(LINE_COUNT))-1:0] cpu_req_data_indices,
+    input  logic [31:0] cpu_probe_addr,
+    input  logic        cpu_probe_advance,
+    input  logic        cpu_probe_kill,
     input  logic [31:0] cpu_req_wdata,
     input  logic [3:0]  cpu_req_wstrb,
     input  logic        cpu_req_uncached,
     output logic        cpu_resp_valid,
     output logic [31:0] cpu_resp_rdata,
+    output logic [31:0] cpu_m1_rdata,
     output logic [31:0] cpu_fast_word,
 
     output logic        mem_req_valid,
@@ -130,8 +137,17 @@ module DCache #(
     logic [INDEX_W-1:0] data_write_index_q [0:WORDS_PER_LINE-1];
     logic [31:0] data_write_data_q [0:WORDS_PER_LINE-1];
     logic [3:0]  data_write_mask_q [0:WORDS_PER_LINE-1];
-    logic [31:0] cache_word_raw_c;
-    logic [31:0] cache_word_pending_c;
+    logic [31:0] probe_word_q [0:WORDS_PER_LINE-1];
+    logic        probe_pending_valid_q;
+    logic [1:0]  probe_pending_word_q;
+    logic [31:0] probe_pending_data_q;
+    logic [3:0]  probe_pending_mask_q;
+    logic [4:0]  probe_tag_q0;
+    logic [4:0]  probe_tag_q1;
+    logic [4:0]  probe_tag_q2;
+    logic [3:0]  probe_tag_q3;
+    logic        probe_line_valid_q;
+    logic        probe_valid_q;
 
     logic [31:0] miss_addr_q;
     logic [1:0]  miss_target_word_q;
@@ -141,6 +157,7 @@ module DCache #(
     logic        resp_valid_q;
 
     logic [INDEX_W-1:0] req_index_c;
+    logic [INDEX_W-1:0] probe_index_c;
     logic [31:TAG_LSB]  req_tag_c;
     logic [1:0]         req_word_c;
     logic               req_cacheable_c;
@@ -180,38 +197,75 @@ module DCache #(
     assign req_index_c = cpu_req_addr[TAG_LSB-1:4];
     assign req_tag_c   = cpu_req_addr[31:TAG_LSB];
     assign req_word_c  = cpu_req_addr[3:2];
-    assign req_tag_match_c[0] =
-        tag_q0[cpu_req_tag_indices[0*INDEX_W +: INDEX_W]] == cpu_req_addr[17:13];
-    assign req_tag_match_c[1] =
-        tag_q1[cpu_req_tag_indices[1*INDEX_W +: INDEX_W]] == cpu_req_addr[22:18];
-    assign req_tag_match_c[2] =
-        tag_q2[cpu_req_tag_indices[2*INDEX_W +: INDEX_W]] == cpu_req_addr[27:23];
-    assign req_tag_match_c[3] =
-        tag_q3[cpu_req_tag_indices[3*INDEX_W +: INDEX_W]] == cpu_req_addr[31:28];
+    assign req_tag_match_c[0] = probe_tag_q0 == cpu_req_addr[17:13];
+    assign req_tag_match_c[1] = probe_tag_q1 == cpu_req_addr[22:18];
+    assign req_tag_match_c[2] = probe_tag_q2 == cpu_req_addr[27:23];
+    assign req_tag_match_c[3] = probe_tag_q3 == cpu_req_addr[31:28];
     assign req_hit_c   = req_cacheable_c &&
-                         valid_q[cpu_req_tag_indices[0 +: INDEX_W]] &&
+                         probe_valid_q && probe_line_valid_q &&
                          (&req_tag_match_c);
-    assign cache_word_raw_c = data_word_read_c[req_word_c];
+    assign probe_index_c = cpu_probe_addr[TAG_LSB-1:4];
+    // Register every asynchronous word-bank output directly at the EX/M1
+    // boundary. Selecting one of four words after this boundary removes both
+    // the word mux and the pending-write byte mux from the LUTRAM capture path.
+    // A write that reaches the RAM on this edge is carried as compact bypass
+    // metadata and merged on the registered M1 side below.
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            probe_line_valid_q <= 1'b0;
+            probe_valid_q      <= 1'b0;
+            probe_pending_valid_q <= 1'b0;
+        end else if (cpu_probe_advance) begin
+            if (cpu_probe_kill) begin
+                probe_valid_q <= 1'b0;
+                probe_pending_valid_q <= 1'b0;
+            end else begin
+                for (int word_idx = 0; word_idx < WORDS_PER_LINE; word_idx++) begin
+                    probe_word_q[word_idx] <= data_word_read_c[word_idx];
+                end
+                probe_tag_q0       <= tag_q0[cpu_req_tag_indices[0*INDEX_W +: INDEX_W]];
+                probe_tag_q1       <= tag_q1[cpu_req_tag_indices[1*INDEX_W +: INDEX_W]];
+                probe_tag_q2       <= tag_q2[cpu_req_tag_indices[2*INDEX_W +: INDEX_W]];
+                probe_tag_q3       <= tag_q3[cpu_req_tag_indices[3*INDEX_W +: INDEX_W]];
+                probe_line_valid_q <= valid_q[probe_index_c];
+                probe_valid_q      <= 1'b1;
+                probe_pending_valid_q <= 1'b0;
+                for (int word_idx = 0; word_idx < WORDS_PER_LINE; word_idx++) begin
+                    if (data_write_word_en_q[word_idx] &&
+                        (data_write_index_q[word_idx] == probe_index_c)) begin
+                        probe_pending_valid_q <= 1'b1;
+                        probe_pending_word_q  <= 2'(word_idx);
+                        probe_pending_data_q  <= data_write_data_q[word_idx];
+                        probe_pending_mask_q  <= data_write_mask_q[word_idx];
+                    end
+                end
+            end
+        end
+    end
 
-    // A store hit is accepted without stalling the following instruction.  In
-    // the cycle before its registered write command reaches the LUTRAM, merge
-    // matching pending bytes into both the ordinary M2 response and the
-    // timing-bounded aligned-LW fast word.  This preserves the existing
-    // zero-bubble store-to-load behavior while moving the physical RAM write
-    // to the next edge.
+    // Merge the write that coincided with probe capture first, then the newer
+    // live write command. This preserves consecutive store/load ordering even
+    // though the raw LUTRAM outputs are captured without a byte mux.
     always_comb begin
-        cache_word_pending_c = cache_word_raw_c;
+        cache_word_c = probe_word_q[req_word_c];
+        if (probe_pending_valid_q && (probe_pending_word_q == req_word_c)) begin
+            for (int byte_idx = 0; byte_idx < 4; byte_idx++) begin
+                if (probe_pending_mask_q[byte_idx]) begin
+                    cache_word_c[byte_idx*8 +: 8] =
+                        probe_pending_data_q[byte_idx*8 +: 8];
+                end
+            end
+        end
         if (data_write_word_en_q[req_word_c] &&
             (data_write_index_q[req_word_c] == req_index_c)) begin
             for (int byte_idx = 0; byte_idx < 4; byte_idx++) begin
                 if (data_write_mask_q[req_word_c][byte_idx]) begin
-                    cache_word_pending_c[byte_idx*8 +: 8] =
+                    cache_word_c[byte_idx*8 +: 8] =
                         data_write_data_q[req_word_c][byte_idx*8 +: 8];
                 end
             end
         end
     end
-    assign cache_word_c = cache_word_pending_c;
 
     assign miss_index_c = miss_addr_q[TAG_LSB-1:4];
     assign miss_tag_c   = miss_addr_q[31:TAG_LSB];
@@ -323,6 +377,9 @@ module DCache #(
                             (state_q == DC_UNCACHED_REPLAY) ||
                             (state_q == DC_MISS_REPLAY);
     assign cpu_resp_rdata = resp_rdata_q;
+    assign cpu_m1_rdata = (state_q == DC_IDLE) ?
+                          (cache_word_c >> {cpu_req_addr[1:0], 3'b000}) :
+                          resp_rdata_q;
 
     // The only combinational cache-data export is an aligned 32-bit word.
     // Byte/halfword rotation and extension stay on the registered M2 path, so

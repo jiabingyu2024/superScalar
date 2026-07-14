@@ -54,12 +54,16 @@ module myCPU (
     logic [31:0] core_dram_addr;
     logic [35:0] core_dram_tag_indices;
     logic [35:0] core_dram_data_indices;
+    logic [31:0] core_dram_probe_addr;
+    logic        core_dram_probe_advance;
+    logic        core_dram_probe_kill;
     logic [31:0] core_dram_wdata;
     logic [3:0]  core_dram_mask;
 
     logic        dcache_cpu_ready;
     logic        dcache_cpu_resp_valid;
     logic [31:0] dcache_cpu_rdata;
+    logic [31:0] dcache_cpu_m1_rdata;
     logic [31:0] dcache_fast_word;
 
     logic [63:0] perf_cycle_q;
@@ -84,6 +88,7 @@ module myCPU (
         .irom_addr     (irom_addr),
         .irom_ena      (irom_ena),
         .dram_rdata    (dcache_cpu_rdata),
+        .dram_m1_rdata (dcache_cpu_m1_rdata),
         .dram_fast_word(dcache_fast_word),
         .dram_req_ready(dcache_cpu_ready),
         .dram_wen      (core_dram_wen),
@@ -91,6 +96,9 @@ module myCPU (
         .dram_addr     (core_dram_addr),
         .dram_tag_indices(core_dram_tag_indices),
         .dram_data_indices(core_dram_data_indices),
+        .dram_probe_addr(core_dram_probe_addr),
+        .dram_probe_advance(core_dram_probe_advance),
+        .dram_probe_kill(core_dram_probe_kill),
         .dram_wdata    (core_dram_wdata),
         .dram_mask     (core_dram_mask)
     );
@@ -108,11 +116,15 @@ module myCPU (
         .cpu_req_addr      (core_dram_addr),
         .cpu_req_tag_indices(core_dram_tag_indices),
         .cpu_req_data_indices(core_dram_data_indices),
+        .cpu_probe_addr    (core_dram_probe_addr),
+        .cpu_probe_advance (core_dram_probe_advance),
+        .cpu_probe_kill    (core_dram_probe_kill),
         .cpu_req_wdata     (core_dram_wdata),
         .cpu_req_wstrb     (core_dram_mask),
         .cpu_req_uncached  (1'b0),
         .cpu_resp_valid    (dcache_cpu_resp_valid),
         .cpu_resp_rdata    (dcache_cpu_rdata),
+        .cpu_m1_rdata      (dcache_cpu_m1_rdata),
         .cpu_fast_word     (dcache_fast_word),
         .mem_req_valid     (dmem_req_valid),
         .mem_req_ready     (dmem_req_ready),

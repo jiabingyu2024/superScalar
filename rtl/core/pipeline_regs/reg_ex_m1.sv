@@ -40,11 +40,6 @@ module reg_ex_m1 (
     // bounded bank group; this does not add a pipeline stage.
     (* max_fanout = 32 *) output logic [`DATA_BUS] o_alu_res,
     output logic [`DATA_BUS]                  o_mem_addr,
-    // Four explicit tag-index and four data-index register copies keep each
-    // asynchronous LUTRAM bank group local. All copies capture the same EX2
-    // address on this existing boundary, so cache latency is unchanged.
-    output logic [35:0]                       o_cache_tag_indices,
-    output logic [35:0]                       o_cache_data_indices,
     output logic [`DATA_BUS]                  o_a2_data,
 
     output logic                              o_mem_read,
@@ -73,8 +68,6 @@ module reg_ex_m1 (
             o_rd_addr       <= '0;
             o_alu_res       <= '0;
             o_mem_addr      <= '0;
-            o_cache_tag_indices  <= '0;
-            o_cache_data_indices <= '0;
             o_a2_data       <= '0;
             o_mem_read      <= 1'b0;
             o_mem_write     <= 1'b0;
@@ -98,8 +91,6 @@ module reg_ex_m1 (
             o_rd_addr       <= '0;
             o_alu_res       <= '0;
             o_mem_addr      <= '0;
-            o_cache_tag_indices  <= '0;
-            o_cache_data_indices <= '0;
             o_a2_data       <= '0;
             o_mem_read      <= 1'b0;
             o_mem_write     <= 1'b0;
@@ -123,8 +114,6 @@ module reg_ex_m1 (
             o_rd_addr       <= i_rd_addr;
             o_alu_res       <= i_alu_res;
             o_mem_addr      <= i_mem_addr;
-            o_cache_tag_indices  <= {4{i_mem_addr[12:4]}};
-            o_cache_data_indices <= {4{i_mem_addr[12:4]}};
             o_a2_data       <= i_a2_data;
             o_mem_read      <= i_mem_read;
             o_mem_write     <= i_mem_write;
