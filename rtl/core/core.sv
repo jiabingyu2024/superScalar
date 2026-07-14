@@ -171,9 +171,13 @@ module core(
     logic             is_mul_w;
     logic [`M_OP_BUS] m_op_w;
     logic [`DATA_BUS] wb_data_arch;
-    logic [`DATA_BUS] mul_result_fifo [0:3];
-    logic [1:0]       mul_fifo_head;
-    logic [1:0]       mul_fifo_tail;
+    // Keep the result queue as an explicit fixed-head register FIFO.  A
+    // circular array makes Vivado infer an asynchronous RAMD32 read from the
+    // head pointer, placing that lookup in the late WB-to-EX/DCache path.
+    logic [`DATA_BUS] mul_fifo_data0;
+    logic [`DATA_BUS] mul_fifo_data1;
+    logic [`DATA_BUS] mul_fifo_data2;
+    logic [`DATA_BUS] mul_fifo_data3;
     logic [2:0]       mul_fifo_count;
     logic             mul_fifo_nonempty;
     logic             mul_wb_consume;
@@ -624,33 +628,51 @@ module core(
     assign mul_fifo_enqueue = mul_result_valid &&
                               !(mul_wb_consume && !mul_fifo_nonempty);
     assign mul_fifo_dequeue = mul_wb_consume && mul_fifo_nonempty;
-    assign mul_result_for_wb = mul_fifo_nonempty ?
-                               mul_result_fifo[mul_fifo_head] : mul_result;
+    assign mul_result_for_wb = mul_fifo_nonempty ? mul_fifo_data0 : mul_result;
     assign wb_data_arch = is_mul_w ? mul_result_for_wb : wb_data_w;
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
-            mul_fifo_head  <= '0;
-            mul_fifo_tail  <= '0;
             mul_fifo_count <= '0;
             mul_fifo_nonempty <= 1'b0;
         end else begin
-            if (mul_fifo_enqueue) begin
-                mul_result_fifo[mul_fifo_tail] <= mul_result;
-                mul_fifo_tail <= mul_fifo_tail + 2'd1;
-            end
-            if (mul_fifo_dequeue) begin
-                mul_fifo_head <= mul_fifo_head + 2'd1;
-            end
-
             unique case ({mul_fifo_enqueue, mul_fifo_dequeue})
                 2'b10: begin
+                    unique case (mul_fifo_count)
+                        3'd0: mul_fifo_data0 <= mul_result;
+                        3'd1: mul_fifo_data1 <= mul_result;
+                        3'd2: mul_fifo_data2 <= mul_result;
+                        default: mul_fifo_data3 <= mul_result;
+                    endcase
                     mul_fifo_count <= mul_fifo_count + 3'd1;
                     mul_fifo_nonempty <= 1'b1;
                 end
                 2'b01: begin
+                    mul_fifo_data0 <= mul_fifo_data1;
+                    mul_fifo_data1 <= mul_fifo_data2;
+                    mul_fifo_data2 <= mul_fifo_data3;
                     mul_fifo_count <= mul_fifo_count - 3'd1;
                     mul_fifo_nonempty <= (mul_fifo_count != 3'd1);
+                end
+                2'b11: begin
+                    unique case (mul_fifo_count)
+                        3'd1: mul_fifo_data0 <= mul_result;
+                        3'd2: begin
+                            mul_fifo_data0 <= mul_fifo_data1;
+                            mul_fifo_data1 <= mul_result;
+                        end
+                        3'd3: begin
+                            mul_fifo_data0 <= mul_fifo_data1;
+                            mul_fifo_data1 <= mul_fifo_data2;
+                            mul_fifo_data2 <= mul_result;
+                        end
+                        default: begin
+                            mul_fifo_data0 <= mul_fifo_data1;
+                            mul_fifo_data1 <= mul_fifo_data2;
+                            mul_fifo_data2 <= mul_fifo_data3;
+                            mul_fifo_data3 <= mul_result;
+                        end
+                    endcase
                 end
                 default: mul_fifo_count <= mul_fifo_count;
             endcase
