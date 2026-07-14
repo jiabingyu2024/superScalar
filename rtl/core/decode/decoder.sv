@@ -8,6 +8,7 @@ module decoder (
     input  core_types_pkg::fetch_entry_t fetch_i,
     output core_types_pkg::uop_t         uop_o
 );
+    import core_config_pkg::*;
     import core_types_pkg::*;
 
     logic [6:0] opcode;
@@ -39,6 +40,7 @@ module decoder (
         uop_o.pred_counter    = fetch_i.pred_counter;
         uop_o.fu              = FU_NONE;
         uop_o.alu_op          = ALU_ADD;
+        uop_o.bitmanip_op     = BM_SH1ADD;
         uop_o.branch_op       = BR_NONE;
         uop_o.muldiv_op       = muldiv_op_e'(funct3);
         uop_o.mem_size        = MEM_WORD;
@@ -103,42 +105,118 @@ module decoder (
                 endcase
             end
             7'b0010011: begin // OP-IMM
-                uop_o.fu = FU_ALU; uop_o.uses_rs1 = 1'b1; uop_o.writes_rd = 1'b1;
-                uop_o.imm = imm_i; uop_o.exception_valid = 1'b0;
-                unique case (funct3)
-                    3'b000: uop_o.alu_op = ALU_ADD;
-                    3'b010: uop_o.alu_op = ALU_SLT;
-                    3'b011: uop_o.alu_op = ALU_SLTU;
-                    3'b100: uop_o.alu_op = ALU_XOR;
-                    3'b110: uop_o.alu_op = ALU_OR;
-                    3'b111: uop_o.alu_op = ALU_AND;
-                    3'b001: begin uop_o.alu_op = ALU_SLL; if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
-                    3'b101: begin
-                        uop_o.alu_op = fetch_i.instr[30] ? ALU_SRA : ALU_SRL;
-                        if ((funct7 != 7'b0000000) && (funct7 != 7'b0100000)) uop_o.exception_valid = 1'b1;
-                    end
-                    default: uop_o.exception_valid = 1'b1;
-                endcase
+                uop_o.fu = FU_BITMANIP;
+                uop_o.uses_rs1 = 1'b1;
+                uop_o.writes_rd = 1'b1;
+                uop_o.imm = imm_i;
+                if (CFG_ZBB && funct3 == 3'b001 && fetch_i.instr[31:20] == 12'h600) begin
+                    uop_o.bitmanip_op = BM_CLZ; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBB && funct3 == 3'b001 && fetch_i.instr[31:20] == 12'h601) begin
+                    uop_o.bitmanip_op = BM_CTZ; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBB && funct3 == 3'b001 && fetch_i.instr[31:20] == 12'h602) begin
+                    uop_o.bitmanip_op = BM_CPOP; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBB && funct3 == 3'b001 && fetch_i.instr[31:20] == 12'h604) begin
+                    uop_o.bitmanip_op = BM_SEXT_B; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBB && funct3 == 3'b001 && fetch_i.instr[31:20] == 12'h605) begin
+                    uop_o.bitmanip_op = BM_SEXT_H; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBB && funct3 == 3'b101 && fetch_i.instr[31:20] == 12'h287) begin
+                    uop_o.bitmanip_op = BM_ORC_B; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBB && funct3 == 3'b101 && fetch_i.instr[31:20] == 12'h698) begin
+                    uop_o.bitmanip_op = BM_REV8; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBKB && funct3 == 3'b101 && fetch_i.instr[31:20] == 12'h687) begin
+                    uop_o.bitmanip_op = BM_BREV8; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBKB && funct3 == 3'b001 && fetch_i.instr[31:20] == 12'h08f) begin
+                    uop_o.bitmanip_op = BM_ZIP; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBKB && funct3 == 3'b101 && fetch_i.instr[31:20] == 12'h08f) begin
+                    uop_o.bitmanip_op = BM_UNZIP; uop_o.exception_valid = 1'b0;
+                end else if ((CFG_ZBB || CFG_ZBKB) && funct3 == 3'b101 &&
+                             funct7 == 7'b0110000) begin
+                    uop_o.bitmanip_op = BM_ROR; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBS && funct3 == 3'b001 && funct7 == 7'b0100100) begin
+                    uop_o.bitmanip_op = BM_BCLR; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBS && funct3 == 3'b101 && funct7 == 7'b0100100) begin
+                    uop_o.bitmanip_op = BM_BEXT; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBS && funct3 == 3'b001 && funct7 == 7'b0110100) begin
+                    uop_o.bitmanip_op = BM_BINV; uop_o.exception_valid = 1'b0;
+                end else if (CFG_ZBS && funct3 == 3'b001 && funct7 == 7'b0010100) begin
+                    uop_o.bitmanip_op = BM_BSET; uop_o.exception_valid = 1'b0;
+                end else begin
+                    uop_o.fu = FU_ALU;
+                    uop_o.exception_valid = 1'b0;
+                    unique case (funct3)
+                        3'b000: uop_o.alu_op = ALU_ADD;
+                        3'b010: uop_o.alu_op = ALU_SLT;
+                        3'b011: uop_o.alu_op = ALU_SLTU;
+                        3'b100: uop_o.alu_op = ALU_XOR;
+                        3'b110: uop_o.alu_op = ALU_OR;
+                        3'b111: uop_o.alu_op = ALU_AND;
+                        3'b001: begin
+                            uop_o.alu_op = ALU_SLL;
+                            if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1;
+                        end
+                        3'b101: begin
+                            uop_o.alu_op = fetch_i.instr[30] ? ALU_SRA : ALU_SRL;
+                            if ((funct7 != 7'b0000000) && (funct7 != 7'b0100000))
+                                uop_o.exception_valid = 1'b1;
+                        end
+                        default: uop_o.exception_valid = 1'b1;
+                    endcase
+                end
             end
             7'b0110011: begin // OP / M
                 uop_o.uses_rs1 = 1'b1; uop_o.uses_rs2 = 1'b1; uop_o.writes_rd = 1'b1;
-                uop_o.exception_valid = 1'b0;
                 if (funct7 == 7'b0000001) begin
-                    uop_o.fu = FU_MULDIV; uop_o.muldiv_op = muldiv_op_e'(funct3);
+                    uop_o.fu = FU_MULDIV;
+                    uop_o.muldiv_op = muldiv_op_e'(funct3);
+                    uop_o.exception_valid = 1'b0;
                 end else begin
-                    uop_o.fu = FU_ALU;
-                    unique case (funct3)
-                        3'b000: begin uop_o.alu_op = fetch_i.instr[30] ? ALU_SUB : ALU_ADD;
-                                      if ((funct7 != 7'b0000000) && (funct7 != 7'b0100000)) uop_o.exception_valid = 1'b1; end
-                        3'b001: begin uop_o.alu_op = ALU_SLL;  if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
-                        3'b010: begin uop_o.alu_op = ALU_SLT;  if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
-                        3'b011: begin uop_o.alu_op = ALU_SLTU; if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
-                        3'b100: begin uop_o.alu_op = ALU_XOR;  if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
-                        3'b101: begin uop_o.alu_op = fetch_i.instr[30] ? ALU_SRA : ALU_SRL;
-                                      if ((funct7 != 7'b0000000) && (funct7 != 7'b0100000)) uop_o.exception_valid = 1'b1; end
-                        3'b110: begin uop_o.alu_op = ALU_OR;   if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
-                        3'b111: begin uop_o.alu_op = ALU_AND;  if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
-                        default: uop_o.exception_valid = 1'b1;
+                    uop_o.fu = FU_BITMANIP;
+                    unique case ({funct7, funct3})
+                        10'b0010000_010: if (CFG_ZBA) begin uop_o.bitmanip_op = BM_SH1ADD; uop_o.exception_valid = 1'b0; end
+                        10'b0010000_100: if (CFG_ZBA) begin uop_o.bitmanip_op = BM_SH2ADD; uop_o.exception_valid = 1'b0; end
+                        10'b0010000_110: if (CFG_ZBA) begin uop_o.bitmanip_op = BM_SH3ADD; uop_o.exception_valid = 1'b0; end
+                        10'b0100000_111: if (CFG_ZBB || CFG_ZBKB) begin uop_o.bitmanip_op = BM_ANDN; uop_o.exception_valid = 1'b0; end
+                        10'b0100000_110: if (CFG_ZBB || CFG_ZBKB) begin uop_o.bitmanip_op = BM_ORN; uop_o.exception_valid = 1'b0; end
+                        10'b0100000_100: if (CFG_ZBB || CFG_ZBKB) begin uop_o.bitmanip_op = BM_XNOR; uop_o.exception_valid = 1'b0; end
+                        10'b0110000_001: if (CFG_ZBB || CFG_ZBKB) begin uop_o.bitmanip_op = BM_ROL; uop_o.exception_valid = 1'b0; end
+                        10'b0110000_101: if (CFG_ZBB || CFG_ZBKB) begin uop_o.bitmanip_op = BM_ROR; uop_o.exception_valid = 1'b0; end
+                        10'b0000101_100: if (CFG_ZBB) begin uop_o.bitmanip_op = BM_MIN; uop_o.exception_valid = 1'b0; end
+                        10'b0000101_101: if (CFG_ZBB) begin uop_o.bitmanip_op = BM_MINU; uop_o.exception_valid = 1'b0; end
+                        10'b0000101_110: if (CFG_ZBB) begin uop_o.bitmanip_op = BM_MAX; uop_o.exception_valid = 1'b0; end
+                        10'b0000101_111: if (CFG_ZBB) begin uop_o.bitmanip_op = BM_MAXU; uop_o.exception_valid = 1'b0; end
+                        10'b0000100_100: begin
+                            if (CFG_ZBKB) begin uop_o.bitmanip_op = BM_PACK; uop_o.exception_valid = 1'b0; end
+                            else if (CFG_ZBB && fetch_i.instr[24:20] == 5'd0) begin
+                                uop_o.bitmanip_op = BM_ZEXT_H; uop_o.exception_valid = 1'b0;
+                            end
+                        end
+                        10'b0000100_111: if (CFG_ZBKB) begin uop_o.bitmanip_op = BM_PACKH; uop_o.exception_valid = 1'b0; end
+                        10'b0000101_001: if (CFG_ZBC) begin uop_o.bitmanip_op = BM_CLMUL; uop_o.exception_valid = 1'b0; end
+                        10'b0000101_011: if (CFG_ZBC) begin uop_o.bitmanip_op = BM_CLMULH; uop_o.exception_valid = 1'b0; end
+                        10'b0000101_010: if (CFG_ZBC) begin uop_o.bitmanip_op = BM_CLMULR; uop_o.exception_valid = 1'b0; end
+                        10'b0010100_010: if (CFG_ZBKX) begin uop_o.bitmanip_op = BM_XPERM4; uop_o.exception_valid = 1'b0; end
+                        10'b0010100_100: if (CFG_ZBKX) begin uop_o.bitmanip_op = BM_XPERM8; uop_o.exception_valid = 1'b0; end
+                        10'b0100100_001: if (CFG_ZBS) begin uop_o.bitmanip_op = BM_BCLR; uop_o.exception_valid = 1'b0; end
+                        10'b0100100_101: if (CFG_ZBS) begin uop_o.bitmanip_op = BM_BEXT; uop_o.exception_valid = 1'b0; end
+                        10'b0110100_001: if (CFG_ZBS) begin uop_o.bitmanip_op = BM_BINV; uop_o.exception_valid = 1'b0; end
+                        10'b0010100_001: if (CFG_ZBS) begin uop_o.bitmanip_op = BM_BSET; uop_o.exception_valid = 1'b0; end
+                        default: begin
+                            uop_o.fu = FU_ALU;
+                            uop_o.exception_valid = 1'b0;
+                            unique case (funct3)
+                                3'b000: begin uop_o.alu_op = fetch_i.instr[30] ? ALU_SUB : ALU_ADD;
+                                              if ((funct7 != 7'b0000000) && (funct7 != 7'b0100000)) uop_o.exception_valid = 1'b1; end
+                                3'b001: begin uop_o.alu_op = ALU_SLL;  if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
+                                3'b010: begin uop_o.alu_op = ALU_SLT;  if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
+                                3'b011: begin uop_o.alu_op = ALU_SLTU; if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
+                                3'b100: begin uop_o.alu_op = ALU_XOR;  if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
+                                3'b101: begin uop_o.alu_op = fetch_i.instr[30] ? ALU_SRA : ALU_SRL;
+                                              if ((funct7 != 7'b0000000) && (funct7 != 7'b0100000)) uop_o.exception_valid = 1'b1; end
+                                3'b110: begin uop_o.alu_op = ALU_OR;   if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
+                                3'b111: begin uop_o.alu_op = ALU_AND;  if (funct7 != 7'b0000000) uop_o.exception_valid = 1'b1; end
+                                default: uop_o.exception_valid = 1'b1;
+                            endcase
+                        end
                     endcase
                 end
             end
@@ -171,5 +249,11 @@ module decoder (
             end
             default: begin end
         endcase
+
+        // A disabled Zb encoding remains an illegal instruction, but it must
+        // still enter the normal exception path instead of waiting forever on
+        // a bitmanip unit that was elaborated out.
+        if (uop_o.exception_valid && uop_o.fu == FU_BITMANIP)
+            uop_o.fu = FU_ALU;
     end
 endmodule

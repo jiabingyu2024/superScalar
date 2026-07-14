@@ -5,8 +5,21 @@
 // Generated: 2026-07-13
 // Source: 053_superscalar_framework_inorder_single_issue_core_architecture.md
 package core_config_pkg;
+    // Select the bit-manipulation profile before elaboration.  Keep all six
+    // disabled for the timing-identical RV32IM baseline; enable only the group
+    // required by the competition image.
+    localparam logic CFG_ZBA              = 1'b0;
+    localparam logic CFG_ZBB              = 1'b0;
+    localparam logic CFG_ZBC              = 1'b0;
+    localparam logic CFG_ZBKB             = 1'b0;
+    localparam logic CFG_ZBKX             = 1'b0;
+    localparam logic CFG_ZBS              = 1'b0;
+    localparam logic CFG_ZB_ANY           = CFG_ZBA | CFG_ZBB | CFG_ZBC |
+                                             CFG_ZBKB | CFG_ZBKX | CFG_ZBS;
+
     localparam int unsigned XLEN               = 32;
     localparam logic [31:0] RESET_PC           = 32'h8000_0000;
+    localparam int unsigned IROM_BYTE_ADDR_W   = 14;
     localparam int unsigned FETCH_QUEUE_DEPTH  = 4;
     localparam int unsigned SCOREBOARD_DEPTH   = 8;
     localparam int unsigned STORE_BUFFER_DEPTH = 4;

@@ -8,13 +8,25 @@ package core_types_pkg;
     import core_config_pkg::*;
 
     typedef enum logic [2:0] {
-        FU_ALU, FU_BRANCH, FU_LOAD, FU_STORE, FU_MULDIV, FU_SYSTEM, FU_NONE
+        FU_ALU, FU_BRANCH, FU_LOAD, FU_STORE, FU_MULDIV, FU_SYSTEM,
+        FU_NONE, FU_BITMANIP
     } fu_e;
 
     typedef enum logic [3:0] {
         ALU_ADD, ALU_SUB, ALU_AND, ALU_OR, ALU_XOR, ALU_SLL, ALU_SRL,
         ALU_SRA, ALU_SLT, ALU_SLTU, ALU_COPY_B
     } alu_op_e;
+
+    typedef enum logic [5:0] {
+        BM_SH1ADD, BM_SH2ADD, BM_SH3ADD,
+        BM_ANDN, BM_CLZ, BM_CPOP, BM_CTZ, BM_MAX, BM_MAXU, BM_MIN, BM_MINU,
+        BM_ORC_B, BM_ORN, BM_REV8, BM_ROL, BM_ROR, BM_SEXT_B, BM_SEXT_H,
+        BM_XNOR, BM_ZEXT_H,
+        BM_CLMUL, BM_CLMULH, BM_CLMULR,
+        BM_BREV8, BM_PACK, BM_PACKH, BM_UNZIP, BM_ZIP,
+        BM_XPERM4, BM_XPERM8,
+        BM_BCLR, BM_BEXT, BM_BINV, BM_BSET
+    } bitmanip_op_e;
 
     typedef enum logic [2:0] {
         BR_NONE, BR_BEQ, BR_BNE, BR_BLT, BR_BGE, BR_BLTU, BR_BGEU
@@ -57,6 +69,7 @@ package core_types_pkg;
         logic [31:0] imm;
         fu_e         fu;
         alu_op_e     alu_op;
+        bitmanip_op_e bitmanip_op;
         branch_op_e  branch_op;
         muldiv_op_e  muldiv_op;
         mem_size_e   mem_size;

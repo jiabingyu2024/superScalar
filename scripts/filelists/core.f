@@ -11,6 +11,7 @@ rtl/core/commit/csr_file.sv
 rtl/core/control/recovery_ctrl.sv
 rtl/core/perf/perf_counters.sv
 rtl/core/execute/fixed_execute.sv
+rtl/core/execute/bitmanip_unit.sv
 rtl/core/execute/muldiv_unit.sv
 rtl/core/memory/dcache_tag_bank.sv
 rtl/core/memory/dcache_data_bank.sv

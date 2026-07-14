@@ -114,6 +114,10 @@ module core_top (
     logic mdu_req_valid, mdu_req_ready, mdu_resp_valid, mdu_busy;
     logic [TRANS_ID_W-1:0] mdu_resp_tid;
     logic [31:0] mdu_resp_result;
+    logic bm_req_valid, bm_req_ready, bm_resp_valid, bm_busy;
+    logic [TRANS_ID_W-1:0] bm_resp_tid, slow_resp_tid;
+    logic [31:0] bm_resp_result, slow_resp_result;
+    logic slow_resp_valid, bitmanip_clmul_start_c;
 
     scoreboard_entry_t commit_entry;
     logic commit_ready, commit_fire, commit_normal;
@@ -192,7 +196,9 @@ module core_top (
                                         (!src2_ready && src2_found));
     assign stall_mem_c = id_valid_q &&
                          (id_uop_q.fu == FU_LOAD || id_uop_q.fu == FU_STORE) && !issue_fire;
-    assign stall_muldiv_c = id_valid_q && id_uop_q.fu == FU_MULDIV && !issue_fire;
+    assign stall_muldiv_c = id_valid_q &&
+                            (id_uop_q.fu == FU_MULDIV || id_uop_q.fu == FU_BITMANIP) &&
+                            !issue_fire;
     assign stall_front_c = !id_valid_q && scoreboard_count_q < SB_CNT_W'(SCOREBOARD_DEPTH);
 
     perf_counters u_perf_counters (
@@ -301,11 +307,11 @@ module core_top (
                 src1_mem_value = fixed_completion.result;
             end else if (load_completion_valid && load_completion_meta.trans_id == src1_tid) begin
                 src1_ready = 1'b1; src1_value = load_result;
-            end else if (mdu_resp_valid && mdu_resp_tid == src1_tid) begin
+            end else if (slow_resp_valid && slow_resp_tid == src1_tid) begin
                 src1_ready = 1'b1;
-                src1_value = mdu_resp_result;
+                src1_value = slow_resp_result;
                 src1_mem_ready = 1'b1;
-                src1_mem_value = mdu_resp_result;
+                src1_mem_value = slow_resp_result;
             end
         end
         if (src2_found) begin
@@ -313,8 +319,8 @@ module core_top (
                 src2_ready = 1'b1; src2_value = fixed_completion.result;
             end else if (load_completion_valid && load_completion_meta.trans_id == src2_tid) begin
                 src2_ready = 1'b1; src2_value = load_result;
-            end else if (mdu_resp_valid && mdu_resp_tid == src2_tid) begin
-                src2_ready = 1'b1; src2_value = mdu_resp_result;
+            end else if (slow_resp_valid && slow_resp_tid == src2_tid) begin
+                src2_ready = 1'b1; src2_value = slow_resp_result;
             end
         end
     end
@@ -334,7 +340,12 @@ module core_top (
         unique case (id_uop_q.fu)
             FU_LOAD: issue_fu_ready = (load_count_q + LD_CNT_W'(exec_q.valid && exec_q.uop.fu == FU_LOAD)) < LD_CNT_W'(LOAD_QUEUE_DEPTH);
             FU_STORE: issue_fu_ready = (store_count_q + ST_CNT_W'(exec_q.valid && exec_q.uop.fu == FU_STORE)) < ST_CNT_W'(STORE_BUFFER_DEPTH);
-            FU_MULDIV: issue_fu_ready = mdu_req_ready && !(exec_q.valid && exec_q.uop.fu == FU_MULDIV);
+            FU_MULDIV: issue_fu_ready = mdu_req_ready && !bm_busy &&
+                                             !(exec_q.valid && exec_q.uop.fu == FU_MULDIV) &&
+                                             !bitmanip_clmul_start_c;
+            FU_BITMANIP: issue_fu_ready = bm_req_ready && !mdu_busy &&
+                                                !(exec_q.valid && exec_q.uop.fu == FU_MULDIV) &&
+                                                !bitmanip_clmul_start_c;
             default: issue_fu_ready = 1'b1;
         endcase
         if (id_uop_q.serialize) issue_fu_ready = issue_fu_ready &&
@@ -402,6 +413,27 @@ module core_top (
         .resp_result_o(mdu_resp_result), .busy_o(mdu_busy)
     );
     assign mdu_req_valid = exec_q.valid && exec_q.uop.fu == FU_MULDIV && !full_flush;
+
+    bitmanip_unit u_bitmanip (
+        .clk(clk), .rst(rst), .kill_i(full_flush),
+        .req_valid_i(bm_req_valid), .req_ready_o(bm_req_ready),
+        .req_trans_id_i(exec_q.trans_id), .req_op_i(exec_q.uop.bitmanip_op),
+        .req_a_i(exec_q.op1),
+        .req_b_i(exec_q.uop.uses_rs2 ? exec_q.op2 : exec_q.uop.imm),
+        .resp_valid_o(bm_resp_valid), .resp_trans_id_o(bm_resp_tid),
+        .resp_result_o(bm_resp_result), .busy_o(bm_busy)
+    );
+    assign bm_req_valid = exec_q.valid && exec_q.uop.fu == FU_BITMANIP && !full_flush;
+    assign bitmanip_clmul_start_c = bm_req_valid &&
+        (exec_q.uop.bitmanip_op == BM_CLMUL ||
+         exec_q.uop.bitmanip_op == BM_CLMULH ||
+         exec_q.uop.bitmanip_op == BM_CLMULR);
+
+    // Bitmanip and MDU issue are mutually exclusive while either iterative
+    // engine is busy, so they can share the existing long-latency wakeup port.
+    assign slow_resp_valid = mdu_resp_valid || bm_resp_valid;
+    assign slow_resp_tid = bm_resp_valid ? bm_resp_tid : mdu_resp_tid;
+    assign slow_resp_result = bm_resp_valid ? bm_resp_result : mdu_resp_result;
 
     always_comb begin
         older_store_pending = 1'b0;
@@ -684,9 +716,9 @@ module core_top (
                     scoreboard_q[load_completion_meta.trans_id].result <= load_result;
                     if (!load_forward_complete) load_active_q <= 1'b0;
                 end
-                if (mdu_resp_valid && scoreboard_q[mdu_resp_tid].occupied) begin
-                    scoreboard_q[mdu_resp_tid].done <= 1'b1;
-                    scoreboard_q[mdu_resp_tid].result <= mdu_resp_result;
+                if (slow_resp_valid && scoreboard_q[slow_resp_tid].occupied) begin
+                    scoreboard_q[slow_resp_tid].done <= 1'b1;
+                    scoreboard_q[slow_resp_tid].result <= slow_resp_result;
                 end
 
                 if (commit_fire) begin
@@ -833,7 +865,8 @@ module core_top (
             assert (load_count_perf_q + store_count_perf_q <= commit_count_q);
             if (fixed_completion_valid) assert (scoreboard_q[fixed_completion.trans_id].occupied);
             if (load_completion_valid) assert (scoreboard_q[load_completion_meta.trans_id].occupied);
-            if (mdu_resp_valid) assert (scoreboard_q[mdu_resp_tid].occupied);
+            if (slow_resp_valid) assert (scoreboard_q[slow_resp_tid].occupied);
+            assert (!(mdu_resp_valid && bm_resp_valid));
             if (dc_mem_req_valid && dc_mem_req_write) begin
                 assert (store_count_q != 0);
                 assert (store_q[store_head_q].valid && store_committed_q[store_head_q]);
