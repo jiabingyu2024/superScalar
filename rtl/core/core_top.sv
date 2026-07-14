@@ -66,14 +66,11 @@ module core_top (
     logic wb_valid_q;
     logic [4:0] wb_rd_q;
     logic [31:0] wb_data_q;
-    scoreboard_entry_t scoreboard_q [0:SCOREBOARD_DEPTH-1];
-    // Architectural-register -> youngest in-flight producer.  A direct map
-    // replaces the backwards scoreboard CAM walk on every decode cycle.
-    logic [31:0] producer_valid_q;
-    logic [TRANS_ID_W-1:0] producer_tid_q [0:31];
     logic [TRANS_ID_W-1:0] issue_ptr_q, commit_ptr_q;
     logic [SB_CNT_W-1:0] scoreboard_count_q;
     logic serial_pending_q;
+    logic sb_src1_ready, sb_src2_ready;
+    logic [31:0] sb_src1_data, sb_src2_data;
 
     exec_req_t exec_q;
     completion_t fixed_completion;
@@ -85,15 +82,14 @@ module core_top (
     logic branch_predictor_update_valid_q;
     logic [31:0] branch_target, branch_actual_next, branch_pc_q;
     pred_kind_e branch_kind;
-    logic branch_pred_hit;
     logic [1:0] branch_pred_counter;
+    logic [GSHARE_HISTORY_BITS-1:0] branch_pred_index;
 
     store_entry_t store_q [0:STORE_BUFFER_DEPTH-1];
     logic [STORE_BUFFER_DEPTH-1:0] store_committed_q;
     logic [STORE_ID_W-1:0] store_head_q, store_tail_q;
     logic [ST_CNT_W-1:0] store_count_q;
     logic [7:0] next_store_seq_q;
-    load_entry_t load_q [0:LOAD_QUEUE_DEPTH-1];
     logic [LD_CNT_W-1:0] load_count_q;
     logic load_active_q;
     load_entry_t load_active_meta_q;
@@ -102,7 +98,7 @@ module core_top (
     logic src1_ready, src2_ready, src1_mem_ready, src1_found, src2_found;
     logic [TRANS_ID_W-1:0] src1_tid, src2_tid;
     logic [31:0] csr_src_value;
-    logic issue_fu_ready, issue_fire;
+    logic issue_fire;
     logic exec_load_enqueue, exec_store_enqueue;
     logic [31:0] exec_mem_addr_calc, exec_mem_addr_q;
 
@@ -118,15 +114,14 @@ module core_top (
     logic [31:0] dc_mem_resp_rdata;
     logic store_drain_fire, load_start_fire;
     logic older_store_pending;
-    logic [31:0] load_shifted, load_result, load_merged_word;
-    logic [31:0] load_forward_data_c, store_shifted_data_c;
-    logic [31:0] load_forward_byte_mask_c;
-    logic [3:0] load_forward_mask_c, store_shifted_mask_c;
-    logic load_completion_valid, load_forward_complete, load_pop_fire;
+    logic [31:0] load_result;
+    logic [31:0] load_forward_data_c;
+    logic [3:0] load_forward_mask_c;
+    logic load_completion_valid, load_completion_accepted;
+    logic load_forward_complete, load_pop_fire;
     logic load_direct_candidate, load_direct_start_fire, load_queue_start_fire;
     logic load_enqueue_fire, direct_older_store_pending;
-    logic [3:0] load_needed_mask;
-    load_entry_t load_completion_meta, load_direct_meta;
+    load_entry_t load_head, load_completion_meta, load_direct_meta, load_enqueue_meta;
 
     logic mdu_req_valid, mdu_req_ready, mdu_resp_valid, mdu_busy;
     logic [TRANS_ID_W-1:0] mdu_resp_tid;
@@ -156,46 +151,6 @@ module core_top (
     logic [63:0] dcache_access_q, dcache_miss_q;
     logic [63:0] stall_front_q, stall_mem_q, stall_muldiv_q, stall_load_use_q;
     logic stall_front_c, stall_mem_c, stall_muldiv_c, stall_raw_c;
-
-    integer i;
-    integer mem_i;
-    integer fwd_i;
-    integer fwd_idx;
-    integer fwd_lane;
-    integer merge_lane;
-    integer committed_tmp;
-
-`ifdef VERILATOR_TB
-    logic [31:0] dbg_mem_addr_q [0:SCOREBOARD_DEPTH-1];
-    logic [31:0] dbg_mem_wdata_q [0:SCOREBOARD_DEPTH-1];
-    logic [3:0] dbg_mem_wstrb_q [0:SCOREBOARD_DEPTH-1];
-    logic [31:0] dbg_next_pc_q [0:SCOREBOARD_DEPTH-1];
-    integer dbg_i;
-`endif
-
-    function automatic logic store_is_older(
-        input logic [7:0] cutoff,
-        input logic [7:0] seq_value
-    );
-        logic [7:0] delta;
-        begin
-            delta = cutoff - seq_value;
-            store_is_older = (delta != 0) && !delta[7];
-        end
-    endfunction
-
-    function automatic logic [3:0] load_byte_mask(
-        input mem_size_e size,
-        input logic [1:0] byte_offset
-    );
-        begin
-            unique case (size)
-                MEM_BYTE: load_byte_mask = 4'b0001 << byte_offset;
-                MEM_HALF: load_byte_mask = 4'b0011 << byte_offset;
-                default:  load_byte_mask = 4'b1111;
-            endcase
-        end
-    endfunction
 
     function automatic logic addr_is_dram(input logic [31:0] addr);
         begin
@@ -253,8 +208,8 @@ module core_top (
         .predictor_update_pc_i(branch_pc_q), .predictor_update_taken_i(branch_taken),
         .predictor_update_target_i(predictor_update_target),
         .predictor_update_kind_i(branch_kind),
-        .predictor_update_pred_hit_i(branch_pred_hit),
         .predictor_update_pred_counter_i(branch_pred_counter),
+        .predictor_update_pred_index_i(branch_pred_index),
         .predictor_commit_call_i(predictor_commit_call),
         .predictor_commit_return_i(predictor_commit_return),
         .predictor_commit_link_i(commit_entry.link_addr)
@@ -269,6 +224,27 @@ module core_top (
         .rs1_data_o(rf_rs1_data), .rs2_data_o(rf_rs2_data),
         .write_valid_i(rf_write_valid), .write_addr_i(wb_rd_q),
         .write_data_i(rf_write_data)
+    );
+
+    scoreboard u_scoreboard (
+        .clk(clk), .rst(rst), .flush_i(full_flush),
+        .allocate_i(issue_fire), .allocate_uop_i(id_uop_q),
+        .allocate_csr_src_i(csr_src_value), .allocate_trans_id_o(issue_ptr_q),
+        .fixed_complete_i(fixed_completion_valid),
+        .fixed_completion_i(fixed_completion),
+        .load_complete_i(load_completion_valid),
+        .load_trans_id_i(load_completion_meta.trans_id),
+        .load_result_i(load_result),
+        .load_complete_accepted_o(load_completion_accepted),
+        .slow_complete_i(slow_resp_valid),
+        .slow_trans_id_i(slow_resp_tid), .slow_result_i(slow_resp_result),
+        .commit_i(commit_fire), .commit_trans_id_o(commit_ptr_q),
+        .commit_entry_o(commit_entry), .count_o(scoreboard_count_q),
+        .serial_pending_o(serial_pending_q), .query_uop_i(id_uop_q),
+        .query_rs1_found_o(src1_found), .query_rs1_ready_o(sb_src1_ready),
+        .query_rs1_trans_id_o(src1_tid), .query_rs1_data_o(sb_src1_data),
+        .query_rs2_found_o(src2_found), .query_rs2_ready_o(sb_src2_ready),
+        .query_rs2_trans_id_o(src2_tid), .query_rs2_data_o(sb_src2_data)
     );
 
     always_ff @(posedge clk) begin
@@ -287,68 +263,26 @@ module core_top (
         end
     end
 
-    always_comb begin
-        src1_value = rf_rs1_data;
-        src2_value = rf_rs2_data;
-        if (id_uop_q.rs1 == 0) src1_value = 32'd0;
-        if (id_uop_q.rs2 == 0) src2_value = 32'd0;
-        // Architectural RF write is pipelined by one cycle to remove the
-        // circular-scoreboard head mux from the RF write-data/fanout path.
-        // This bypass covers the single cycle before the RF array is updated.
-        if (wb_valid_q && id_uop_q.rs1 == wb_rd_q && id_uop_q.rs1 != 0)
-            src1_value = wb_data_q;
-        if (wb_valid_q && id_uop_q.rs2 == wb_rd_q && id_uop_q.rs2 != 0)
-            src2_value = wb_data_q;
-        src1_ready = 1'b1;
-        src2_ready = 1'b1;
-        src1_found = 1'b0;
-        src2_found = 1'b0;
-        src1_tid = '0;
-        src2_tid = '0;
-        if (id_uop_q.uses_rs1 && id_uop_q.rs1 != 0 &&
-            producer_valid_q[id_uop_q.rs1]) begin
-            src1_found = 1'b1;
-            src1_tid = producer_tid_q[id_uop_q.rs1];
-            src1_ready = scoreboard_q[producer_tid_q[id_uop_q.rs1]].done;
-            src1_value = scoreboard_q[producer_tid_q[id_uop_q.rs1]].result;
-        end
-        if (id_uop_q.uses_rs2 && id_uop_q.rs2 != 0 &&
-            producer_valid_q[id_uop_q.rs2]) begin
-            src2_found = 1'b1;
-            src2_tid = producer_tid_q[id_uop_q.rs2];
-            src2_ready = scoreboard_q[producer_tid_q[id_uop_q.rs2]].done;
-            src2_value = scoreboard_q[producer_tid_q[id_uop_q.rs2]].result;
-        end
-        // The memory-address resolver starts from architecturally registered
-        // sources.  Fixed/MDU completions may still bypass below, but a DCache
-        // completion never drives either its data or ready control.
-        src1_mem_ready = src1_ready;
-        src1_mem_value = src1_value;
-        if (src1_found) begin
-            if (fixed_completion_valid && fixed_completion.trans_id == src1_tid) begin
-                src1_ready = 1'b1;
-                src1_value = fixed_completion.result;
-                src1_mem_ready = 1'b1;
-                src1_mem_value = fixed_completion.result;
-            end else if (load_completion_valid && load_completion_meta.trans_id == src1_tid) begin
-                src1_ready = 1'b1; src1_value = load_result;
-            end else if (slow_resp_valid && slow_resp_tid == src1_tid) begin
-                src1_ready = 1'b1;
-                src1_value = slow_resp_result;
-                src1_mem_ready = 1'b1;
-                src1_mem_value = slow_resp_result;
-            end
-        end
-        if (src2_found) begin
-            if (fixed_completion_valid && fixed_completion.trans_id == src2_tid) begin
-                src2_ready = 1'b1; src2_value = fixed_completion.result;
-            end else if (load_completion_valid && load_completion_meta.trans_id == src2_tid) begin
-                src2_ready = 1'b1; src2_value = load_result;
-            end else if (slow_resp_valid && slow_resp_tid == src2_tid) begin
-                src2_ready = 1'b1; src2_value = slow_resp_result;
-            end
-        end
-    end
+    operand_resolver u_operand_resolver (
+        .uop_i(id_uop_q), .rf_rs1_data_i(rf_rs1_data),
+        .rf_rs2_data_i(rf_rs2_data), .wb_valid_i(wb_valid_q),
+        .wb_rd_i(wb_rd_q), .wb_data_i(wb_data_q),
+        .rs1_found_i(src1_found), .rs1_scoreboard_ready_i(sb_src1_ready),
+        .rs1_trans_id_i(src1_tid), .rs1_scoreboard_data_i(sb_src1_data),
+        .rs2_found_i(src2_found), .rs2_scoreboard_ready_i(sb_src2_ready),
+        .rs2_trans_id_i(src2_tid), .rs2_scoreboard_data_i(sb_src2_data),
+        .fixed_completion_valid_i(fixed_completion_valid),
+        .fixed_completion_i(fixed_completion),
+        .load_completion_valid_i(load_completion_valid),
+        .load_completion_meta_i(load_completion_meta), .load_result_i(load_result),
+        .slow_completion_valid_i(slow_resp_valid),
+        .slow_completion_trans_id_i(slow_resp_tid),
+        .slow_completion_result_i(slow_resp_result),
+        .src1_value_o(src1_value), .src2_value_o(src2_value),
+        .src1_memory_value_o(src1_mem_value), .src1_ready_o(src1_ready),
+        .src2_ready_o(src2_ready), .src1_memory_ready_o(src1_mem_ready),
+        .src1_found_o(), .src2_found_o()
+    );
 
     // CSR instructions are serialized and therefore cannot have an in-flight
     // producer.  Use RF plus the one-cycle architectural-WB bypass directly;
@@ -360,33 +294,18 @@ module core_top (
             csr_src_value = wb_data_q;
     end
 
-    always_comb begin
-        issue_fu_ready = 1'b1;
-        unique case (id_uop_q.fu)
-            FU_LOAD: issue_fu_ready = (load_count_q + LD_CNT_W'(exec_q.valid && exec_q.uop.fu == FU_LOAD)) < LD_CNT_W'(LOAD_QUEUE_DEPTH);
-            FU_STORE: issue_fu_ready = (store_count_q + ST_CNT_W'(exec_q.valid && exec_q.uop.fu == FU_STORE)) < ST_CNT_W'(STORE_BUFFER_DEPTH);
-            FU_MULDIV: issue_fu_ready = mdu_req_ready && !bm_busy &&
-                                             !(exec_q.valid && exec_q.uop.fu == FU_MULDIV) &&
-                                             !bitmanip_clmul_start_c;
-            FU_BITMANIP: issue_fu_ready = bm_req_ready && !mdu_busy &&
-                                                !(exec_q.valid && exec_q.uop.fu == FU_MULDIV) &&
-                                                !bitmanip_clmul_start_c;
-            default: issue_fu_ready = 1'b1;
-        endcase
-        if (id_uop_q.serialize) issue_fu_ready = issue_fu_ready &&
-                                               (scoreboard_count_q == 0) && !serial_pending_q;
-        else issue_fu_ready = issue_fu_ready && !serial_pending_q;
-    end
-
-    // A full window may still allocate when its done head commits this cycle.
-    // issue_ptr == commit_ptr in that case; textual NBA priority makes the new
-    // allocation win after the old head is cleared.
-    assign issue_fire = id_valid_q &&
-                        (((id_uop_q.fu == FU_LOAD) || (id_uop_q.fu == FU_STORE)) ?
-                         src1_mem_ready : src1_ready) &&
-                        src2_ready && issue_fu_ready &&
-                        ((scoreboard_count_q < SB_CNT_W'(SCOREBOARD_DEPTH)) || commit_fire) &&
-                        !branch_resolve_valid_c && !redirect_valid;
+    issue_control u_issue_control (
+        .id_valid_i(id_valid_q), .uop_i(id_uop_q),
+        .src1_ready_i(src1_ready), .src1_memory_ready_i(src1_mem_ready),
+        .src2_ready_i(src2_ready), .scoreboard_count_i(scoreboard_count_q),
+        .store_count_i(store_count_q), .load_count_i(load_count_q),
+        .exec_i(exec_q), .serial_pending_i(serial_pending_q),
+        .mdu_req_ready_i(mdu_req_ready), .mdu_busy_i(mdu_busy),
+        .bitmanip_req_ready_i(bm_req_ready), .bitmanip_busy_i(bm_busy),
+        .bitmanip_clmul_start_i(bitmanip_clmul_start_c), .commit_i(commit_fire),
+        .branch_resolve_i(branch_resolve_valid_c), .redirect_i(redirect_valid),
+        .issue_o(issue_fire)
+    );
 
     fixed_execute u_fixed_execute (
         .exec_i(exec_q), .store_tail_i(store_tail_q),
@@ -402,32 +321,14 @@ module core_top (
     assign predictor_update_valid = branch_predictor_update_valid_q;
     assign predictor_update_target = branch_target;
 
-    // Snapshot all currently older stores when a load leaves EX. Store entries
-    // are walked in program order so a younger overlapping store wins per byte.
-    always_comb begin
-        load_forward_mask_c = 4'd0;
-        load_forward_data_c = 32'd0;
-        store_shifted_mask_c = 4'd0;
-        store_shifted_data_c = 32'd0;
-        fwd_idx = 0;
-        if (exec_load_enqueue && addr_is_dram(exec_mem_addr_q)) begin
-            for (fwd_i = 0; fwd_i < STORE_BUFFER_DEPTH; fwd_i = fwd_i + 1) begin
-                fwd_idx = (int'(store_head_q) + fwd_i) % STORE_BUFFER_DEPTH;
-                if (fwd_i < int'(store_count_q) && store_q[fwd_idx].valid &&
-                    store_q[fwd_idx].addr[31:2] == exec_mem_addr_q[31:2]) begin
-                    store_shifted_mask_c = (store_q[fwd_idx].wstrb << store_q[fwd_idx].addr[1:0]) & 4'hf;
-                    store_shifted_data_c = store_q[fwd_idx].wdata << {store_q[fwd_idx].addr[1:0], 3'b000};
-                    for (fwd_lane = 0; fwd_lane < 4; fwd_lane = fwd_lane + 1) begin
-                        if (store_shifted_mask_c[fwd_lane]) begin
-                            load_forward_mask_c[fwd_lane] = 1'b1;
-                            load_forward_data_c[fwd_lane*8 +: 8] =
-                                store_shifted_data_c[fwd_lane*8 +: 8];
-                        end
-                    end
-                end
-            end
-        end
-    end
+    store_forwarding u_store_forwarding (
+        .load_valid_i(exec_load_enqueue),
+        .load_cacheable_i(addr_is_dram(exec_mem_addr_q)),
+        .load_addr_i(exec_mem_addr_q), .store_entries_i(store_q),
+        .store_head_i(store_head_q), .store_count_i(store_count_q),
+        .forward_mask_o(load_forward_mask_c),
+        .forward_data_o(load_forward_data_c)
+    );
 
     muldiv_unit u_muldiv (
         .clk(clk), .rst(rst), .kill_i(full_flush),
@@ -460,67 +361,36 @@ module core_top (
     assign slow_resp_tid = bm_resp_valid ? bm_resp_tid : mdu_resp_tid;
     assign slow_resp_result = bm_resp_valid ? bm_resp_result : mdu_resp_result;
 
-    always_comb begin
-        older_store_pending = 1'b0;
-        direct_older_store_pending = 1'b0;
-        dc_req_valid = 1'b0;
-        dc_req_write = 1'b0;
-        dc_req_addr = 32'd0;
-        dc_req_wdata = 32'd0;
-        dc_req_wstrb = 4'd0;
-        dc_req_uncached = 1'b0;
-        if (load_count_q != 0) begin
-            for (mem_i = 0; mem_i < STORE_BUFFER_DEPTH; mem_i = mem_i + 1) begin
-                if (store_q[mem_i].valid &&
-                    store_is_older(load_q[0].store_seq_cutoff,
-                                   store_q[mem_i].store_seq)) older_store_pending = 1'b1;
-            end
-        end
-        if (exec_load_enqueue) begin
-            for (mem_i = 0; mem_i < STORE_BUFFER_DEPTH; mem_i = mem_i + 1) begin
-                if (store_q[mem_i].valid &&
-                    store_is_older(next_store_seq_q, store_q[mem_i].store_seq))
-                    direct_older_store_pending = 1'b1;
-            end
-        end
-        // Present a younger request before the active load's hit is known.
-        // DCache may start its synchronous tag/data read speculatively; ready
-        // still controls ownership transfer, so a miss leaves the request in
-        // the queue.  This removes hit-result -> next-BRAM-enable timing while
-        // retaining one accepted cache hit per cycle.
-        load_direct_candidate = !full_flush && exec_load_enqueue && load_count_q == 0 &&
-                                (addr_is_dram(exec_mem_addr_q) ||
-                                 (!direct_older_store_pending &&
-                                  exec_q.trans_id == commit_ptr_q));
-        if (store_count_q != 0 && store_q[store_head_q].valid &&
-            store_committed_q[store_head_q]) begin
-            dc_req_valid = 1'b1;
-            dc_req_write = 1'b1;
-            dc_req_addr = store_q[store_head_q].addr;
-            dc_req_wdata = store_q[store_head_q].wdata;
-            dc_req_wstrb = store_q[store_head_q].wstrb;
-            dc_req_uncached = store_q[store_head_q].uncached;
-        end else if (load_direct_candidate) begin
-            dc_req_valid = 1'b1;
-            dc_req_write = 1'b0;
-            dc_req_addr = exec_mem_addr_q;
-            dc_req_uncached = !addr_is_dram(exec_mem_addr_q);
-        end else if (!full_flush && load_count_q != 0 && !load_forward_complete &&
-                     (addr_is_dram(load_q[0].addr) ||
-                      (!older_store_pending &&
-                       load_q[0].trans_id == commit_ptr_q))) begin
-            dc_req_valid = 1'b1;
-            dc_req_write = 1'b0;
-            dc_req_addr = load_q[0].addr;
-            dc_req_uncached = !addr_is_dram(load_q[0].addr);
-        end
-    end
+    store_buffer u_store_buffer (
+        .clk(clk), .rst(rst), .flush_i(full_flush),
+        .enqueue_i(exec_store_enqueue), .enqueue_trans_id_i(exec_q.trans_id),
+        .enqueue_addr_i(exec_mem_addr_q), .enqueue_wdata_i(exec_q.op2),
+        .enqueue_size_i(exec_q.uop.mem_size),
+        .enqueue_uncached_i(!addr_is_dram(exec_mem_addr_q)),
+        .commit_i(commit_store_mark), .commit_slot_i(commit_entry.store_slot),
+        .drain_i(store_drain_fire), .entries_o(store_q),
+        .committed_o(store_committed_q), .head_o(store_head_q),
+        .tail_o(store_tail_q), .count_o(store_count_q),
+        .next_sequence_o(next_store_seq_q)
+    );
 
-    assign load_needed_mask = load_byte_mask(load_q[0].size,
-                                             load_q[0].addr[1:0]);
-    assign load_forward_complete = !load_active_q && load_count_q != 0 &&
-                                   addr_is_dram(load_q[0].addr) &&
-                                   ((load_q[0].forward_mask & load_needed_mask) == load_needed_mask);
+    memory_request_arbiter u_memory_request_arbiter (
+        .flush_i(full_flush), .commit_trans_id_i(commit_ptr_q),
+        .store_entries_i(store_q), .store_committed_i(store_committed_q),
+        .store_head_i(store_head_q), .store_count_i(store_count_q),
+        .next_store_sequence_i(next_store_seq_q), .load_head_i(load_head),
+        .load_count_i(load_count_q),
+        .load_forward_complete_i(load_forward_complete),
+        .exec_load_valid_i(exec_load_enqueue), .exec_trans_id_i(exec_q.trans_id),
+        .exec_addr_i(exec_mem_addr_q), .request_valid_o(dc_req_valid),
+        .request_write_o(dc_req_write), .request_addr_o(dc_req_addr),
+        .request_wdata_o(dc_req_wdata), .request_wstrb_o(dc_req_wstrb),
+        .request_uncached_o(dc_req_uncached),
+        .load_direct_candidate_o(load_direct_candidate),
+        .older_store_pending_o(older_store_pending),
+        .direct_older_store_pending_o(direct_older_store_pending)
+    );
+
     assign store_drain_fire = dc_req_valid && dc_req_write && dc_req_ready;
     assign load_start_fire = dc_req_valid && !dc_req_write && dc_req_ready;
     assign load_direct_start_fire = load_start_fire && load_direct_candidate;
@@ -537,23 +407,28 @@ module core_top (
         load_direct_meta.store_seq_cutoff = next_store_seq_q;
         load_direct_meta.forward_mask = load_forward_mask_c;
         load_direct_meta.forward_data = load_forward_data_c;
-        load_completion_meta = load_forward_complete ? load_q[0] : load_active_meta_q;
-        load_forward_byte_mask_c = 32'd0;
-        for (merge_lane = 0; merge_lane < 4; merge_lane = merge_lane + 1)
-            load_forward_byte_mask_c[merge_lane*8 +: 8] = {8{load_completion_meta.forward_mask[merge_lane]}};
-        load_merged_word = load_forward_complete ? load_completion_meta.forward_data :
-                           ((dc_resp_rdata & ~load_forward_byte_mask_c) |
-                            (load_completion_meta.forward_data & load_forward_byte_mask_c));
-        load_shifted = load_merged_word >> {load_completion_meta.addr[1:0], 3'b000};
-        unique case (load_completion_meta.size)
-            MEM_BYTE: load_result = load_completion_meta.load_unsigned ?
-                                    {24'd0, load_shifted[7:0]} : {{24{load_shifted[7]}}, load_shifted[7:0]};
-            MEM_HALF: load_result = load_completion_meta.load_unsigned ?
-                                    {16'd0, load_shifted[15:0]} : {{16{load_shifted[15]}}, load_shifted[15:0]};
-            default: load_result = load_shifted;
-        endcase
+        load_enqueue_meta = load_direct_meta;
     end
+
+    load_data_path u_load_data_path (
+        .load_active_i(load_active_q), .load_count_i(load_count_q),
+        .load_head_i(load_head), .active_meta_i(load_active_meta_q),
+        .memory_data_i(dc_resp_rdata),
+        .forward_complete_o(load_forward_complete),
+        .completion_meta_o(load_completion_meta), .result_o(load_result)
+    );
     assign load_completion_valid = (dc_resp_valid && load_active_q) || load_forward_complete;
+
+    load_queue u_load_queue (
+        .clk(clk), .rst(rst), .flush_i(full_flush),
+        .completion_i(load_completion_accepted),
+        .forward_completion_i(load_forward_complete),
+        .direct_start_i(load_direct_start_fire), .direct_meta_i(load_direct_meta),
+        .pop_i(load_pop_fire), .memory_start_i(load_start_fire),
+        .enqueue_i(load_enqueue_fire), .enqueue_meta_i(load_enqueue_meta),
+        .head_o(load_head), .count_o(load_count_q), .active_o(load_active_q),
+        .active_meta_o(load_active_meta_q)
+    );
 
     dcache u_dcache (
         .clk(clk), .rst(rst), .kill_i(full_flush),
@@ -583,7 +458,6 @@ module core_top (
         .m_resp_valid_i(dmem_resp_valid_i), .m_resp_rdata_i(dmem_resp_rdata_i)
     );
 
-    assign commit_entry = scoreboard_q[commit_ptr_q];
     assign mem_quiescent = (store_count_q == 0) && (load_count_q == 0) &&
                            !load_active_q && dc_idle && !mdu_busy;
     always_comb begin
@@ -632,162 +506,35 @@ module core_top (
     assign predictor_commit_return = commit_normal && commit_entry.is_return;
 
 `ifdef VERILATOR_TB
-    // Sample the pre-NBA ROB head. The C++ harness observes these registered
-    // outputs after the same rising edge, so every pulse names the instruction
-    // that actually retired rather than the next scoreboard entry.
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            dbg_commit_valid_o <= 1'b0;
-            dbg_commit_pc_o <= '0;
-            dbg_commit_inst_o <= '0;
-            dbg_commit_wen_o <= 1'b0;
-            dbg_commit_rd_o <= '0;
-            dbg_commit_wdata_o <= '0;
-            dbg_commit_is_load_o <= 1'b0;
-            dbg_commit_is_store_o <= 1'b0;
-            dbg_commit_is_trap_o <= 1'b0;
-            dbg_commit_cause_o <= '0;
-            dbg_commit_next_pc_o <= '0;
-            dbg_commit_mem_addr_o <= '0;
-            dbg_commit_mem_wdata_o <= '0;
-            dbg_commit_mem_wstrb_o <= '0;
-            for (dbg_i = 0; dbg_i < SCOREBOARD_DEPTH; dbg_i = dbg_i + 1) begin
-                dbg_mem_addr_q[dbg_i] <= '0;
-                dbg_mem_wdata_q[dbg_i] <= '0;
-                dbg_mem_wstrb_q[dbg_i] <= '0;
-                dbg_next_pc_q[dbg_i] <= '0;
-            end
-        end else begin
-            dbg_commit_valid_o <= commit_fire;
-            if (commit_fire) begin
-                dbg_commit_pc_o <= commit_entry.pc;
-                dbg_commit_inst_o <= commit_entry.instr;
-                dbg_commit_wen_o <= commit_normal && commit_entry.writes_rd &&
-                                    commit_entry.rd != 0;
-                dbg_commit_rd_o <= commit_entry.rd;
-                dbg_commit_wdata_o <= (commit_entry.sys_op == SYS_CSR) ?
-                                      csr_result : commit_entry.result;
-                dbg_commit_is_load_o <= commit_entry.fu == FU_LOAD;
-                dbg_commit_is_store_o <= commit_entry.fu == FU_STORE;
-                dbg_commit_is_trap_o <= commit_entry.exception_valid;
-                dbg_commit_cause_o <= {27'd0, commit_entry.exception_cause};
-                dbg_commit_mem_addr_o <= dbg_mem_addr_q[commit_ptr_q];
-                dbg_commit_mem_wdata_o <= dbg_mem_wdata_q[commit_ptr_q];
-                dbg_commit_mem_wstrb_o <= dbg_mem_wstrb_q[commit_ptr_q];
-                if (commit_entry.exception_valid)
-                    dbg_commit_next_pc_o <= csr_mtvec;
-                else if (commit_entry.sys_op == SYS_MRET)
-                    dbg_commit_next_pc_o <= csr_mepc;
-                else
-                    dbg_commit_next_pc_o <= dbg_next_pc_q[commit_ptr_q];
-            end
-            if (issue_fire)
-                dbg_next_pc_q[issue_ptr_q] <= id_uop_q.pc + 32'd4;
-            if (branch_resolve_valid_c)
-                dbg_next_pc_q[exec_q.trans_id] <= branch_actual_next_c;
-            if (exec_q.valid && (exec_q.uop.fu == FU_LOAD ||
-                                 exec_q.uop.fu == FU_STORE)) begin
-                dbg_mem_addr_q[exec_q.trans_id] <= exec_mem_addr_q;
-                dbg_mem_wdata_q[exec_q.trans_id] <=
-                    exec_q.uop.fu == FU_STORE ? exec_q.op2 : 32'd0;
-                if (exec_q.uop.fu == FU_STORE) begin
-                    unique case (exec_q.uop.mem_size)
-                        MEM_BYTE: dbg_mem_wstrb_q[exec_q.trans_id] <= 4'b0001;
-                        MEM_HALF: dbg_mem_wstrb_q[exec_q.trans_id] <= 4'b0011;
-                        default:  dbg_mem_wstrb_q[exec_q.trans_id] <= 4'b1111;
-                    endcase
-                end else begin
-                    dbg_mem_wstrb_q[exec_q.trans_id] <= 4'b0000;
-                end
-            end
-        end
-    end
-
-`ifdef ENABLE_DIFFTEST
-    // OpenXiangShan DiffTest probes sample the same pre-NBA retirement state as
-    // the registered C++ debug bundle. They are absent from synthesis builds.
-    DiffExtInstrCommit u_difftest_commit (
-        .clock(clk),
-        .enable(commit_fire),
-        .io_valid(commit_fire),
-        .io_skip(1'b0),
-        .io_isRVC(1'b0),
-        .io_rfwen(commit_normal && commit_entry.writes_rd && commit_entry.rd != 0),
-        .io_fpwen(1'b0),
-        .io_vecwen(1'b0),
-        .io_v0wen(1'b0),
-        .io_wpdest(commit_entry.rd),
-        .io_wdest({3'b000, commit_entry.rd}),
-        .io_otherwpdest_0('0), .io_otherwpdest_1('0),
-        .io_otherwpdest_2('0), .io_otherwpdest_3('0),
-        .io_otherwpdest_4('0), .io_otherwpdest_5('0),
-        .io_otherwpdest_6('0), .io_otherwpdest_7('0),
-        .io_otherwpdest_8('0), .io_otherwpdest_9('0),
-        .io_otherwpdest_10('0), .io_otherwpdest_11('0),
-        .io_otherwpdest_12('0), .io_otherwpdest_13('0),
-        .io_otherwpdest_14('0), .io_otherwpdest_15('0),
-        .io_pc({32'd0, commit_entry.pc}),
-        .io_instr(commit_entry.instr),
-        .io_robIdx({{(10-TRANS_ID_W){1'b0}}, commit_ptr_q}),
-        .io_lqIdx('0),
-        .io_sqIdx('0),
-        .io_isLoad(commit_entry.fu == FU_LOAD),
-        .io_isStore(commit_entry.fu == FU_STORE),
-        .io_nFused(8'd0),
-        .io_special(8'd0),
-        .io_coreid(8'd0),
-        .io_index(8'd0)
+    commit_trace_probe u_commit_trace_probe (
+        .clk(clk), .rst(rst), .commit_i(commit_fire),
+        .commit_normal_i(commit_normal), .commit_entry_i(commit_entry),
+        .commit_trans_id_i(commit_ptr_q), .csr_result_i(csr_result),
+        .csr_mtvec_i(csr_mtvec), .csr_mepc_i(csr_mepc),
+        .issue_i(issue_fire), .issue_trans_id_i(issue_ptr_q),
+        .issue_uop_i(id_uop_q), .branch_resolve_i(branch_resolve_valid_c),
+        .branch_actual_next_i(branch_actual_next_c), .exec_i(exec_q),
+        .exec_mem_addr_i(exec_mem_addr_q), .cycle_i(cycle_q),
+        .commit_count_i(commit_count_q),
+        .commit_valid_o(dbg_commit_valid_o), .commit_pc_o(dbg_commit_pc_o),
+        .commit_inst_o(dbg_commit_inst_o), .commit_wen_o(dbg_commit_wen_o),
+        .commit_rd_o(dbg_commit_rd_o), .commit_wdata_o(dbg_commit_wdata_o),
+        .commit_is_load_o(dbg_commit_is_load_o),
+        .commit_is_store_o(dbg_commit_is_store_o),
+        .commit_is_trap_o(dbg_commit_is_trap_o),
+        .commit_cause_o(dbg_commit_cause_o),
+        .commit_next_pc_o(dbg_commit_next_pc_o),
+        .commit_mem_addr_o(dbg_commit_mem_addr_o),
+        .commit_mem_wdata_o(dbg_commit_mem_wdata_o),
+        .commit_mem_wstrb_o(dbg_commit_mem_wstrb_o)
     );
-
-    DiffExtCommitData u_difftest_commit_data (
-        .clock(clk),
-        .enable(commit_fire),
-        .io_valid(commit_fire),
-        .io_data({32'd0, (commit_entry.sys_op == SYS_CSR) ?
-                           csr_result : commit_entry.result}),
-        .io_coreid(8'd0),
-        .io_index(8'd0)
-    );
-
-    DiffExtArchEvent u_difftest_arch_event (
-        .clock(clk),
-        .enable(commit_fire && commit_entry.exception_valid),
-        .io_valid(commit_entry.exception_valid),
-        .io_interrupt(32'd0),
-        .io_exception(32'b1 << commit_entry.exception_cause),
-        .io_exceptionPC({32'd0, commit_entry.pc}),
-        .io_exceptionInst(commit_entry.instr),
-        .io_hasNMI(1'b0),
-        .io_virtualInterruptIsHvictlInject(1'b0),
-        .io_irToHS(1'b0),
-        .io_irToVS(1'b0),
-        .io_coreid(8'd0)
-    );
-
-    DiffExtTrapEvent u_difftest_trap_event (
-        .clock(clk),
-        .enable(commit_fire),
-        .io_hasTrap(commit_entry.exception_valid),
-        .io_cycleCnt(cycle_q),
-        .io_instrCnt(commit_count_q),
-        .io_hasWFI(1'b0),
-        .io_code({59'd0, commit_entry.exception_cause}),
-        .io_pc({32'd0, commit_entry.pc}),
-        .io_coreid(8'd0)
-    );
-`endif
 `endif
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            issue_ptr_q <= '0;
-            commit_ptr_q <= '0;
-            scoreboard_count_q <= '0;
-            producer_valid_q <= '0;
             wb_valid_q <= 1'b0;
             wb_rd_q <= '0;
             wb_data_q <= '0;
-            serial_pending_q <= 1'b0;
             exec_q <= '0;
             exec_mem_addr_q <= '0;
             branch_resolve_valid <= 1'b0;
@@ -798,21 +545,8 @@ module core_top (
             branch_actual_next <= '0;
             branch_pc_q <= '0;
             branch_kind <= PRED_NONE;
-            branch_pred_hit <= 1'b0;
             branch_pred_counter <= 2'b01;
-            store_head_q <= '0;
-            store_tail_q <= '0;
-            store_count_q <= '0;
-            store_committed_q <= '0;
-            next_store_seq_q <= '0;
-            load_count_q <= '0;
-            load_active_q <= 1'b0;
-            load_active_meta_q <= '0;
-            // Payload bits are don't-care while their validity bit is clear;
-            // avoid turning reset into a global data-register timing path.
-            for (i = 0; i < SCOREBOARD_DEPTH; i = i + 1) scoreboard_q[i].occupied <= 1'b0;
-            for (i = 0; i < STORE_BUFFER_DEPTH; i = i + 1) store_q[i].valid <= 1'b0;
-            for (i = 0; i < LOAD_QUEUE_DEPTH; i = i + 1) load_q[i].valid <= 1'b0;
+            branch_pred_index <= '0;
         end else begin
             wb_valid_q <= commit_normal && commit_entry.writes_rd && commit_entry.rd != 0;
             if (commit_normal && commit_entry.writes_rd && commit_entry.rd != 0) begin
@@ -834,31 +568,11 @@ module core_top (
                 branch_actual_next <= branch_actual_next_c;
                 branch_pc_q <= exec_q.uop.pc;
                 branch_kind <= branch_kind_c;
-                branch_pred_hit <= exec_q.uop.pred_hit;
                 branch_pred_counter <= exec_q.uop.pred_counter;
+                branch_pred_index <= exec_q.uop.pred_index;
             end
             if (full_flush) begin
-                issue_ptr_q <= '0;
-                commit_ptr_q <= '0;
-                scoreboard_count_q <= '0;
-                producer_valid_q <= '0;
-                serial_pending_q <= 1'b0;
                 exec_q.valid <= 1'b0;
-                load_count_q <= '0;
-                load_active_q <= 1'b0;
-                for (i = 0; i < SCOREBOARD_DEPTH; i = i + 1) scoreboard_q[i].occupied <= 1'b0;
-                for (i = 0; i < LOAD_QUEUE_DEPTH; i = i + 1) load_q[i].valid <= 1'b0;
-                committed_tmp = 0;
-                for (i = 0; i < STORE_BUFFER_DEPTH; i = i + 1) begin
-                    if (store_q[i].valid && store_committed_q[i]) begin
-                        committed_tmp = committed_tmp + 1;
-                    end else begin
-                        store_q[i].valid <= 1'b0;
-                        store_committed_q[i] <= 1'b0;
-                    end
-                end
-                store_count_q <= ST_CNT_W'(committed_tmp);
-                store_tail_q <= store_head_q + STORE_ID_W'(committed_tmp);
             end else begin
                 exec_q.valid <= issue_fire && !id_uop_q.exception_valid && id_uop_q.fu != FU_SYSTEM;
                 if (issue_fire && !id_uop_q.exception_valid && id_uop_q.fu != FU_SYSTEM) begin
@@ -874,141 +588,6 @@ module core_top (
                     exec_mem_addr_q <= src1_mem_value + id_uop_q.imm;
                 end
 
-                if (fixed_completion_valid && scoreboard_q[fixed_completion.trans_id].occupied) begin
-                    scoreboard_q[fixed_completion.trans_id].done <= 1'b1;
-                    scoreboard_q[fixed_completion.trans_id].result <= fixed_completion.result;
-                    scoreboard_q[fixed_completion.trans_id].exception_valid <= fixed_completion.exception_valid;
-                    scoreboard_q[fixed_completion.trans_id].exception_cause <= fixed_completion.exception_cause;
-                    scoreboard_q[fixed_completion.trans_id].exception_tval <= fixed_completion.exception_tval;
-                    scoreboard_q[fixed_completion.trans_id].store_slot_valid <= fixed_completion.store_slot_valid;
-                    scoreboard_q[fixed_completion.trans_id].store_slot <= fixed_completion.store_slot;
-                end
-                if (load_completion_valid && scoreboard_q[load_completion_meta.trans_id].occupied) begin
-                    scoreboard_q[load_completion_meta.trans_id].done <= 1'b1;
-                    scoreboard_q[load_completion_meta.trans_id].result <= load_result;
-                    if (!load_forward_complete) load_active_q <= 1'b0;
-                end
-                if (slow_resp_valid && scoreboard_q[slow_resp_tid].occupied) begin
-                    scoreboard_q[slow_resp_tid].done <= 1'b1;
-                    scoreboard_q[slow_resp_tid].result <= slow_resp_result;
-                end
-
-                if (commit_fire) begin
-                    if (commit_store_mark) store_committed_q[commit_entry.store_slot] <= 1'b1;
-                    if (commit_entry.writes_rd && commit_entry.rd != 0 &&
-                        producer_valid_q[commit_entry.rd] &&
-                        producer_tid_q[commit_entry.rd] == commit_ptr_q)
-                        producer_valid_q[commit_entry.rd] <= 1'b0;
-                    scoreboard_q[commit_ptr_q].occupied <= 1'b0;
-                    commit_ptr_q <= commit_ptr_q + 1'b1;
-                    if (commit_entry.sys_op != SYS_NONE || commit_entry.exception_valid) serial_pending_q <= 1'b0;
-                end
-
-                if (issue_fire) begin
-                    scoreboard_q[issue_ptr_q].occupied <= 1'b1;
-                    scoreboard_q[issue_ptr_q].done <= id_uop_q.exception_valid || id_uop_q.fu == FU_SYSTEM;
-                    scoreboard_q[issue_ptr_q].pc <= id_uop_q.pc;
-                    scoreboard_q[issue_ptr_q].instr <= id_uop_q.instr;
-                    scoreboard_q[issue_ptr_q].rd <= id_uop_q.rd;
-                    scoreboard_q[issue_ptr_q].writes_rd <= id_uop_q.writes_rd;
-                    scoreboard_q[issue_ptr_q].fu <= id_uop_q.fu;
-                    scoreboard_q[issue_ptr_q].sys_op <= id_uop_q.sys_op;
-                    scoreboard_q[issue_ptr_q].csr_op <= id_uop_q.csr_op;
-                    scoreboard_q[issue_ptr_q].csr_addr <= id_uop_q.csr_addr;
-                    if (id_uop_q.sys_op == SYS_CSR)
-                        scoreboard_q[issue_ptr_q].csr_src <= id_uop_q.csr_imm ?
-                            {27'd0, id_uop_q.rs1} : csr_src_value;
-                    scoreboard_q[issue_ptr_q].exception_valid <= id_uop_q.exception_valid;
-                    scoreboard_q[issue_ptr_q].exception_cause <= id_uop_q.exception_cause;
-                    scoreboard_q[issue_ptr_q].exception_tval <= id_uop_q.exception_tval;
-                    scoreboard_q[issue_ptr_q].store_slot_valid <= 1'b0;
-                    scoreboard_q[issue_ptr_q].is_call <= (id_uop_q.is_jal || id_uop_q.is_jalr) &&
-                                                        (id_uop_q.rd == 5'd1 || id_uop_q.rd == 5'd5);
-                    scoreboard_q[issue_ptr_q].is_return <= id_uop_q.is_jalr &&
-                                                          (id_uop_q.rs1 == 5'd1 || id_uop_q.rs1 == 5'd5) && id_uop_q.rd == 0;
-                    scoreboard_q[issue_ptr_q].link_addr <= id_uop_q.pc + 32'd4;
-                    if (id_uop_q.writes_rd && id_uop_q.rd != 0) begin
-                        producer_valid_q[id_uop_q.rd] <= 1'b1;
-                        producer_tid_q[id_uop_q.rd] <= issue_ptr_q;
-                    end
-                    issue_ptr_q <= issue_ptr_q + 1'b1;
-                    if (id_uop_q.serialize) serial_pending_q <= 1'b1;
-                end
-
-                unique case ({issue_fire, commit_fire})
-                    2'b10: scoreboard_count_q <= scoreboard_count_q + 1'b1;
-                    2'b01: scoreboard_count_q <= scoreboard_count_q - 1'b1;
-                    default: begin end
-                endcase
-
-                if (exec_store_enqueue) begin
-                    store_q[store_tail_q].valid <= 1'b1;
-                    store_committed_q[store_tail_q] <= 1'b0;
-                    store_q[store_tail_q].trans_id <= exec_q.trans_id;
-                    store_q[store_tail_q].store_seq <= next_store_seq_q;
-                    store_q[store_tail_q].addr <= exec_mem_addr_q;
-                    store_q[store_tail_q].wdata <= exec_q.op2;
-                    unique case (exec_q.uop.mem_size)
-                        MEM_BYTE: store_q[store_tail_q].wstrb <= 4'b0001;
-                        MEM_HALF: store_q[store_tail_q].wstrb <= 4'b0011;
-                        default: store_q[store_tail_q].wstrb <= 4'b1111;
-                    endcase
-                    store_q[store_tail_q].uncached <= !addr_is_dram(exec_mem_addr_q);
-                    store_tail_q <= store_tail_q + 1'b1;
-                    next_store_seq_q <= next_store_seq_q + 1'b1;
-                end
-                if (store_drain_fire) begin
-                    store_q[store_head_q].valid <= 1'b0;
-                    store_committed_q[store_head_q] <= 1'b0;
-                    store_head_q <= store_head_q + 1'b1;
-                end
-                unique case ({exec_store_enqueue, store_drain_fire})
-                    2'b10: store_count_q <= store_count_q + 1'b1;
-                    2'b01: store_count_q <= store_count_q - 1'b1;
-                    default: begin end
-                endcase
-
-                if (load_direct_start_fire) begin
-                    load_active_q <= 1'b1;
-                    load_active_meta_q <= load_direct_meta;
-                end
-                if (load_pop_fire) begin
-                    if (load_start_fire) begin
-                        load_active_q <= 1'b1;
-                        load_active_meta_q <= load_q[0];
-                    end
-                    for (i = 0; i < LOAD_QUEUE_DEPTH - 1; i = i + 1)
-                        load_q[i] <= load_q[i + 1];
-                    load_q[LOAD_QUEUE_DEPTH - 1].valid <= 1'b0;
-                end
-                if (load_enqueue_fire) begin
-                    // Slot zero is always the oldest entry.  On a simultaneous
-                    // pop/enqueue, current_count-1 is the post-shift tail.
-                    if (load_pop_fire) begin
-                        load_q[load_count_q - 1'b1].valid <= 1'b1;
-                        load_q[load_count_q - 1'b1].trans_id <= exec_q.trans_id;
-                        load_q[load_count_q - 1'b1].addr <= exec_mem_addr_q;
-                        load_q[load_count_q - 1'b1].size <= exec_q.uop.mem_size;
-                        load_q[load_count_q - 1'b1].load_unsigned <= exec_q.uop.load_unsigned;
-                        load_q[load_count_q - 1'b1].store_seq_cutoff <= next_store_seq_q;
-                        load_q[load_count_q - 1'b1].forward_mask <= load_forward_mask_c;
-                        load_q[load_count_q - 1'b1].forward_data <= load_forward_data_c;
-                    end else begin
-                        load_q[load_count_q].valid <= 1'b1;
-                        load_q[load_count_q].trans_id <= exec_q.trans_id;
-                        load_q[load_count_q].addr <= exec_mem_addr_q;
-                        load_q[load_count_q].size <= exec_q.uop.mem_size;
-                        load_q[load_count_q].load_unsigned <= exec_q.uop.load_unsigned;
-                        load_q[load_count_q].store_seq_cutoff <= next_store_seq_q;
-                        load_q[load_count_q].forward_mask <= load_forward_mask_c;
-                        load_q[load_count_q].forward_data <= load_forward_data_c;
-                    end
-                end
-                unique case ({load_enqueue_fire, load_pop_fire})
-                    2'b10: load_count_q <= load_count_q + 1'b1;
-                    2'b01: load_count_q <= load_count_q - 1'b1;
-                    default: begin end
-                endcase
             end
         end
     end
@@ -1035,9 +614,6 @@ module core_top (
             assert (branch_miss_count_q <= branch_count_q);
             assert (dcache_miss_q <= dcache_access_q);
             assert (load_count_perf_q + store_count_perf_q <= commit_count_q);
-            if (fixed_completion_valid) assert (scoreboard_q[fixed_completion.trans_id].occupied);
-            if (load_completion_valid) assert (scoreboard_q[load_completion_meta.trans_id].occupied);
-            if (slow_resp_valid) assert (scoreboard_q[slow_resp_tid].occupied);
             assert (!(mdu_resp_valid && bm_resp_valid));
             if (dc_mem_req_valid && dc_mem_req_write) begin
                 assert (store_count_q != 0);
@@ -1049,7 +625,7 @@ module core_top (
                     assert (exec_q.trans_id == commit_ptr_q);
                 end else begin
                     assert (!older_store_pending);
-                    assert (load_q[0].trans_id == commit_ptr_q);
+                    assert (load_head.trans_id == commit_ptr_q);
                 end
             end
             if (dmem_stall_q) begin

@@ -229,7 +229,7 @@ set cpu_clk_mhz   150.000
 当前 Tcl 默认设置：
 
 ```tcl
-set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY none [get_runs synth_1]
+set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY rebuilt [get_runs synth_1]
 set_property STEPS.SYNTH_DESIGN.ARGS.KEEP_EQUIVALENT_REGISTERS true [get_runs synth_1]
 ```
 
@@ -240,7 +240,7 @@ top.student_top_inst
 student_top.Core_cpu
 ```
 
-目的不是长期追求最好频率，而是避免 Vivado 在 bring-up 阶段跨层级把 CPU 逻辑裁掉，导致资源报告只剩外设/常量逻辑。后续确认资源与功能稳定后，可以再评估是否把 `dont_touch` 放宽，仅保留 `keep_hierarchy` 或恢复 `rebuilt` 层级以改善 QoR。
+`rebuilt` 允许综合器执行跨层级优化，并在优化后重建便于观察的逻辑层级。两级关键实例上的保留属性仍用于避免 bring-up 阶段 CPU 逻辑被意外裁掉；后续可单独评估是否放宽这些属性。
 
 ### 自动 sanity 报告
 
@@ -285,7 +285,7 @@ get_cells -hier *ROB*
 get_cells -hier *ExecuteMulStage*
 ```
 
-注意：若 `FLATTEN_HIERARCHY` 不是 `none`，内部模块名查不到不一定代表 RTL 没加入；可能只是被 Vivado 拍平或重建层级。当前默认关闭 flatten，是为了让资源异常更容易定位。
+注意：默认 `FLATTEN_HIERARCHY=rebuilt` 时，内部模块名查不到不一定代表 RTL 没加入；可能只是被 Vivado 拍平或重建层级。需要保留原始 RTL 层级定位问题时，可临时设置 `FPGA_FLATTEN_HIERARCHY=none` 后重新生成工程。
 
 ### 重新生成并重跑
 
@@ -296,10 +296,10 @@ vivado -mode batch -source fpga/create_vivado_project.tcl -tclargs srcWithMext
 vivado fpga/build/digital_twin_srcWithMext/digital_twin.xpr
 ```
 
-在 GUI 中打开后重新运行 synthesis/implementation。若想临时恢复 Vivado 默认层级策略，可在 source 前设置：
+在 GUI 中打开后重新运行 synthesis/implementation。若调试时需要禁止跨层级 flatten，可在 source 前临时设置：
 
 ```tcl
-set ::env(FPGA_FLATTEN_HIERARCHY) rebuilt
+set ::env(FPGA_FLATTEN_HIERARCHY) none
 source fpga/create_vivado_project.tcl
 ```
 

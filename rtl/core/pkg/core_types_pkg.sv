@@ -55,6 +55,7 @@ package core_types_pkg;
         pred_kind_e  pred_kind;
         logic        pred_hit;
         logic [1:0]  pred_counter;
+        logic [GSHARE_HISTORY_BITS-1:0] pred_index;
     } fetch_entry_t;
 
     typedef struct packed {
@@ -80,6 +81,7 @@ package core_types_pkg;
         pred_kind_e  pred_kind;
         logic        pred_hit;
         logic [1:0]  pred_counter;
+        logic [GSHARE_HISTORY_BITS-1:0] pred_index;
         sys_op_e     sys_op;
         csr_op_e     csr_op;
         logic [11:0] csr_addr;

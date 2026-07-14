@@ -11,7 +11,7 @@
 #   FPGA_PART=xc7k325tffg900-2
 #   FPGA_SYS_CLK_MHZ=50.000
 #   FPGA_CPU_CLK_MHZ=50.000
-#   FPGA_FLATTEN_HIERARCHY=none
+#   FPGA_FLATTEN_HIERARCHY=rebuilt
 #   FPGA_KEEP_EQUIVALENT_REGISTERS=true
 #   FPGA_ENABLE_POWER_OPT=false
 
@@ -35,7 +35,7 @@ if {[info exists ::env(FPGA_PART)]} {
 set input_clk_mhz 200.000
 set sys_clk_mhz   50.000
 set cpu_clk_mhz   50.000
-set flatten_hierarchy none
+set flatten_hierarchy rebuilt
 set keep_equivalent_registers true
 set enable_power_opt false
 if {[info exists ::env(FPGA_INPUT_CLK_MHZ)]} {

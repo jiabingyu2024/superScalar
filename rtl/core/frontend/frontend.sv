@@ -20,8 +20,8 @@ module frontend (
     input  logic predictor_update_taken_i,
     input  logic [31:0] predictor_update_target_i,
     input  core_types_pkg::pred_kind_e predictor_update_kind_i,
-    input  logic predictor_update_pred_hit_i,
     input  logic [1:0] predictor_update_pred_counter_i,
+    input  logic [core_config_pkg::GSHARE_HISTORY_BITS-1:0] predictor_update_pred_index_i,
     input  logic predictor_commit_call_i,
     input  logic predictor_commit_return_i,
     input  logic [31:0] predictor_commit_link_i
@@ -39,6 +39,7 @@ module frontend (
     logic [31:0] predicted_next_pc;
     pred_kind_e predicted_kind;
     logic [1:0] predicted_counter;
+    logic [GSHARE_HISTORY_BITS-1:0] predicted_index;
     fetch_entry_t push_entry;
     logic queue_push, queue_pop;
 
@@ -47,11 +48,12 @@ module frontend (
         .predict_pc_i(request_pc_c), .predict_valid_o(predictor_result_valid),
         .predict_next_pc_o(predicted_next_pc), .predict_kind_o(predicted_kind),
         .predict_hit_o(predicted_hit), .predict_counter_o(predicted_counter),
+        .predict_index_o(predicted_index),
         .update_valid_i(predictor_update_valid_i), .update_pc_i(predictor_update_pc_i),
         .update_taken_i(predictor_update_taken_i), .update_target_i(predictor_update_target_i),
         .update_kind_i(predictor_update_kind_i),
-        .update_pred_hit_i(predictor_update_pred_hit_i),
         .update_pred_counter_i(predictor_update_pred_counter_i),
+        .update_pred_index_i(predictor_update_pred_index_i),
         .commit_call_i(predictor_commit_call_i),
         .commit_return_i(predictor_commit_return_i), .commit_link_i(predictor_commit_link_i)
     );
@@ -74,6 +76,7 @@ module frontend (
         push_entry.pred_kind = predicted_kind;
         push_entry.pred_hit = predicted_hit;
         push_entry.pred_counter = predicted_counter;
+        push_entry.pred_index = predicted_index;
     end
 
     fetch_queue u_fetch_queue (

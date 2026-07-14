@@ -38,6 +38,7 @@ module decoder (
         uop_o.pred_kind       = fetch_i.pred_kind;
         uop_o.pred_hit        = fetch_i.pred_hit;
         uop_o.pred_counter    = fetch_i.pred_counter;
+        uop_o.pred_index      = fetch_i.pred_index;
         uop_o.fu              = FU_NONE;
         uop_o.alu_op          = ALU_ADD;
         uop_o.bitmanip_op     = BM_SH1ADD;

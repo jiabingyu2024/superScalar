@@ -5,8 +5,10 @@
 // Generated: 2026-07-13
 // Source: 053 architecture
 module branch_predictor #(
-    parameter int unsigned ENTRIES   = core_config_pkg::BTB_ENTRIES,
-    parameter int unsigned RAS_DEPTH = core_config_pkg::RAS_DEPTH
+    parameter int unsigned ENTRIES     = core_config_pkg::BTB_ENTRIES,
+    parameter int unsigned HISTORY_BITS = core_config_pkg::GSHARE_HISTORY_BITS,
+    parameter int unsigned PHT_ENTRIES  = core_config_pkg::GSHARE_PHT_ENTRIES,
+    parameter int unsigned RAS_DEPTH    = core_config_pkg::RAS_DEPTH
 ) (
     input  logic       clk,
     input  logic       rst,
@@ -17,62 +19,70 @@ module branch_predictor #(
     output core_types_pkg::pred_kind_e predict_kind_o,
     output logic       predict_hit_o,
     output logic [1:0] predict_counter_o,
+    output logic [HISTORY_BITS-1:0] predict_index_o,
     input  logic       update_valid_i,
     input  logic [31:0] update_pc_i,
     input  logic       update_taken_i,
     input  logic [31:0] update_target_i,
     input  core_types_pkg::pred_kind_e update_kind_i,
-    input  logic       update_pred_hit_i,
     input  logic [1:0] update_pred_counter_i,
+    input  logic [HISTORY_BITS-1:0] update_pred_index_i,
     input  logic       commit_call_i,
     input  logic       commit_return_i,
     input  logic [31:0] commit_link_i
 );
     import core_types_pkg::*;
-    localparam int unsigned INDEX_W = $clog2(ENTRIES);
-    localparam int unsigned RAS_W   = $clog2(RAS_DEPTH);
-    localparam int unsigned TAG_W   = 32 - INDEX_W - 2;
-    localparam int unsigned ENTRY_W = TAG_W + 32 + 2 + 2;
+    localparam int unsigned BTB_INDEX_W = $clog2(ENTRIES);
+    localparam int unsigned PHT_INDEX_W = $clog2(PHT_ENTRIES);
+    localparam int unsigned RAS_W       = $clog2(RAS_DEPTH);
+    localparam int unsigned TAG_W       = 32 - BTB_INDEX_W - 2;
+    localparam int unsigned ENTRY_W     = TAG_W + 32 + 2;
 
-    // Predictor payload is one synchronous simple-dual-port memory.  At 128
-    // entries ENTRY_W is 59 bits, which maps naturally to one RAMB36 instead
-    // of the former parallel RAM64X1D/RAM64M distributed memories.
-    (* ram_style = "block" *) logic [ENTRY_W-1:0] entry_mem [0:ENTRIES-1];
-    logic [ENTRIES-1:0] valid_q;
+    // Target/type lookup remains PC-indexed. Conditional direction is held in
+    // an independent GShare PHT so unrelated PCs can share global correlation
+    // without duplicating the wide BTB payload.
+    (* ram_style = "block" *) logic [ENTRY_W-1:0] btb_mem [0:ENTRIES-1];
+    (* ram_style = "distributed" *) logic [1:0] pht_mem [0:PHT_ENTRIES-1];
+    logic [ENTRIES-1:0] btb_valid_q;
+    logic [PHT_ENTRIES-1:0] pht_valid_q;
+    logic [HISTORY_BITS-1:0] global_history_q;
     logic [31:0] ras_q [0:RAS_DEPTH-1];
     logic [RAS_W:0] ras_count_q;
     logic [RAS_W-1:0] ras_top_c;
-    logic [INDEX_W-1:0] pred_idx, upd_idx;
+    logic [BTB_INDEX_W-1:0] btb_pred_idx, btb_upd_idx;
+    logic [PHT_INDEX_W-1:0] pht_pred_idx;
     logic [31:0] read_pc_q;
     logic [ENTRY_W-1:0] read_entry_q, update_entry_c;
     logic read_entry_valid_q, read_valid_q;
-    logic collision_q;
-    logic [ENTRY_W-1:0] collision_entry_q, selected_entry_c;
+    logic btb_collision_q, pht_collision_q;
+    logic [ENTRY_W-1:0] btb_collision_entry_q, selected_entry_c;
+    logic [1:0] read_pht_counter_q, pht_collision_counter_q;
+    logic read_pht_valid_q;
+    logic [PHT_INDEX_W-1:0] read_pht_index_q;
     logic selected_valid_c;
     logic [TAG_W-1:0] selected_tag_c;
     logic [31:0] selected_target_c;
     pred_kind_e selected_kind_c;
     logic [1:0] selected_counter_c, update_counter_c;
 
-    assign pred_idx = predict_pc_i[INDEX_W+1:2];
-    assign upd_idx  = update_pc_i[INDEX_W+1:2];
+    assign btb_pred_idx = predict_pc_i[BTB_INDEX_W+1:2];
+    assign btb_upd_idx  = update_pc_i[BTB_INDEX_W+1:2];
+    assign pht_pred_idx = predict_pc_i[PHT_INDEX_W+1:2] ^ global_history_q;
     assign ras_top_c = RAS_W'(ras_count_q - 1'b1);
-    assign update_entry_c = {update_pc_i[31:INDEX_W+2], update_target_i,
-                             update_kind_i, update_counter_c};
-    assign selected_entry_c = collision_q ? collision_entry_q : read_entry_q;
-    assign selected_valid_c = collision_q ? 1'b1 : read_entry_valid_q;
-    assign {selected_tag_c, selected_target_c, selected_kind_c,
-            selected_counter_c} = selected_entry_c;
+    assign update_entry_c = {update_pc_i[31:BTB_INDEX_W+2], update_target_i,
+                             update_kind_i};
+    assign selected_entry_c = btb_collision_q ? btb_collision_entry_q : read_entry_q;
+    assign selected_valid_c = btb_collision_q ? 1'b1 : read_entry_valid_q;
+    assign {selected_tag_c, selected_target_c, selected_kind_c} = selected_entry_c;
+    assign selected_counter_c = pht_collision_q ? pht_collision_counter_q :
+                                (read_pht_valid_q ? read_pht_counter_q : 2'b01);
     assign predict_valid_o = read_valid_q;
     assign predict_hit_o = read_valid_q && selected_valid_c &&
-                           selected_tag_c == read_pc_q[31:INDEX_W+2];
+                           selected_tag_c == read_pc_q[31:BTB_INDEX_W+2];
+    assign predict_index_o = read_pht_index_q;
 
     always_comb begin
-        if (update_kind_i != PRED_COND) begin
-            update_counter_c = 2'b11;
-        end else if (!update_pred_hit_i) begin
-            update_counter_c = update_taken_i ? 2'b10 : 2'b01;
-        end else if (update_taken_i && update_pred_counter_i != 2'b11) begin
+        if (update_taken_i && update_pred_counter_i != 2'b11) begin
             update_counter_c = update_pred_counter_i + 1'b1;
         end else if (!update_taken_i && update_pred_counter_i != 2'b00) begin
             update_counter_c = update_pred_counter_i - 1'b1;
@@ -101,23 +111,43 @@ module branch_predictor #(
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            valid_q <= '0;
+            btb_valid_q <= '0;
+            pht_valid_q <= '0;
+            global_history_q <= '0;
             ras_count_q <= '0;
             read_valid_q <= 1'b0;
-            collision_q <= 1'b0;
+            read_entry_valid_q <= 1'b0;
+            read_pht_valid_q <= 1'b0;
+            read_pht_counter_q <= 2'b01;
+            read_pht_index_q <= '0;
+            btb_collision_q <= 1'b0;
+            pht_collision_q <= 1'b0;
         end else begin
             read_valid_q <= predict_read_en_i;
-            collision_q <= predict_read_en_i && update_valid_i &&
-                           pred_idx == upd_idx;
+            btb_collision_q <= predict_read_en_i && update_valid_i &&
+                               btb_pred_idx == btb_upd_idx;
+            pht_collision_q <= predict_read_en_i && update_valid_i &&
+                               update_kind_i == PRED_COND &&
+                               pht_pred_idx == update_pred_index_i;
             if (predict_read_en_i) begin
                 read_pc_q <= predict_pc_i;
-                read_entry_q <= entry_mem[pred_idx];
-                read_entry_valid_q <= valid_q[pred_idx];
-                collision_entry_q <= update_entry_c;
+                read_entry_q <= btb_mem[btb_pred_idx];
+                read_entry_valid_q <= btb_valid_q[btb_pred_idx];
+                read_pht_counter_q <= pht_mem[pht_pred_idx];
+                read_pht_valid_q <= pht_valid_q[pht_pred_idx];
+                read_pht_index_q <= pht_pred_idx;
+                btb_collision_entry_q <= update_entry_c;
+                pht_collision_counter_q <= update_counter_c;
             end
             if (update_valid_i) begin
-                valid_q[upd_idx] <= 1'b1;
-                entry_mem[upd_idx] <= update_entry_c;
+                btb_valid_q[btb_upd_idx] <= 1'b1;
+                btb_mem[btb_upd_idx] <= update_entry_c;
+                if (update_kind_i == PRED_COND) begin
+                    pht_valid_q[update_pred_index_i] <= 1'b1;
+                    pht_mem[update_pred_index_i] <= update_counter_c;
+                    global_history_q <= {global_history_q[HISTORY_BITS-2:0],
+                                         update_taken_i};
+                end
             end
             if (commit_call_i) begin
                 if (ras_count_q < (RAS_W+1)'(RAS_DEPTH)) begin
@@ -135,6 +165,8 @@ module branch_predictor #(
 `ifndef SYNTHESIS
     initial begin
         assert (ENTRIES >= 2 && (ENTRIES & (ENTRIES - 1)) == 0);
+        assert (HISTORY_BITS >= 2);
+        assert (PHT_ENTRIES == (1 << HISTORY_BITS));
         assert (RAS_DEPTH >= 2 && (RAS_DEPTH & (RAS_DEPTH - 1)) == 0);
     end
 `endif

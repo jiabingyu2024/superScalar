@@ -32,7 +32,7 @@ puts "Open the .xpr in Vivado, then run synthesis and implementation from the GU
 | `FPGA_PART` | `xc7k325tffg900-2` | Vivado part。 |
 | `FPGA_SYS_CLK_MHZ` | `50.000` | PLL 输出 1，SoC/UART/counter 时钟。 |
 | `FPGA_CPU_CLK_MHZ` | `50.000` | PLL 输出 2，CPU 时钟。默认对齐官方模板；提频需显式覆盖并确认时序。 |
-| `FPGA_FLATTEN_HIERARCHY` | `none` | synth flatten strategy。 |
+| `FPGA_FLATTEN_HIERARCHY` | `rebuilt` | synth flatten strategy；需要原始层级调试时可临时设为 `none`。 |
 | `FPGA_KEEP_EQUIVALENT_REGISTERS` | `true` | 保留等价寄存器，利于结构观察。 |
 | `FPGA_ENABLE_POWER_OPT` | `false` | impl power opt 开关。 |
 

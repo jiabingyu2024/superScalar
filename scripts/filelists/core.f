@@ -7,6 +7,9 @@ rtl/core/frontend/fetch_queue.sv
 rtl/core/frontend/branch_predictor.sv
 rtl/core/frontend/frontend.sv
 rtl/core/issue/regfile.sv
+rtl/core/issue/scoreboard.sv
+rtl/core/issue/operand_resolver.sv
+rtl/core/issue/issue_control.sv
 rtl/core/commit/csr_file.sv
 rtl/core/control/recovery_ctrl.sv
 rtl/core/perf/perf_counters.sv
@@ -17,5 +20,11 @@ rtl/core/memory/dcache_tag_bank.sv
 rtl/core/memory/dcache_data_bank.sv
 rtl/core/memory/dmem_regslice.sv
 rtl/core/memory/dcache.sv
+rtl/core/memory/store_buffer.sv
+rtl/core/memory/load_queue.sv
+rtl/core/memory/store_forwarding.sv
+rtl/core/memory/memory_request_arbiter.sv
+rtl/core/memory/load_data_path.sv
+rtl/core/debug/commit_trace_probe.sv
 rtl/core/core_top.sv
 rtl/core/myCPU.sv
