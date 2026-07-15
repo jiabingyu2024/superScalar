@@ -143,6 +143,15 @@ module stage_ex(
     logic [`DATA_BUS] fast_alu1;
     logic [`DATA_BUS] fast_alu2;
     logic [`DATA_BUS] fast_alu_res;
+    logic [`DATA_BUS] zb_result;
+    logic [4:0]       zb_shamt;
+    logic [63:0]      zb_rotate_right;
+    logic [63:0]      zb_rotate_left;
+    logic [1:0]       zb_pop2 [0:15];
+    logic [2:0]       zb_pop4 [0:7];
+    logic [3:0]       zb_pop8 [0:3];
+    logic [4:0]       zb_pop16 [0:1];
+    logic [5:0]       zb_pop32;
     logic             fast_alu_op_q;
     logic             late_load_rs1;
     logic             late_load_rs2;
@@ -414,6 +423,123 @@ module stage_ex(
         endcase
     end
 
+    function automatic [5:0] zb_clz(input logic [31:0] value);
+        logic [31:0] shifted;
+        begin
+            if (value == 32'd0) begin
+                zb_clz = 6'd32;
+            end else begin
+                zb_clz = 6'd0;
+                shifted = value;
+                if (shifted[31:16] == 16'd0) begin
+                    zb_clz = zb_clz + 6'd16;
+                    shifted = shifted << 16;
+                end
+                if (shifted[31:24] == 8'd0) begin
+                    zb_clz = zb_clz + 6'd8;
+                    shifted = shifted << 8;
+                end
+                if (shifted[31:28] == 4'd0) begin
+                    zb_clz = zb_clz + 6'd4;
+                    shifted = shifted << 4;
+                end
+                if (shifted[31:30] == 2'd0) begin
+                    zb_clz = zb_clz + 6'd2;
+                    shifted = shifted << 2;
+                end
+                if (shifted[31] == 1'b0)
+                    zb_clz = zb_clz + 6'd1;
+            end
+        end
+    endfunction
+
+    function automatic [5:0] zb_ctz(input logic [31:0] value);
+        logic [31:0] shifted;
+        begin
+            if (value == 32'd0) begin
+                zb_ctz = 6'd32;
+            end else begin
+                zb_ctz = 6'd0;
+                shifted = value;
+                if (shifted[15:0] == 16'd0) begin
+                    zb_ctz = zb_ctz + 6'd16;
+                    shifted = shifted >> 16;
+                end
+                if (shifted[7:0] == 8'd0) begin
+                    zb_ctz = zb_ctz + 6'd8;
+                    shifted = shifted >> 8;
+                end
+                if (shifted[3:0] == 4'd0) begin
+                    zb_ctz = zb_ctz + 6'd4;
+                    shifted = shifted >> 4;
+                end
+                if (shifted[1:0] == 2'd0) begin
+                    zb_ctz = zb_ctz + 6'd2;
+                    shifted = shifted >> 2;
+                end
+                if (shifted[0] == 1'b0)
+                    zb_ctz = zb_ctz + 6'd1;
+            end
+        end
+    endfunction
+
+    integer zb_i;
+    always_comb begin
+        for (zb_i = 0; zb_i < 16; zb_i = zb_i + 1)
+            zb_pop2[zb_i] = {1'b0, rs1_exec_registered[2*zb_i]} +
+                            {1'b0, rs1_exec_registered[2*zb_i+1]};
+        for (zb_i = 0; zb_i < 8; zb_i = zb_i + 1)
+            zb_pop4[zb_i] = {1'b0, zb_pop2[2*zb_i]} +
+                            {1'b0, zb_pop2[2*zb_i+1]};
+        for (zb_i = 0; zb_i < 4; zb_i = zb_i + 1)
+            zb_pop8[zb_i] = {1'b0, zb_pop4[2*zb_i]} +
+                            {1'b0, zb_pop4[2*zb_i+1]};
+        for (zb_i = 0; zb_i < 2; zb_i = zb_i + 1)
+            zb_pop16[zb_i] = {1'b0, zb_pop8[2*zb_i]} +
+                             {1'b0, zb_pop8[2*zb_i+1]};
+        zb_pop32 = {1'b0, zb_pop16[0]} + {1'b0, zb_pop16[1]};
+    end
+
+    always_comb begin
+        zb_shamt = is_rs2_imm_q ? imm_q[4:0] : rs2_exec_registered[4:0];
+        zb_rotate_right = {rs1_exec_registered, rs1_exec_registered} >> zb_shamt;
+        zb_rotate_left  = {rs1_exec_registered, rs1_exec_registered} << zb_shamt;
+
+        unique case (alu_ctrl_q)
+            `ZBB_LOGICN: begin
+                unique case (func3_q)
+                    3'b100: zb_result = rs1_exec_registered ^ ~rs2_exec_registered;
+                    3'b110: zb_result = rs1_exec_registered | ~rs2_exec_registered;
+                    default: zb_result = rs1_exec_registered & ~rs2_exec_registered;
+                endcase
+            end
+            `ZBB_MIN:    zb_result = ($signed(rs1_exec_registered) < $signed(rs2_exec_registered)) ?
+                                     rs1_exec_registered : rs2_exec_registered;
+            `ZBB_MINU:   zb_result = (rs1_exec_registered < rs2_exec_registered) ?
+                                     rs1_exec_registered : rs2_exec_registered;
+            `ZBB_MAX:    zb_result = ($signed(rs1_exec_registered) > $signed(rs2_exec_registered)) ?
+                                     rs1_exec_registered : rs2_exec_registered;
+            `ZBB_MAXU:   zb_result = (rs1_exec_registered > rs2_exec_registered) ?
+                                     rs1_exec_registered : rs2_exec_registered;
+            `ZBB_ROL:    zb_result = zb_rotate_left[63:32];
+            `ZBB_ROR:    zb_result = zb_rotate_right[31:0];
+            `ZBB_CLZ:    zb_result = {26'd0, zb_clz(rs1_exec_registered)};
+            `ZBB_CTZ:    zb_result = {26'd0, zb_ctz(rs1_exec_registered)};
+            `ZBB_CPOP:   zb_result = {26'd0, zb_pop32};
+            `ZBB_SEXT_B: zb_result = {{24{rs1_exec_registered[7]}}, rs1_exec_registered[7:0]};
+            `ZBB_SEXT_H: zb_result = {{16{rs1_exec_registered[15]}}, rs1_exec_registered[15:0]};
+            `ZBB_ORC_B:  zb_result = {{8{|rs1_exec_registered[31:24]}},
+                                      {8{|rs1_exec_registered[23:16]}},
+                                      {8{|rs1_exec_registered[15:8]}},
+                                      {8{|rs1_exec_registered[7:0]}}};
+            `ZBB_REV8:   zb_result = {rs1_exec_registered[7:0],
+                                      rs1_exec_registered[15:8],
+                                      rs1_exec_registered[23:16],
+                                      rs1_exec_registered[31:24]};
+            default:     zb_result = {16'd0, rs1_exec_registered[15:0]};
+        endcase
+    end
+
     // ---- Branch unit (produces branch redirect) ----
     logic            branch_error;
     logic [`PC_BUS]  branch_update_target;
@@ -621,6 +747,8 @@ module stage_ex(
             o_alu_res = m_res;
         end else if (o_is_mul) begin
             o_alu_res = 32'd0;
+        end else if (inst_spec_q == `EX_ZB) begin
+            o_alu_res = zb_result;
         end else if (is_csr_inst) begin
             o_alu_res = csr_rdata;   // rd ← 旧 CSR 值
         end else begin

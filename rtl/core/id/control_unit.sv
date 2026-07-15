@@ -71,34 +71,86 @@ module control_unit(
                 o_uses_rs2  = 1'b1;
                 o_is_m_ext  = (func7 == `FUNC7_MULDIV);
                 o_m_op      = func3;
-                unique case (func3)
-                    `FUNC3_ADD_SUB: o_alu_ctrl = (func7 == `FUNC7_SUB) ? `ALU_SUB : `ALU_ADD;
-                    `FUNC3_SLT:     o_alu_ctrl = `ALU_LT;
-                    `FUNC3_SLTU:    o_alu_ctrl = `ALU_LTU;
-                    `FUNC3_AND:     o_alu_ctrl = `ALU_AND;
-                    `FUNC3_OR:      o_alu_ctrl = `ALU_OR;
-                    `FUNC3_XOR:     o_alu_ctrl = `ALU_XOR;
-                    `FUNC3_SLL:     o_alu_ctrl = `ALU_SL;
-                    `FUNC3_SRL_SRA: o_alu_ctrl = (func7 == `FUNC7_SRA) ? `ALU_SRA : `ALU_SRL;
-                    default:        o_alu_ctrl = `ALU_ADD;
-                endcase
+                if ((func7 == 7'b0100000) &&
+                    ((func3 == 3'b100) || (func3 == 3'b110) ||
+                     (func3 == 3'b111))) begin
+                    o_inst_spec = `EX_ZB;
+                    o_alu_ctrl  = `ZBB_LOGICN;
+                end else if ((func7 == 7'b0000101) && func3[2]) begin
+                    o_inst_spec = `EX_ZB;
+                    unique case (func3)
+                        3'b100: o_alu_ctrl = `ZBB_MIN;
+                        3'b101: o_alu_ctrl = `ZBB_MINU;
+                        3'b110: o_alu_ctrl = `ZBB_MAX;
+                        default: o_alu_ctrl = `ZBB_MAXU;
+                    endcase
+                end else if ((func7 == 7'b0110000) &&
+                             ((func3 == 3'b001) || (func3 == 3'b101))) begin
+                    o_inst_spec = `EX_ZB;
+                    o_alu_ctrl  = (func3 == 3'b001) ? `ZBB_ROL : `ZBB_ROR;
+                end else if ((func7 == 7'b0000100) &&
+                             (func3 == 3'b100) && (i_instr[24:20] == 5'd0)) begin
+                    o_inst_spec = `EX_ZB;
+                    o_alu_ctrl  = `ZBB_ZEXT_H;
+                    o_uses_rs2  = 1'b0;
+                end else begin
+                    unique case (func3)
+                        `FUNC3_ADD_SUB: o_alu_ctrl = (func7 == `FUNC7_SUB) ? `ALU_SUB : `ALU_ADD;
+                        `FUNC3_SLT:     o_alu_ctrl = `ALU_LT;
+                        `FUNC3_SLTU:    o_alu_ctrl = `ALU_LTU;
+                        `FUNC3_AND:     o_alu_ctrl = `ALU_AND;
+                        `FUNC3_OR:      o_alu_ctrl = `ALU_OR;
+                        `FUNC3_XOR:     o_alu_ctrl = `ALU_XOR;
+                        `FUNC3_SLL:     o_alu_ctrl = `ALU_SL;
+                        `FUNC3_SRL_SRA: o_alu_ctrl = (func7 == `FUNC7_SRA) ? `ALU_SRA : `ALU_SRL;
+                        default:        o_alu_ctrl = `ALU_ADD;
+                    endcase
+                end
             end
 
             `OP_I_TYPE: begin
                 o_reg_write  = 1'b1;
                 o_is_rs2_imm = 1'b1;
                 o_uses_rs1   = 1'b1;
-                unique case (func3)
-                    `FUNC3_ADD_SUB: o_alu_ctrl = `ALU_ADD;
-                    `FUNC3_SLT:     o_alu_ctrl = `ALU_LT;
-                    `FUNC3_SLTU:    o_alu_ctrl = `ALU_LTU;
-                    `FUNC3_AND:     o_alu_ctrl = `ALU_AND;
-                    `FUNC3_OR:      o_alu_ctrl = `ALU_OR;
-                    `FUNC3_XOR:     o_alu_ctrl = `ALU_XOR;
-                    `FUNC3_SLL:     o_alu_ctrl = `ALU_SL;
-                    `FUNC3_SRL_SRA: o_alu_ctrl = i_instr[30] ? `ALU_SRA : `ALU_SRL;
-                    default:        o_alu_ctrl = `ALU_ADD;
-                endcase
+                if ((func3 == 3'b001) &&
+                    ((i_instr[31:20] == 12'h600) ||
+                     (i_instr[31:20] == 12'h601) ||
+                     (i_instr[31:20] == 12'h602) ||
+                     (i_instr[31:20] == 12'h604) ||
+                     (i_instr[31:20] == 12'h605))) begin
+                    o_inst_spec = `EX_ZB;
+                    unique case (i_instr[22:20])
+                        3'b000: o_alu_ctrl = `ZBB_CLZ;
+                        3'b001: o_alu_ctrl = `ZBB_CTZ;
+                        3'b010: o_alu_ctrl = `ZBB_CPOP;
+                        3'b100: o_alu_ctrl = `ZBB_SEXT_B;
+                        default: o_alu_ctrl = `ZBB_SEXT_H;
+                    endcase
+                end else if ((func3 == 3'b101) &&
+                             (i_instr[31:20] == 12'h287)) begin
+                    o_inst_spec = `EX_ZB;
+                    o_alu_ctrl  = `ZBB_ORC_B;
+                end else if ((func3 == 3'b101) &&
+                             (i_instr[31:20] == 12'h698)) begin
+                    o_inst_spec = `EX_ZB;
+                    o_alu_ctrl  = `ZBB_REV8;
+                end else if ((func3 == 3'b101) &&
+                             (func7 == 7'b0110000)) begin
+                    o_inst_spec = `EX_ZB;
+                    o_alu_ctrl  = `ZBB_ROR;
+                end else begin
+                    unique case (func3)
+                        `FUNC3_ADD_SUB: o_alu_ctrl = `ALU_ADD;
+                        `FUNC3_SLT:     o_alu_ctrl = `ALU_LT;
+                        `FUNC3_SLTU:    o_alu_ctrl = `ALU_LTU;
+                        `FUNC3_AND:     o_alu_ctrl = `ALU_AND;
+                        `FUNC3_OR:      o_alu_ctrl = `ALU_OR;
+                        `FUNC3_XOR:     o_alu_ctrl = `ALU_XOR;
+                        `FUNC3_SLL:     o_alu_ctrl = `ALU_SL;
+                        `FUNC3_SRL_SRA: o_alu_ctrl = i_instr[30] ? `ALU_SRA : `ALU_SRL;
+                        default:        o_alu_ctrl = `ALU_ADD;
+                    endcase
+                end
             end
 
             `OP_L_TYPE: begin

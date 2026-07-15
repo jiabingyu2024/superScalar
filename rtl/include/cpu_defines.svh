@@ -118,6 +118,24 @@
 `define EX_ECALL        4'B0101   // ecall — redirect PC to mtvec, save PC→mepc
 `define EX_EBREAK       4'B0110   // ebreak — like ecall with mcause=3
 `define EX_MRET         4'B0111   // mret  — restore PC from mepc
+`define EX_ZB           4'hf
+
+// Zbb sub-operations reuse the existing four-bit ALU control field.
+`define ZBB_LOGICN      4'h0
+`define ZBB_MIN         4'h1
+`define ZBB_MINU        4'h2
+`define ZBB_MAX         4'h3
+`define ZBB_MAXU        4'h4
+`define ZBB_ROL         4'h5
+`define ZBB_ROR         4'h6
+`define ZBB_CLZ         4'h7
+`define ZBB_CTZ         4'h8
+`define ZBB_CPOP        4'h9
+`define ZBB_SEXT_B      4'ha
+`define ZBB_SEXT_H      4'hb
+`define ZBB_ORC_B       4'hc
+`define ZBB_REV8        4'hd
+`define ZBB_ZEXT_H      4'he
 
 `define WB_SRC_ALU      1'b0
 `define WB_SRC_MEM      1'b1
