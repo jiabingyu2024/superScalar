@@ -143,6 +143,13 @@ module stage_ex(
     logic [`DATA_BUS] fast_alu1;
     logic [`DATA_BUS] fast_alu2;
     logic [`DATA_BUS] fast_alu_res;
+    logic [`DATA_BUS] zb_result;
+    logic [63:0]      zb_clmul_partial [0:31];
+    logic [63:0]      zb_clmul_xor16 [0:15];
+    logic [63:0]      zb_clmul_xor8 [0:7];
+    logic [63:0]      zb_clmul_xor4 [0:3];
+    logic [63:0]      zb_clmul_xor2 [0:1];
+    logic [63:0]      zb_clmul_product;
     logic             fast_alu_op_q;
     logic             late_load_rs1;
     logic             late_load_rs2;
@@ -414,6 +421,34 @@ module stage_ex(
         endcase
     end
 
+    integer zb_i;
+    always_comb begin
+        // Five balanced XOR levels keep the carry-less multiplier from
+        // becoming a 32-entry serial XOR chain.
+        for (zb_i = 0; zb_i < 32; zb_i = zb_i + 1)
+            zb_clmul_partial[zb_i] = rs2_exec_registered[zb_i] ?
+                ({32'd0, rs1_exec_registered} << zb_i) : 64'd0;
+        for (zb_i = 0; zb_i < 16; zb_i = zb_i + 1)
+            zb_clmul_xor16[zb_i] = zb_clmul_partial[2*zb_i] ^
+                                    zb_clmul_partial[2*zb_i+1];
+        for (zb_i = 0; zb_i < 8; zb_i = zb_i + 1)
+            zb_clmul_xor8[zb_i] = zb_clmul_xor16[2*zb_i] ^
+                                   zb_clmul_xor16[2*zb_i+1];
+        for (zb_i = 0; zb_i < 4; zb_i = zb_i + 1)
+            zb_clmul_xor4[zb_i] = zb_clmul_xor8[2*zb_i] ^
+                                   zb_clmul_xor8[2*zb_i+1];
+        for (zb_i = 0; zb_i < 2; zb_i = zb_i + 1)
+            zb_clmul_xor2[zb_i] = zb_clmul_xor4[2*zb_i] ^
+                                   zb_clmul_xor4[2*zb_i+1];
+        zb_clmul_product = zb_clmul_xor2[0] ^ zb_clmul_xor2[1];
+
+        unique case (m_op_q)
+            `ZBC_CLMUL:  zb_result = zb_clmul_product[31:0];
+            `ZBC_CLMULR: zb_result = zb_clmul_product[62:31];
+            default:     zb_result = zb_clmul_product[63:32];
+        endcase
+    end
+
     // ---- Branch unit (produces branch redirect) ----
     logic            branch_error;
     logic [`PC_BUS]  branch_update_target;
@@ -621,6 +656,8 @@ module stage_ex(
             o_alu_res = m_res;
         end else if (o_is_mul) begin
             o_alu_res = 32'd0;
+        end else if (inst_spec_q == `EX_ZB) begin
+            o_alu_res = zb_result;
         end else if (is_csr_inst) begin
             o_alu_res = csr_rdata;   // rd ← 旧 CSR 值
         end else begin

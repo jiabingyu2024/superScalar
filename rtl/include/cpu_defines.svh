@@ -118,6 +118,12 @@
 `define EX_ECALL        4'B0101   // ecall — redirect PC to mtvec, save PC→mepc
 `define EX_EBREAK       4'B0110   // ebreak — like ecall with mcause=3
 `define EX_MRET         4'B0111   // mret  — restore PC from mepc
+`define EX_ZB           4'hf
+
+// Zbc encodings match func3 and reuse the existing M-operation field.
+`define ZBC_CLMUL       3'b001
+`define ZBC_CLMULR      3'b010
+`define ZBC_CLMULH      3'b011
 
 `define WB_SRC_ALU      1'b0
 `define WB_SRC_MEM      1'b1

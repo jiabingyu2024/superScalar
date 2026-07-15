@@ -82,6 +82,11 @@ module control_unit(
                     `FUNC3_SRL_SRA: o_alu_ctrl = (func7 == `FUNC7_SRA) ? `ALU_SRA : `ALU_SRL;
                     default:        o_alu_ctrl = `ALU_ADD;
                 endcase
+                if ((func7 == 7'b0000101) &&
+                    ((func3 == `ZBC_CLMUL) || (func3 == `ZBC_CLMULR) ||
+                     (func3 == `ZBC_CLMULH))) begin
+                    o_inst_spec = `EX_ZB;
+                end
             end
 
             `OP_I_TYPE: begin
