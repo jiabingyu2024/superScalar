@@ -26,7 +26,7 @@ module muldiv_unit (
     logic [TRANS_ID_W-1:0] tid_q;
     muldiv_op_e op_q;
     logic [31:0] a_q, b_q;
-    logic [2:0] mul_valid_q;
+    logic [1:0] mul_valid_q;
     logic signed [32:0] mul_a, mul_b;
     logic signed [65:0] mul_product;
     logic div_in_valid, div_out_valid;
@@ -92,7 +92,7 @@ module muldiv_unit (
         endcase
     end
 
-    assign raw_done = is_div_q ? div_out_valid : mul_valid_q[2];
+    assign raw_done = is_div_q ? div_out_valid : mul_valid_q[1];
     assign resp_valid_o = raw_done && busy_q && !killed_q;
     assign resp_trans_id_o = tid_q;
 
@@ -107,7 +107,7 @@ module muldiv_unit (
             b_q <= '0;
             mul_valid_q <= '0;
         end else begin
-            mul_valid_q <= {mul_valid_q[1:0],
+            mul_valid_q <= {mul_valid_q[0],
                             req_valid_i && req_ready_o && !req_op_i[2]};
             if (req_valid_i && req_ready_o) begin
                 busy_q <= 1'b1;

@@ -1,48 +1,38 @@
 {
-  "timestamp": "2026-07-15T11:57:47+08:00",
-  "trigger": "Replace the single-entry id_uop holding register with a real ready-select issue queue and optimize IPC x Fmax",
+  "timestamp": "2026-07-15T20:55:00+08:00",
+  "trigger": "Improve IPC x Fmax after dump-guided bottleneck analysis of the three-entry oldest-ready issue-queue core",
   "files_modified": [
     {
-      "path": "rtl/core/issue/inorder_issue_queue.sv",
-      "lines_changed": "new file",
-      "change_type": "new_module"
-    },
-    {
       "path": "rtl/core/core_top.sv",
-      "lines_changed": "55-660",
+      "lines_changed": "branch outcome storage, commit-time recovery, and load-dependent memory wakeup control",
       "change_type": "logic_fix"
     },
     {
-      "path": "rtl/core/control/recovery_ctrl.sv",
-      "lines_changed": "21-30",
+      "path": "rtl/core/issue/inorder_issue_queue.sv",
+      "lines_changed": "branch readiness and deferred memory-address wakeup",
       "change_type": "logic_fix"
     },
     {
-      "path": "rtl/core/issue/scoreboard.sv",
-      "lines_changed": "49-170",
-      "change_type": "logic_fix"
+      "path": "rtl/core/execute/muldiv_unit.sv",
+      "lines_changed": "MUL response valid pipeline",
+      "change_type": "latency_change"
     },
     {
-      "path": "rtl/core/frontend/branch_predictor.sv",
-      "lines_changed": "interface and read pipeline",
-      "change_type": "port_interface_change"
+      "path": "rtl/ip/MUL_0.sv",
+      "lines_changed": "portable MUL pipeline model",
+      "change_type": "latency_change"
     },
     {
-      "path": "rtl/core/frontend/frontend.sv",
-      "lines_changed": "predictor ready handshake",
-      "change_type": "port_interface_change"
+      "path": "fpga/create_vivado_project.tcl",
+      "lines_changed": "MUL_0 PipeStages 3 to 2",
+      "change_type": "ip_configuration"
     },
     {
-      "path": "rtl/core/debug/commit_trace_probe.sv",
-      "lines_changed": "commit trace checks",
-      "change_type": "logic_fix"
-    },
-    {
-      "path": "scripts/filelists/core.f",
-      "lines_changed": "issue queue source entry",
-      "change_type": "filelist_update"
+      "path": "fpga/test_prj/create_project.tcl",
+      "lines_changed": "MUL_0 PipeStages 3 to 2",
+      "change_type": "ip_configuration"
     }
   ],
   "cascade_scope": "full_reverify",
-  "notes": "Added a three-entry fixed-slot oldest-ready issue queue with memory ordering and commit-head branch issue. Added registered load-result bypass and independent memory-address readiness to preserve IPC while reducing DCache timing fanout. RV32IM 52/52 passed; srcSmoke and srcWithMext short windows passed; srcWithMext 20M reached IPC 0.795558. Post-route WNS is -0.779584 ns at a 5.0 ns constraint. Mirrored DCache probes were removed after showing an ideal dual-load ceiling of about +0.0226 IPC with insufficient timing margin."
+  "notes": "Branches now execute when ready but redirect and flush only at in-order commit. A load-dependent fixed completion defers only memory-address readiness by one cycle. The 33x33 multiplier is reduced from three cycles to two in RTL, the Verilator model, and Vivado IP configuration. RV32I/M 52/52 passed; srcSmoke 500k IPC is 0.685762; srcWithMext IPC is 0.869596 at 500k and 0.856137 at 20M. Routed WNS is -1.051 ns, equivalent Fmax is 165.26 MHz, and IPC x Fmax is 141.49. All 3875 routed setup-violating endpoints were exported."
 }

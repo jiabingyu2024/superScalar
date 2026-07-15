@@ -58,6 +58,11 @@ module core_top (
     localparam int unsigned ISSUE_QUEUE_DEPTH = 3;
     localparam int unsigned IQ_CNT_W = $clog2(ISSUE_QUEUE_DEPTH + 1);
 
+    typedef struct packed {
+        logic miss;
+        logic [31:0] actual_next;
+    } branch_outcome_t;
+
     uop_t id_uop_q, decoded_uop;
     fetch_entry_t fetch_head_entry;
     logic fetch_valid, fetch_pop;
@@ -78,7 +83,7 @@ module core_top (
     exec_req_t exec_q;
     completion_t fixed_completion;
     logic fixed_completion_valid;
-    logic branch_resolve_valid_c, branch_taken_c, branch_miss_c;
+    logic branch_resolve_valid_c, branch_taken_c;
     logic [31:0] branch_target_c, branch_actual_next_c;
     pred_kind_e branch_kind_c;
     logic branch_resolve_valid, branch_taken, branch_miss;
@@ -87,6 +92,9 @@ module core_top (
     pred_kind_e branch_kind;
     logic [1:0] branch_pred_counter;
     logic [GSHARE_HISTORY_BITS-1:0] branch_pred_index;
+    branch_outcome_t branch_outcome_q [0:SCOREBOARD_DEPTH-1];
+    branch_outcome_t commit_branch_outcome_c;
+    logic branch_commit_valid_c;
 
     store_entry_t store_q [0:STORE_BUFFER_DEPTH-1];
     logic [STORE_BUFFER_DEPTH-1:0] store_committed_q;
@@ -309,8 +317,7 @@ module core_top (
         !(exec_q.valid && exec_q.uop.fu == FU_MULDIV) && !bitmanip_clmul_start_c;
     assign iq_bitmanip_ready_c = bm_req_ready && !mdu_busy &&
         !(exec_q.valid && exec_q.uop.fu == FU_MULDIV) && !bitmanip_clmul_start_c;
-    assign iq_issue_block_c = branch_resolve_valid_c || redirect_valid ||
-                              serial_pending_q;
+    assign iq_issue_block_c = redirect_valid || serial_pending_q;
 
     inorder_issue_queue #(.DEPTH(ISSUE_QUEUE_DEPTH)) u_issue_queue (
         .clk(clk), .rst(rst), .flush_i(full_flush),
@@ -328,6 +335,8 @@ module core_top (
         .enqueue_src2_value_i(src2_value),
         .fixed_complete_i(fixed_completion_valid),
         .fixed_completion_i(fixed_completion),
+        .fixed_mem_addr_defer_i(exec_src1_load_bypass_q ||
+                                exec_src2_load_bypass_q),
         .load_complete_i(load_completion_valid),
         .load_trans_id_i(load_completion_meta.trans_id), .load_result_i(load_result),
         .slow_complete_i(slow_resp_valid), .slow_trans_id_i(slow_resp_tid),
@@ -361,8 +370,13 @@ module core_top (
         .store_enqueue_o(exec_store_enqueue), .mem_addr_o(exec_mem_addr_calc)
     );
 
-    assign branch_miss_c = branch_resolve_valid_c && !fixed_completion.exception_valid &&
-                           (branch_actual_next_c != exec_q.uop.pred_next_pc);
+    assign commit_branch_outcome_c = branch_outcome_q[commit_ptr_q];
+    assign branch_commit_valid_c = commit_normal && commit_entry.fu == FU_BRANCH;
+    assign branch_resolve_valid = branch_commit_valid_c;
+    assign branch_miss = branch_commit_valid_c && commit_branch_outcome_c.miss;
+    assign branch_actual_next = commit_branch_outcome_c.actual_next;
+    // Predictor state is performance-only and can train when a branch
+    // executes.  Only precise recovery data is retained until commit.
     assign predictor_update_valid = branch_predictor_update_valid_q;
     assign predictor_update_target = branch_target;
 
@@ -585,12 +599,9 @@ module core_top (
             exec_src2_load_bypass_q <= 1'b0;
             load_issue_bypass_data_q <= '0;
             exec_mem_addr_q <= '0;
-            branch_resolve_valid <= 1'b0;
             branch_predictor_update_valid_q <= 1'b0;
             branch_taken <= 1'b0;
-            branch_miss <= 1'b0;
             branch_target <= '0;
-            branch_actual_next <= '0;
             branch_pc_q <= '0;
             branch_kind <= PRED_NONE;
             branch_pred_counter <= 2'b01;
@@ -602,18 +613,15 @@ module core_top (
                 wb_data_q <= (commit_entry.sys_op == SYS_CSR) ? csr_result :
                              commit_entry.result;
             end
-            // Recovery/predictor control is registered so an EX operand compare
-            // cannot drive global redirect/allocation enables in the same
-            // cycle.  Issue pauses for the branch's EX cycle above, preserving
-            // correctness without adding speculative backend rollback state.
-            branch_resolve_valid <= branch_resolve_valid_c;
             branch_predictor_update_valid_q <= branch_resolve_valid_c &&
                                                !fixed_completion.exception_valid;
-            branch_miss <= branch_miss_c;
             if (branch_resolve_valid_c) begin
+                branch_outcome_q[exec_q.trans_id].miss <=
+                    !fixed_completion.exception_valid &&
+                    branch_actual_next_c != exec_q.uop.pred_next_pc;
+                branch_outcome_q[exec_q.trans_id].actual_next <= branch_actual_next_c;
                 branch_taken <= branch_taken_c;
                 branch_target <= branch_target_c;
-                branch_actual_next <= branch_actual_next_c;
                 branch_pc_q <= exec_q.uop.pc;
                 branch_kind <= branch_kind_c;
                 branch_pred_counter <= exec_q.uop.pred_counter;
@@ -624,9 +632,13 @@ module core_top (
                 exec_src1_load_bypass_q <= 1'b0;
                 exec_src2_load_bypass_q <= 1'b0;
             end else begin
-                exec_q.valid <= issue_fire && !id_uop_q.exception_valid && id_uop_q.fu != FU_SYSTEM;
-                exec_src1_load_bypass_q <= issue_fire && issue_src1_load_bypass_c;
-                exec_src2_load_bypass_q <= issue_fire && issue_src2_load_bypass_c;
+                // Only normal executable uops are enqueued into the IQ, so
+                // issue_fire already implies !exception and FU != SYSTEM.
+                exec_q.valid <= issue_fire;
+                // These tags are payload: they are ignored whenever valid is
+                // low and therefore do not need issue_fire in their D paths.
+                exec_src1_load_bypass_q <= issue_src1_load_bypass_c;
+                exec_src2_load_bypass_q <= issue_src2_load_bypass_c;
             end
             if (load_completion_valid)
                 load_issue_bypass_data_q <= load_result;
@@ -689,7 +701,10 @@ module core_top (
                 assert (dmem_req_wstrb_o == dmem_hold_wstrb_q);
                 assert (dmem_req_uncached_o == dmem_hold_uncached_q);
             end
-            if (branch_miss) assert (!issue_fire);
+            if (branch_miss) begin
+                assert (commit_entry.fu == FU_BRANCH);
+                assert (!issue_fire);
+            end
             dmem_stall_q <= dmem_req_valid_o && !dmem_req_ready_i;
             if (dmem_req_valid_o && !dmem_req_ready_i) begin
                 dmem_hold_write_q <= dmem_req_write_o;

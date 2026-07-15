@@ -20,6 +20,7 @@ module inorder_issue_queue #(
 
     input  logic fixed_complete_i,
     input  core_types_pkg::completion_t fixed_completion_i,
+    input  logic fixed_mem_addr_defer_i,
     input  logic load_complete_i,
     input  logic [core_config_pkg::TRANS_ID_W-1:0] load_trans_id_i,
     input  logic [31:0] load_result_i,
@@ -75,6 +76,8 @@ module inorder_issue_queue #(
     logic load_addr_wakeup_valid_q;
     logic [core_config_pkg::TRANS_ID_W-1:0] load_addr_wakeup_trans_id_q;
     logic [31:0] load_addr_wakeup_result_q;
+    logic fixed_mem_addr_wakeup_valid_q;
+    logic [core_config_pkg::TRANS_ID_W-1:0] fixed_mem_addr_wakeup_trans_id_q;
     logic select_src1_ready_c [0:DEPTH-1];
     logic select_src2_ready_c [0:DEPTH-1];
     logic select_src1_load_bypass_c [0:DEPTH-1];
@@ -105,8 +108,9 @@ module inorder_issue_queue #(
                     entries_d[comb_i].src1_trans_id == fixed_completion_i.trans_id) begin
                     entries_d[comb_i].src1_ready = 1'b1;
                     entries_d[comb_i].src1_value = fixed_completion_i.result;
-                    if (entries_d[comb_i].uop.fu == FU_LOAD ||
-                        entries_d[comb_i].uop.fu == FU_STORE)
+                    if ((entries_d[comb_i].uop.fu == FU_LOAD ||
+                         entries_d[comb_i].uop.fu == FU_STORE) &&
+                        !fixed_mem_addr_defer_i)
                         entries_d[comb_i].mem_addr_ready = 1'b1;
                 end else if (load_addr_wakeup_valid_q &&
                              entries_d[comb_i].src1_trans_id ==
@@ -125,6 +129,18 @@ module inorder_issue_queue #(
                         entries_d[comb_i].mem_addr_ready = 1'b1;
                 end
             end
+            // A fixed result produced from the load-return bypass would make
+            // load data cross the ALU, completion wakeup and AGU in one cycle.
+            // The operand value may wake immediately, but make a dependent
+            // memory operation wait one cycle before its address can issue.
+            if (entries_d[comb_i].valid &&
+                (entries_d[comb_i].uop.fu == FU_LOAD ||
+                 entries_d[comb_i].uop.fu == FU_STORE) &&
+                !entries_d[comb_i].mem_addr_ready &&
+                fixed_mem_addr_wakeup_valid_q &&
+                entries_d[comb_i].src1_trans_id ==
+                fixed_mem_addr_wakeup_trans_id_q)
+                entries_d[comb_i].mem_addr_ready = 1'b1;
             if (entries_d[comb_i].valid && !entries_d[comb_i].src2_ready) begin
                 if (fixed_complete_i &&
                     entries_d[comb_i].src2_trans_id == fixed_completion_i.trans_id) begin
@@ -194,11 +210,16 @@ module inorder_issue_queue #(
 
             fu_ready_c = 1'b1;
             unique case (entries_d[comb_i].uop.fu)
-                FU_LOAD: fu_ready_c = load_ready_i && !older_memory_c;
-                FU_STORE: fu_ready_c = store_ready_i && !older_memory_c;
+                FU_LOAD: fu_ready_c = load_ready_i && !older_memory_c &&
+                                           entries_d[comb_i].mem_addr_ready;
+                FU_STORE: fu_ready_c = store_ready_i && !older_memory_c &&
+                                            entries_d[comb_i].mem_addr_ready;
                 FU_MULDIV: fu_ready_c = muldiv_ready_i;
                 FU_BITMANIP: fu_ready_c = bitmanip_ready_i;
-                FU_BRANCH: fu_ready_c = entries_d[comb_i].trans_id == commit_trans_id_i;
+                // Branches may execute before reaching the commit head.  Their
+                // outcome is held by core_top and only becomes architectural
+                // (predictor update/redirect/full flush) at in-order commit.
+                FU_BRANCH: fu_ready_c = 1'b1;
                 default: fu_ready_c = 1'b1;
             endcase
 
@@ -242,10 +263,16 @@ module inorder_issue_queue #(
             load_addr_wakeup_valid_q <= 1'b0;
             load_addr_wakeup_trans_id_q <= '0;
             load_addr_wakeup_result_q <= '0;
+            fixed_mem_addr_wakeup_valid_q <= 1'b0;
+            fixed_mem_addr_wakeup_trans_id_q <= '0;
             for (seq_i = 0; seq_i < DEPTH; seq_i = seq_i + 1)
                 entries_q[seq_i] <= '0;
         end else begin
             load_addr_wakeup_valid_q <= load_complete_i;
+            fixed_mem_addr_wakeup_valid_q <= fixed_complete_i &&
+                                             fixed_mem_addr_defer_i;
+            if (fixed_complete_i && fixed_mem_addr_defer_i)
+                fixed_mem_addr_wakeup_trans_id_q <= fixed_completion_i.trans_id;
             if (load_complete_i) begin
                 load_addr_wakeup_trans_id_q <= load_trans_id_i;
                 load_addr_wakeup_result_q <= load_result_i;
