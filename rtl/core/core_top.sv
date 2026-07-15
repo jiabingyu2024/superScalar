@@ -55,18 +55,21 @@ module core_top (
     localparam int unsigned SB_CNT_W = $clog2(SCOREBOARD_DEPTH + 1);
     localparam int unsigned ST_CNT_W = $clog2(STORE_BUFFER_DEPTH + 1);
     localparam int unsigned LD_CNT_W = $clog2(LOAD_QUEUE_DEPTH + 1);
+    localparam int unsigned ISSUE_QUEUE_DEPTH = 3;
+    localparam int unsigned IQ_CNT_W = $clog2(ISSUE_QUEUE_DEPTH + 1);
 
-    logic id_valid_q;
     uop_t id_uop_q, decoded_uop;
     fetch_entry_t fetch_head_entry;
     logic fetch_valid, fetch_pop;
+    logic dispatch_fire, dispatch_exec_c, dispatch_ready_c;
+    logic [IQ_CNT_W-1:0] issue_queue_count_q;
 
     logic [31:0] rf_rs1_data, rf_rs2_data, rf_write_data;
     logic rf_write_valid;
     logic wb_valid_q;
     logic [4:0] wb_rd_q;
     logic [31:0] wb_data_q;
-    logic [TRANS_ID_W-1:0] issue_ptr_q, commit_ptr_q;
+    logic [TRANS_ID_W-1:0] dispatch_ptr_q, issue_ptr_q, commit_ptr_q;
     logic [SB_CNT_W-1:0] scoreboard_count_q;
     logic serial_pending_q;
     logic sb_src1_ready, sb_src2_ready;
@@ -99,8 +102,17 @@ module core_top (
     logic [TRANS_ID_W-1:0] src1_tid, src2_tid;
     logic [31:0] csr_src_value;
     logic issue_fire;
+    logic [31:0] issue_src1_c, issue_src2_c;
+    logic issue_src1_load_bypass_c, issue_src2_load_bypass_c;
+    logic exec_src1_load_bypass_q, exec_src2_load_bypass_q;
+    logic [31:0] load_issue_bypass_data_q;
+    logic issue_memory_addr_valid_c;
+    logic [31:0] issue_memory_addr_c;
+    logic iq_load_ready_c, iq_store_ready_c, iq_muldiv_ready_c;
+    logic iq_bitmanip_ready_c, iq_issue_block_c;
     logic exec_load_enqueue, exec_store_enqueue;
     logic [31:0] exec_mem_addr_calc, exec_mem_addr_q;
+    exec_req_t exec_effective_c;
 
     logic dc_req_valid, dc_req_ready, dc_req_write, dc_req_uncached;
     logic [31:0] dc_req_addr, dc_req_wdata;
@@ -172,14 +184,11 @@ module core_top (
     assign perf_stall_muldiv_o = stall_muldiv_q;
     assign perf_stall_load_use_o = stall_load_use_q;
 
-    assign stall_raw_c = id_valid_q && ((!src1_ready && src1_found) ||
-                                        (!src2_ready && src2_found));
-    assign stall_mem_c = id_valid_q &&
-                         (id_uop_q.fu == FU_LOAD || id_uop_q.fu == FU_STORE) && !issue_fire;
-    assign stall_muldiv_c = id_valid_q &&
-                            (id_uop_q.fu == FU_MULDIV || id_uop_q.fu == FU_BITMANIP) &&
-                            !issue_fire;
-    assign stall_front_c = !id_valid_q && scoreboard_count_q < SB_CNT_W'(SCOREBOARD_DEPTH);
+    assign stall_raw_c = issue_queue_count_q != 0 && !issue_fire;
+    assign stall_mem_c = issue_queue_count_q != 0 && !iq_load_ready_c;
+    assign stall_muldiv_c = issue_queue_count_q != 0 &&
+                            (!iq_muldiv_ready_c || !iq_bitmanip_ready_c);
+    assign stall_front_c = fetch_valid && !dispatch_fire;
 
     perf_counters u_perf_counters (
         .clk(clk), .rst(rst), .commit_i(commit_normal),
@@ -197,7 +206,16 @@ module core_top (
         .stall_raw_o(stall_load_use_q)
     );
 
-    assign fetch_pop = fetch_valid && (!id_valid_q || issue_fire) && !redirect_valid;
+    assign dispatch_exec_c = !decoded_uop.exception_valid &&
+                             decoded_uop.fu != FU_SYSTEM;
+    assign dispatch_ready_c = !serial_pending_q &&
+        (scoreboard_count_q < SB_CNT_W'(SCOREBOARD_DEPTH) || commit_fire) &&
+        (dispatch_exec_c ? issue_queue_count_q < IQ_CNT_W'(ISSUE_QUEUE_DEPTH) :
+         (scoreboard_count_q == 0 && issue_queue_count_q == 0)) &&
+        (!(decoded_uop.serialize || decoded_uop.exception_valid) ||
+         (scoreboard_count_q == 0 && issue_queue_count_q == 0));
+    assign dispatch_fire = fetch_valid && dispatch_ready_c && !redirect_valid;
+    assign fetch_pop = dispatch_fire;
 
     frontend u_frontend (
         .clk(clk), .rst(rst), .redirect_valid_i(redirect_valid),
@@ -220,7 +238,7 @@ module core_top (
     assign rf_write_valid = wb_valid_q;
     assign rf_write_data = wb_data_q;
     regfile u_regfile (
-        .clk(clk), .rst(rst), .rs1_addr_i(id_uop_q.rs1), .rs2_addr_i(id_uop_q.rs2),
+        .clk(clk), .rst(rst), .rs1_addr_i(decoded_uop.rs1), .rs2_addr_i(decoded_uop.rs2),
         .rs1_data_o(rf_rs1_data), .rs2_data_o(rf_rs2_data),
         .write_valid_i(rf_write_valid), .write_addr_i(wb_rd_q),
         .write_data_i(rf_write_data)
@@ -228,8 +246,8 @@ module core_top (
 
     scoreboard u_scoreboard (
         .clk(clk), .rst(rst), .flush_i(full_flush),
-        .allocate_i(issue_fire), .allocate_uop_i(id_uop_q),
-        .allocate_csr_src_i(csr_src_value), .allocate_trans_id_o(issue_ptr_q),
+        .allocate_i(dispatch_fire), .allocate_uop_i(decoded_uop),
+        .allocate_csr_src_i(csr_src_value), .allocate_trans_id_o(dispatch_ptr_q),
         .fixed_complete_i(fixed_completion_valid),
         .fixed_completion_i(fixed_completion),
         .load_complete_i(load_completion_valid),
@@ -240,31 +258,15 @@ module core_top (
         .slow_trans_id_i(slow_resp_tid), .slow_result_i(slow_resp_result),
         .commit_i(commit_fire), .commit_trans_id_o(commit_ptr_q),
         .commit_entry_o(commit_entry), .count_o(scoreboard_count_q),
-        .serial_pending_o(serial_pending_q), .query_uop_i(id_uop_q),
+        .serial_pending_o(serial_pending_q), .query_uop_i(decoded_uop),
         .query_rs1_found_o(src1_found), .query_rs1_ready_o(sb_src1_ready),
         .query_rs1_trans_id_o(src1_tid), .query_rs1_data_o(sb_src1_data),
         .query_rs2_found_o(src2_found), .query_rs2_ready_o(sb_src2_ready),
         .query_rs2_trans_id_o(src2_tid), .query_rs2_data_o(sb_src2_data)
     );
 
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            id_valid_q <= 1'b0;
-            id_uop_q <= '0;
-        end else if (redirect_valid) begin
-            id_valid_q <= 1'b0;
-        end else begin
-            if (fetch_pop) begin
-                id_uop_q <= decoded_uop;
-                id_valid_q <= 1'b1;
-            end else if (issue_fire) begin
-                id_valid_q <= 1'b0;
-            end
-        end
-    end
-
     operand_resolver u_operand_resolver (
-        .uop_i(id_uop_q), .rf_rs1_data_i(rf_rs1_data),
+        .uop_i(decoded_uop), .rf_rs1_data_i(rf_rs1_data),
         .rf_rs2_data_i(rf_rs2_data), .wb_valid_i(wb_valid_q),
         .wb_rd_i(wb_rd_q), .wb_data_i(wb_data_q),
         .rs1_found_i(src1_found), .rs1_scoreboard_ready_i(sb_src1_ready),
@@ -273,8 +275,11 @@ module core_top (
         .rs2_trans_id_i(src2_tid), .rs2_scoreboard_data_i(sb_src2_data),
         .fixed_completion_valid_i(fixed_completion_valid),
         .fixed_completion_i(fixed_completion),
-        .load_completion_valid_i(load_completion_valid),
-        .load_completion_meta_i(load_completion_meta), .load_result_i(load_result),
+        // A completing load wakes entries already resident in the IQ.  Decode
+        // does not consume the DCache bypass directly; a same-cycle new
+        // consumer enters tagged and wakes from the IQ's registered copy.
+        .load_completion_valid_i(1'b0),
+        .load_completion_meta_i('0), .load_result_i(32'd0),
         .slow_completion_valid_i(slow_resp_valid),
         .slow_completion_trans_id_i(slow_resp_tid),
         .slow_completion_result_i(slow_resp_result),
@@ -289,26 +294,66 @@ module core_top (
     // routing the general completion bypass into csr_src created hundreds of
     // false-by-construction DCache-data paths.
     always_comb begin
-        csr_src_value = id_uop_q.rs1 == 0 ? 32'd0 : rf_rs1_data;
-        if (wb_valid_q && id_uop_q.rs1 == wb_rd_q && id_uop_q.rs1 != 0)
+        csr_src_value = decoded_uop.rs1 == 0 ? 32'd0 : rf_rs1_data;
+        if (wb_valid_q && decoded_uop.rs1 == wb_rd_q && decoded_uop.rs1 != 0)
             csr_src_value = wb_data_q;
     end
 
-    issue_control u_issue_control (
-        .id_valid_i(id_valid_q), .uop_i(id_uop_q),
-        .src1_ready_i(src1_ready), .src1_memory_ready_i(src1_mem_ready),
-        .src2_ready_i(src2_ready), .scoreboard_count_i(scoreboard_count_q),
-        .store_count_i(store_count_q), .load_count_i(load_count_q),
-        .exec_i(exec_q), .serial_pending_i(serial_pending_q),
-        .mdu_req_ready_i(mdu_req_ready), .mdu_busy_i(mdu_busy),
-        .bitmanip_req_ready_i(bm_req_ready), .bitmanip_busy_i(bm_busy),
-        .bitmanip_clmul_start_i(bitmanip_clmul_start_c), .commit_i(commit_fire),
-        .branch_resolve_i(branch_resolve_valid_c), .redirect_i(redirect_valid),
-        .issue_o(issue_fire)
+    assign iq_load_ready_c =
+        (load_count_q + LD_CNT_W'(exec_q.valid && exec_q.uop.fu == FU_LOAD)) <
+        LD_CNT_W'(LOAD_QUEUE_DEPTH);
+    assign iq_store_ready_c =
+        (store_count_q + ST_CNT_W'(exec_q.valid && exec_q.uop.fu == FU_STORE)) <
+        ST_CNT_W'(STORE_BUFFER_DEPTH);
+    assign iq_muldiv_ready_c = mdu_req_ready && !bm_busy &&
+        !(exec_q.valid && exec_q.uop.fu == FU_MULDIV) && !bitmanip_clmul_start_c;
+    assign iq_bitmanip_ready_c = bm_req_ready && !mdu_busy &&
+        !(exec_q.valid && exec_q.uop.fu == FU_MULDIV) && !bitmanip_clmul_start_c;
+    assign iq_issue_block_c = branch_resolve_valid_c || redirect_valid ||
+                              serial_pending_q;
+
+    inorder_issue_queue #(.DEPTH(ISSUE_QUEUE_DEPTH)) u_issue_queue (
+        .clk(clk), .rst(rst), .flush_i(full_flush),
+        .enqueue_i(dispatch_fire && dispatch_exec_c),
+        .enqueue_uop_i(decoded_uop), .enqueue_trans_id_i(dispatch_ptr_q),
+        .enqueue_src1_ready_i((decoded_uop.fu == FU_LOAD ||
+                               decoded_uop.fu == FU_STORE) ?
+                              src1_mem_ready : src1_ready),
+        .enqueue_src1_trans_id_i(src1_tid),
+        .enqueue_src1_value_i((decoded_uop.fu == FU_LOAD ||
+                               decoded_uop.fu == FU_STORE) ?
+                              src1_mem_value : src1_value),
+        .enqueue_src2_ready_i(src2_ready),
+        .enqueue_src2_trans_id_i(src2_tid),
+        .enqueue_src2_value_i(src2_value),
+        .fixed_complete_i(fixed_completion_valid),
+        .fixed_completion_i(fixed_completion),
+        .load_complete_i(load_completion_valid),
+        .load_trans_id_i(load_completion_meta.trans_id), .load_result_i(load_result),
+        .slow_complete_i(slow_resp_valid), .slow_trans_id_i(slow_resp_tid),
+        .slow_result_i(slow_resp_result), .load_ready_i(iq_load_ready_c),
+        .store_ready_i(iq_store_ready_c), .muldiv_ready_i(iq_muldiv_ready_c),
+        .bitmanip_ready_i(iq_bitmanip_ready_c), .issue_block_i(iq_issue_block_c),
+        .commit_trans_id_i(commit_ptr_q), .issue_valid_o(issue_fire),
+        .issue_uop_o(id_uop_q), .issue_trans_id_o(issue_ptr_q),
+        .issue_src1_o(issue_src1_c), .issue_src2_o(issue_src2_c),
+        .issue_src1_load_bypass_o(issue_src1_load_bypass_c),
+        .issue_src2_load_bypass_o(issue_src2_load_bypass_c),
+        .memory_addr_valid_o(issue_memory_addr_valid_c),
+        .memory_addr_o(issue_memory_addr_c),
+        .count_o(issue_queue_count_q)
     );
 
+    always_comb begin
+        exec_effective_c = exec_q;
+        if (exec_src1_load_bypass_q)
+            exec_effective_c.op1 = load_issue_bypass_data_q;
+        if (exec_src2_load_bypass_q)
+            exec_effective_c.op2 = load_issue_bypass_data_q;
+    end
+
     fixed_execute u_fixed_execute (
-        .exec_i(exec_q), .store_tail_i(store_tail_q),
+        .exec_i(exec_effective_c), .store_tail_i(store_tail_q),
         .completion_valid_o(fixed_completion_valid), .completion_o(fixed_completion),
         .branch_resolve_valid_o(branch_resolve_valid_c), .branch_taken_o(branch_taken_c),
         .branch_target_o(branch_target_c), .branch_actual_next_o(branch_actual_next_c),
@@ -334,7 +379,7 @@ module core_top (
         .clk(clk), .rst(rst), .kill_i(full_flush),
         .req_valid_i(mdu_req_valid), .req_ready_o(mdu_req_ready),
         .req_trans_id_i(exec_q.trans_id), .req_op_i(exec_q.uop.muldiv_op),
-        .req_a_i(exec_q.op1), .req_b_i(exec_q.op2),
+        .req_a_i(exec_effective_c.op1), .req_b_i(exec_effective_c.op2),
         .resp_valid_o(mdu_resp_valid), .resp_trans_id_o(mdu_resp_tid),
         .resp_result_o(mdu_resp_result), .busy_o(mdu_busy)
     );
@@ -344,8 +389,8 @@ module core_top (
         .clk(clk), .rst(rst), .kill_i(full_flush),
         .req_valid_i(bm_req_valid), .req_ready_o(bm_req_ready),
         .req_trans_id_i(exec_q.trans_id), .req_op_i(exec_q.uop.bitmanip_op),
-        .req_a_i(exec_q.op1),
-        .req_b_i(exec_q.uop.uses_rs2 ? exec_q.op2 : exec_q.uop.imm),
+        .req_a_i(exec_effective_c.op1),
+        .req_b_i(exec_q.uop.uses_rs2 ? exec_effective_c.op2 : exec_q.uop.imm),
         .resp_valid_o(bm_resp_valid), .resp_trans_id_o(bm_resp_tid),
         .resp_result_o(bm_resp_result), .busy_o(bm_busy)
     );
@@ -364,7 +409,7 @@ module core_top (
     store_buffer u_store_buffer (
         .clk(clk), .rst(rst), .flush_i(full_flush),
         .enqueue_i(exec_store_enqueue), .enqueue_trans_id_i(exec_q.trans_id),
-        .enqueue_addr_i(exec_mem_addr_q), .enqueue_wdata_i(exec_q.op2),
+        .enqueue_addr_i(exec_mem_addr_q), .enqueue_wdata_i(exec_effective_c.op2),
         .enqueue_size_i(exec_q.uop.mem_size),
         .enqueue_uncached_i(!addr_is_dram(exec_mem_addr_q)),
         .commit_i(commit_store_mark), .commit_slot_i(commit_entry.store_slot),
@@ -513,7 +558,7 @@ module core_top (
         .csr_mtvec_i(csr_mtvec), .csr_mepc_i(csr_mepc),
         .issue_i(issue_fire), .issue_trans_id_i(issue_ptr_q),
         .issue_uop_i(id_uop_q), .branch_resolve_i(branch_resolve_valid_c),
-        .branch_actual_next_i(branch_actual_next_c), .exec_i(exec_q),
+        .branch_actual_next_i(branch_actual_next_c), .exec_i(exec_effective_c),
         .exec_mem_addr_i(exec_mem_addr_q), .cycle_i(cycle_q),
         .commit_count_i(commit_count_q),
         .commit_valid_o(dbg_commit_valid_o), .commit_pc_o(dbg_commit_pc_o),
@@ -536,6 +581,9 @@ module core_top (
             wb_rd_q <= '0;
             wb_data_q <= '0;
             exec_q <= '0;
+            exec_src1_load_bypass_q <= 1'b0;
+            exec_src2_load_bypass_q <= 1'b0;
+            load_issue_bypass_data_q <= '0;
             exec_mem_addr_q <= '0;
             branch_resolve_valid <= 1'b0;
             branch_predictor_update_valid_q <= 1'b0;
@@ -573,22 +621,27 @@ module core_top (
             end
             if (full_flush) begin
                 exec_q.valid <= 1'b0;
+                exec_src1_load_bypass_q <= 1'b0;
+                exec_src2_load_bypass_q <= 1'b0;
             end else begin
                 exec_q.valid <= issue_fire && !id_uop_q.exception_valid && id_uop_q.fu != FU_SYSTEM;
-                if (issue_fire && !id_uop_q.exception_valid && id_uop_q.fu != FU_SYSTEM) begin
-                    exec_q.trans_id <= issue_ptr_q;
-                    exec_q.uop <= id_uop_q;
-                    exec_q.op1 <= ((id_uop_q.fu == FU_LOAD) ||
-                                   (id_uop_q.fu == FU_STORE)) ?
-                                  src1_mem_value : src1_value;
-                    exec_q.op2 <= src2_value;
-                    // Early AGU retiming: the memory stage receives a
-                    // registered effective address instead of placing a
-                    // 32-bit add in front of cache metadata/RAM controls.
-                    exec_mem_addr_q <= src1_mem_value + id_uop_q.imm;
-                end
-
+                exec_src1_load_bypass_q <= issue_fire && issue_src1_load_bypass_c;
+                exec_src2_load_bypass_q <= issue_fire && issue_src2_load_bypass_c;
             end
+            if (load_completion_valid)
+                load_issue_bypass_data_q <= load_result;
+            // Payload registers sample continuously; only valid is controlled
+            // by issue_fire.  This keeps same-cycle load wakeup while removing
+            // its high-fanout path to every payload register enable.
+            exec_q.trans_id <= issue_ptr_q;
+            exec_q.uop <= id_uop_q;
+            exec_q.op1 <= issue_src1_c;
+            exec_q.op2 <= issue_src2_c;
+            // The IQ preselects the oldest memory entry independently from
+            // general oldest-ready issue.  A load completion may therefore
+            // change ALU selection without driving this AGU register.
+            if (issue_memory_addr_valid_c)
+                exec_mem_addr_q <= issue_memory_addr_c;
         end
     end
 

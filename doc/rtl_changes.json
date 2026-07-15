@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-07-15T11:57:47+08:00",
+  "trigger": "Replace the single-entry id_uop holding register with a real ready-select issue queue and optimize IPC x Fmax",
+  "files_modified": [
+    {
+      "path": "rtl/core/issue/inorder_issue_queue.sv",
+      "lines_changed": "new file",
+      "change_type": "new_module"
+    },
+    {
+      "path": "rtl/core/core_top.sv",
+      "lines_changed": "55-660",
+      "change_type": "logic_fix"
+    },
+    {
+      "path": "rtl/core/control/recovery_ctrl.sv",
+      "lines_changed": "21-30",
+      "change_type": "logic_fix"
+    },
+    {
+      "path": "rtl/core/issue/scoreboard.sv",
+      "lines_changed": "49-170",
+      "change_type": "logic_fix"
+    },
+    {
+      "path": "rtl/core/frontend/branch_predictor.sv",
+      "lines_changed": "interface and read pipeline",
+      "change_type": "port_interface_change"
+    },
+    {
+      "path": "rtl/core/frontend/frontend.sv",
+      "lines_changed": "predictor ready handshake",
+      "change_type": "port_interface_change"
+    },
+    {
+      "path": "rtl/core/debug/commit_trace_probe.sv",
+      "lines_changed": "commit trace checks",
+      "change_type": "logic_fix"
+    },
+    {
+      "path": "scripts/filelists/core.f",
+      "lines_changed": "issue queue source entry",
+      "change_type": "filelist_update"
+    }
+  ],
+  "cascade_scope": "full_reverify",
+  "notes": "Added a three-entry fixed-slot oldest-ready issue queue with memory ordering and commit-head branch issue. Added registered load-result bypass and independent memory-address readiness to preserve IPC while reducing DCache timing fanout. RV32IM 52/52 passed; srcSmoke and srcWithMext short windows passed; srcWithMext 20M reached IPC 0.795558. Post-route WNS is -0.779584 ns at a 5.0 ns constraint. Mirrored DCache probes were removed after showing an ideal dual-load ceiling of about +0.0226 IPC with insufficient timing margin."
+}

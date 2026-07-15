@@ -35,7 +35,7 @@ module frontend (
     logic pending_valid_q;
     logic [31:0] pending_pc_q;
     logic [31:0] request_pc_c;
-    logic predictor_result_valid, predicted_hit;
+    logic predictor_ready, predictor_result_valid, predicted_hit;
     logic [31:0] predicted_next_pc;
     pred_kind_e predicted_kind;
     logic [1:0] predicted_counter;
@@ -45,7 +45,8 @@ module frontend (
 
     branch_predictor u_branch_predictor (
         .clk(clk), .rst(rst), .predict_read_en_i(irom_ena_o),
-        .predict_pc_i(request_pc_c), .predict_valid_o(predictor_result_valid),
+        .predict_pc_i(request_pc_c), .predict_ready_o(predictor_ready),
+        .predict_valid_o(predictor_result_valid),
         .predict_next_pc_o(predicted_next_pc), .predict_kind_o(predicted_kind),
         .predict_hit_o(predicted_hit), .predict_counter_o(predicted_counter),
         .predict_index_o(predicted_index),
@@ -64,7 +65,7 @@ module frontend (
     assign request_pc_c = (pending_valid_q && predictor_result_valid) ?
                           predicted_next_pc : fetch_pc_q;
     assign irom_addr_o = request_pc_c;
-    assign irom_ena_o = !rst && !redirect_valid_i &&
+    assign irom_ena_o = !rst && predictor_ready && !redirect_valid_i &&
                         ((queue_count + COUNT_W'(pending_valid_q)) < COUNT_W'(FETCH_QUEUE_DEPTH));
     assign queue_push = pending_valid_q && predictor_result_valid && !redirect_valid_i;
     assign queue_pop = fetch_valid_o && fetch_ready_i && !redirect_valid_i;

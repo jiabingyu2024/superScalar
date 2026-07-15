@@ -18,8 +18,13 @@ module recovery_ctrl (
     import core_types_pkg::*;
 
     always_comb begin
+        // Branches execute only when they are the scoreboard head.  On a
+        // mispredict the branch can retire normally while every allocated
+        // younger entry is wrong-path state, so the existing global flush is
+        // a complete rollback without a rename/checkpoint mechanism.
         full_flush_o = commit_fire_i &&
-                       (commit_entry_i.exception_valid ||
+                       (branch_miss_i ||
+                        commit_entry_i.exception_valid ||
                         commit_entry_i.sys_op == SYS_MRET ||
                         commit_entry_i.sys_op == SYS_FENCE_I);
         redirect_valid_o = full_flush_o || branch_miss_i;

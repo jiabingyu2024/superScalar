@@ -14,6 +14,7 @@ module branch_predictor #(
     input  logic       rst,
     input  logic       predict_read_en_i,
     input  logic [31:0] predict_pc_i,
+    output logic       predict_ready_o,
     output logic       predict_valid_o,
     output logic [31:0] predict_next_pc_o,
     output core_types_pkg::pred_kind_e predict_kind_o,
@@ -36,15 +37,15 @@ module branch_predictor #(
     localparam int unsigned PHT_INDEX_W = $clog2(PHT_ENTRIES);
     localparam int unsigned RAS_W       = $clog2(RAS_DEPTH);
     localparam int unsigned TAG_W       = 32 - BTB_INDEX_W - 2;
-    localparam int unsigned ENTRY_W     = TAG_W + 32 + 2;
+    localparam int unsigned ENTRY_W     = 1 + TAG_W + 32 + 2;
 
     // Target/type lookup remains PC-indexed. Conditional direction is held in
     // an independent GShare PHT so unrelated PCs can share global correlation
     // without duplicating the wide BTB payload.
     (* ram_style = "block" *) logic [ENTRY_W-1:0] btb_mem [0:ENTRIES-1];
     (* ram_style = "distributed" *) logic [1:0] pht_mem [0:PHT_ENTRIES-1];
-    logic [ENTRIES-1:0] btb_valid_q;
-    logic [PHT_ENTRIES-1:0] pht_valid_q;
+    logic predictor_ready_q;
+    logic [PHT_INDEX_W-1:0] init_index_q;
     logic [HISTORY_BITS-1:0] global_history_q;
     logic [31:0] ras_q [0:RAS_DEPTH-1];
     logic [RAS_W:0] ras_count_q;
@@ -53,11 +54,10 @@ module branch_predictor #(
     logic [PHT_INDEX_W-1:0] pht_pred_idx;
     logic [31:0] read_pc_q;
     logic [ENTRY_W-1:0] read_entry_q, update_entry_c;
-    logic read_entry_valid_q, read_valid_q;
+    logic read_valid_q;
     logic btb_collision_q, pht_collision_q;
     logic [ENTRY_W-1:0] btb_collision_entry_q, selected_entry_c;
     logic [1:0] read_pht_counter_q, pht_collision_counter_q;
-    logic read_pht_valid_q;
     logic [PHT_INDEX_W-1:0] read_pht_index_q;
     logic selected_valid_c;
     logic [TAG_W-1:0] selected_tag_c;
@@ -69,14 +69,15 @@ module branch_predictor #(
     assign btb_upd_idx  = update_pc_i[BTB_INDEX_W+1:2];
     assign pht_pred_idx = predict_pc_i[PHT_INDEX_W+1:2] ^ global_history_q;
     assign ras_top_c = RAS_W'(ras_count_q - 1'b1);
-    assign update_entry_c = {update_pc_i[31:BTB_INDEX_W+2], update_target_i,
-                             update_kind_i};
+    assign update_entry_c = {1'b1, update_pc_i[31:BTB_INDEX_W+2],
+                             update_target_i, update_kind_i};
     assign selected_entry_c = btb_collision_q ? btb_collision_entry_q : read_entry_q;
-    assign selected_valid_c = btb_collision_q ? 1'b1 : read_entry_valid_q;
-    assign {selected_tag_c, selected_target_c, selected_kind_c} = selected_entry_c;
+    assign {selected_valid_c, selected_tag_c, selected_target_c,
+            selected_kind_c} = selected_entry_c;
     assign selected_counter_c = pht_collision_q ? pht_collision_counter_q :
-                                (read_pht_valid_q ? read_pht_counter_q : 2'b01);
-    assign predict_valid_o = read_valid_q;
+                                read_pht_counter_q;
+    assign predict_ready_o = predictor_ready_q;
+    assign predict_valid_o = read_valid_q && predictor_ready_q;
     assign predict_hit_o = read_valid_q && selected_valid_c &&
                            selected_tag_c == read_pc_q[31:BTB_INDEX_W+2];
     assign predict_index_o = read_pht_index_q;
@@ -111,17 +112,32 @@ module branch_predictor #(
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            btb_valid_q <= '0;
-            pht_valid_q <= '0;
+            predictor_ready_q <= 1'b0;
+            init_index_q <= '0;
             global_history_q <= '0;
             ras_count_q <= '0;
             read_valid_q <= 1'b0;
-            read_entry_valid_q <= 1'b0;
-            read_pht_valid_q <= 1'b0;
             read_pht_counter_q <= 2'b01;
             read_pht_index_q <= '0;
             btb_collision_q <= 1'b0;
             pht_collision_q <= 1'b0;
+        end else if (!predictor_ready_q) begin
+            // Initialize both predictor memories through their normal write
+            // ports.  This replaces wide asynchronously indexed valid vectors
+            // on the next-PC critical path.  Fetch remains paused for 256
+            // cycles, which is hidden by the longer DCache initialization.
+            pht_mem[init_index_q] <= 2'b01;
+            if (init_index_q < PHT_INDEX_W'(ENTRIES))
+                btb_mem[init_index_q[BTB_INDEX_W-1:0]] <= '0;
+            read_valid_q <= 1'b0;
+            btb_collision_q <= 1'b0;
+            pht_collision_q <= 1'b0;
+            if (init_index_q == PHT_INDEX_W'(PHT_ENTRIES - 1)) begin
+                predictor_ready_q <= 1'b1;
+                init_index_q <= '0;
+            end else begin
+                init_index_q <= init_index_q + 1'b1;
+            end
         end else begin
             read_valid_q <= predict_read_en_i;
             btb_collision_q <= predict_read_en_i && update_valid_i &&
@@ -132,18 +148,14 @@ module branch_predictor #(
             if (predict_read_en_i) begin
                 read_pc_q <= predict_pc_i;
                 read_entry_q <= btb_mem[btb_pred_idx];
-                read_entry_valid_q <= btb_valid_q[btb_pred_idx];
                 read_pht_counter_q <= pht_mem[pht_pred_idx];
-                read_pht_valid_q <= pht_valid_q[pht_pred_idx];
                 read_pht_index_q <= pht_pred_idx;
                 btb_collision_entry_q <= update_entry_c;
                 pht_collision_counter_q <= update_counter_c;
             end
             if (update_valid_i) begin
-                btb_valid_q[btb_upd_idx] <= 1'b1;
                 btb_mem[btb_upd_idx] <= update_entry_c;
                 if (update_kind_i == PRED_COND) begin
-                    pht_valid_q[update_pred_index_i] <= 1'b1;
                     pht_mem[update_pred_index_i] <= update_counter_c;
                     global_history_q <= {global_history_q[HISTORY_BITS-2:0],
                                          update_taken_i};
@@ -167,6 +179,7 @@ module branch_predictor #(
         assert (ENTRIES >= 2 && (ENTRIES & (ENTRIES - 1)) == 0);
         assert (HISTORY_BITS >= 2);
         assert (PHT_ENTRIES == (1 << HISTORY_BITS));
+        assert (PHT_ENTRIES >= ENTRIES);
         assert (RAS_DEPTH >= 2 && (RAS_DEPTH & (RAS_DEPTH - 1)) == 0);
     end
 `endif

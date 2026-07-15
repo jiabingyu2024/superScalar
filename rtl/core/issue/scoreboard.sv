@@ -46,11 +46,17 @@ module scoreboard #(
     logic [31:0] producer_valid_q;
     logic [TRANS_ID_W-1:0] producer_tid_q [0:31];
     logic [TRANS_ID_W-1:0] allocate_ptr_q, commit_ptr_q;
+    logic payload_write_c;
     integer i;
 
     assign allocate_trans_id_o = allocate_ptr_q;
     assign commit_trans_id_o = commit_ptr_q;
     assign commit_entry_o = entries_q[commit_ptr_q];
+    // allocate_ptr_q names a free slot unless the queue is full.  Prewriting
+    // that slot decouples the wide payload register enables from issue_o and
+    // therefore from same-cycle DCache load wakeup.  A full queue may reuse
+    // its committing head in the same cycle.
+    assign payload_write_c = count_o < CNT_W'(DEPTH) || commit_i;
 
     always_comb begin
         query_rs1_found_o = query_uop_i.uses_rs1 && query_uop_i.rs1 != 0 &&
@@ -91,6 +97,35 @@ module scoreboard #(
             for (i = 0; i < DEPTH; i = i + 1)
                 entries_q[i].occupied <= 1'b0;
         end else begin
+            if (payload_write_c) begin
+                entries_q[allocate_ptr_q].pc <= allocate_uop_i.pc;
+                entries_q[allocate_ptr_q].instr <= allocate_uop_i.instr;
+                entries_q[allocate_ptr_q].rd <= allocate_uop_i.rd;
+                entries_q[allocate_ptr_q].writes_rd <= allocate_uop_i.writes_rd;
+                entries_q[allocate_ptr_q].result <= '0;
+                entries_q[allocate_ptr_q].fu <= allocate_uop_i.fu;
+                entries_q[allocate_ptr_q].sys_op <= allocate_uop_i.sys_op;
+                entries_q[allocate_ptr_q].csr_op <= allocate_uop_i.csr_op;
+                entries_q[allocate_ptr_q].csr_addr <= allocate_uop_i.csr_addr;
+                entries_q[allocate_ptr_q].csr_src <= allocate_uop_i.csr_imm ?
+                    {27'd0, allocate_uop_i.rs1} : allocate_csr_src_i;
+                entries_q[allocate_ptr_q].exception_valid <=
+                    allocate_uop_i.exception_valid;
+                entries_q[allocate_ptr_q].exception_cause <=
+                    allocate_uop_i.exception_cause;
+                entries_q[allocate_ptr_q].exception_tval <=
+                    allocate_uop_i.exception_tval;
+                entries_q[allocate_ptr_q].store_slot_valid <= 1'b0;
+                entries_q[allocate_ptr_q].store_slot <= '0;
+                entries_q[allocate_ptr_q].is_call <=
+                    (allocate_uop_i.is_jal || allocate_uop_i.is_jalr) &&
+                    (allocate_uop_i.rd == 5'd1 || allocate_uop_i.rd == 5'd5);
+                entries_q[allocate_ptr_q].is_return <= allocate_uop_i.is_jalr &&
+                    (allocate_uop_i.rs1 == 5'd1 || allocate_uop_i.rs1 == 5'd5) &&
+                    allocate_uop_i.rd == 0;
+                entries_q[allocate_ptr_q].link_addr <= allocate_uop_i.pc + 32'd4;
+            end
+
             // Preserve the original same-cycle priority: a new allocation is
             // younger than completion and commit updates to the reused slot.
             if (fixed_complete_i && entries_q[fixed_completion_i.trans_id].occupied) begin
@@ -131,34 +166,13 @@ module scoreboard #(
                 entries_q[allocate_ptr_q].occupied <= 1'b1;
                 entries_q[allocate_ptr_q].done <= allocate_uop_i.exception_valid ||
                                                   allocate_uop_i.fu == FU_SYSTEM;
-                entries_q[allocate_ptr_q].pc <= allocate_uop_i.pc;
-                entries_q[allocate_ptr_q].instr <= allocate_uop_i.instr;
-                entries_q[allocate_ptr_q].rd <= allocate_uop_i.rd;
-                entries_q[allocate_ptr_q].writes_rd <= allocate_uop_i.writes_rd;
-                entries_q[allocate_ptr_q].fu <= allocate_uop_i.fu;
-                entries_q[allocate_ptr_q].sys_op <= allocate_uop_i.sys_op;
-                entries_q[allocate_ptr_q].csr_op <= allocate_uop_i.csr_op;
-                entries_q[allocate_ptr_q].csr_addr <= allocate_uop_i.csr_addr;
-                if (allocate_uop_i.sys_op == SYS_CSR)
-                    entries_q[allocate_ptr_q].csr_src <= allocate_uop_i.csr_imm ?
-                        {27'd0, allocate_uop_i.rs1} : allocate_csr_src_i;
-                entries_q[allocate_ptr_q].exception_valid <= allocate_uop_i.exception_valid;
-                entries_q[allocate_ptr_q].exception_cause <= allocate_uop_i.exception_cause;
-                entries_q[allocate_ptr_q].exception_tval <= allocate_uop_i.exception_tval;
-                entries_q[allocate_ptr_q].store_slot_valid <= 1'b0;
-                entries_q[allocate_ptr_q].is_call <=
-                    (allocate_uop_i.is_jal || allocate_uop_i.is_jalr) &&
-                    (allocate_uop_i.rd == 5'd1 || allocate_uop_i.rd == 5'd5);
-                entries_q[allocate_ptr_q].is_return <= allocate_uop_i.is_jalr &&
-                    (allocate_uop_i.rs1 == 5'd1 || allocate_uop_i.rs1 == 5'd5) &&
-                    allocate_uop_i.rd == 0;
-                entries_q[allocate_ptr_q].link_addr <= allocate_uop_i.pc + 32'd4;
                 if (allocate_uop_i.writes_rd && allocate_uop_i.rd != 0) begin
                     producer_valid_q[allocate_uop_i.rd] <= 1'b1;
                     producer_tid_q[allocate_uop_i.rd] <= allocate_ptr_q;
                 end
                 allocate_ptr_q <= allocate_ptr_q + 1'b1;
-                if (allocate_uop_i.serialize) serial_pending_o <= 1'b1;
+                if (allocate_uop_i.serialize || allocate_uop_i.exception_valid)
+                    serial_pending_o <= 1'b1;
             end
 
             unique case ({allocate_i, commit_i})

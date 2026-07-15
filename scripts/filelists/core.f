@@ -9,6 +9,7 @@ rtl/core/frontend/frontend.sv
 rtl/core/issue/regfile.sv
 rtl/core/issue/scoreboard.sv
 rtl/core/issue/operand_resolver.sv
+rtl/core/issue/inorder_issue_queue.sv
 rtl/core/issue/issue_control.sv
 rtl/core/commit/csr_file.sv
 rtl/core/control/recovery_ctrl.sv

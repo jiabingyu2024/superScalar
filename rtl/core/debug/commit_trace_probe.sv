@@ -45,6 +45,27 @@ module commit_trace_probe (
     logic [31:0] next_pc_q [0:SCOREBOARD_DEPTH-1];
     integer i;
 
+`ifndef SYNTHESIS
+    always_ff @(posedge clk) begin
+        if (!rst && $test$plusargs("commit_trace") && commit_count_i < 64) begin
+            if (issue_i)
+                $display("IQTRACE issue cycle=%0d tid=%0d pc=%08x instr=%08x fu=%0d",
+                         cycle_i, issue_trans_id_i, issue_uop_i.pc,
+                         issue_uop_i.instr, issue_uop_i.fu);
+            if (branch_resolve_i)
+                $display("IQTRACE branch cycle=%0d tid=%0d pc=%08x next=%08x",
+                         cycle_i, exec_i.trans_id, exec_i.uop.pc,
+                         branch_actual_next_i);
+            if (commit_i)
+                $display("IQTRACE commit cycle=%0d count=%0d tid=%0d pc=%08x instr=%08x fu=%0d result=%08x next=%08x",
+                         cycle_i, commit_count_i, commit_trans_id_i,
+                         commit_entry_i.pc, commit_entry_i.instr,
+                         commit_entry_i.fu, commit_entry_i.result,
+                         next_pc_q[commit_trans_id_i]);
+        end
+    end
+`endif
+
     // Sample the pre-NBA resource state. The C++ harness observes these
     // registered outputs after the same edge, naming the instruction that
     // actually retired rather than the next scoreboard head.
