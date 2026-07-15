@@ -143,6 +143,7 @@ module stage_ex(
     logic [`DATA_BUS] fast_alu1;
     logic [`DATA_BUS] fast_alu2;
     logic [`DATA_BUS] fast_alu_res;
+    logic [`DATA_BUS] zb_result;
     logic             fast_alu_op_q;
     logic             late_load_rs1;
     logic             late_load_rs2;
@@ -414,6 +415,34 @@ module stage_ex(
         endcase
     end
 
+    integer zb_i;
+    always_comb begin
+        zb_result = 32'd0;
+        unique case (m_op_q)
+            `ZBKB_PACK:  zb_result = {rs2_exec_registered[15:0],
+                                      rs1_exec_registered[15:0]};
+            `ZBKB_PACKH: zb_result = {16'd0, rs2_exec_registered[7:0],
+                                      rs1_exec_registered[7:0]};
+            `ZBKB_BREV8: begin
+                for (zb_i = 0; zb_i < 32; zb_i = zb_i + 1)
+                    zb_result[zb_i] = rs1_exec_registered[
+                        (zb_i & 32'hfffffff8) + (7 - (zb_i & 7))];
+            end
+            `ZBKB_ZIP: begin
+                for (zb_i = 0; zb_i < 16; zb_i = zb_i + 1) begin
+                    zb_result[2*zb_i]   = rs1_exec_registered[zb_i];
+                    zb_result[2*zb_i+1] = rs1_exec_registered[zb_i+16];
+                end
+            end
+            default: begin
+                for (zb_i = 0; zb_i < 16; zb_i = zb_i + 1) begin
+                    zb_result[zb_i]    = rs1_exec_registered[2*zb_i];
+                    zb_result[zb_i+16] = rs1_exec_registered[2*zb_i+1];
+                end
+            end
+        endcase
+    end
+
     // ---- Branch unit (produces branch redirect) ----
     logic            branch_error;
     logic [`PC_BUS]  branch_update_target;
@@ -621,6 +650,8 @@ module stage_ex(
             o_alu_res = m_res;
         end else if (o_is_mul) begin
             o_alu_res = 32'd0;
+        end else if (inst_spec_q == `EX_ZB) begin
+            o_alu_res = zb_result;
         end else if (is_csr_inst) begin
             o_alu_res = csr_rdata;   // rd ← 旧 CSR 值
         end else begin
