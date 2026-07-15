@@ -143,6 +143,9 @@ module stage_ex(
     logic [`DATA_BUS] fast_alu1;
     logic [`DATA_BUS] fast_alu2;
     logic [`DATA_BUS] fast_alu_res;
+    logic [`DATA_BUS] zb_result;
+    logic [3:0]       zb_xperm4_index [0:7];
+    logic [7:0]       zb_xperm8_index [0:3];
     logic             fast_alu_op_q;
     logic             late_load_rs1;
     logic             late_load_rs2;
@@ -414,6 +417,29 @@ module stage_ex(
         endcase
     end
 
+    integer zb_i;
+    always_comb begin
+        zb_result = 32'd0;
+        for (zb_i = 0; zb_i < 8; zb_i = zb_i + 1)
+            zb_xperm4_index[zb_i] = rs2_exec_registered[4*zb_i +: 4];
+        for (zb_i = 0; zb_i < 4; zb_i = zb_i + 1)
+            zb_xperm8_index[zb_i] = rs2_exec_registered[8*zb_i +: 8];
+
+        if (m_op_q == `ZBKX_XPERM4) begin
+            for (zb_i = 0; zb_i < 8; zb_i = zb_i + 1) begin
+                if (!zb_xperm4_index[zb_i][3])
+                    zb_result[4*zb_i +: 4] = rs1_exec_registered[
+                        4*zb_xperm4_index[zb_i][2:0] +: 4];
+            end
+        end else begin
+            for (zb_i = 0; zb_i < 4; zb_i = zb_i + 1) begin
+                if (zb_xperm8_index[zb_i][7:2] == 6'd0)
+                    zb_result[8*zb_i +: 8] = rs1_exec_registered[
+                        8*zb_xperm8_index[zb_i][1:0] +: 8];
+            end
+        end
+    end
+
     // ---- Branch unit (produces branch redirect) ----
     logic            branch_error;
     logic [`PC_BUS]  branch_update_target;
@@ -621,6 +647,8 @@ module stage_ex(
             o_alu_res = m_res;
         end else if (o_is_mul) begin
             o_alu_res = 32'd0;
+        end else if (inst_spec_q == `EX_ZB) begin
+            o_alu_res = zb_result;
         end else if (is_csr_inst) begin
             o_alu_res = csr_rdata;   // rd ← 旧 CSR 值
         end else begin
