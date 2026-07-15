@@ -9,7 +9,9 @@
 
 同时增加了一个窄化的时序切分：如果 fixed completion 本身由 load-return bypass 驱动，则依赖它的访存基址晚一拍变为 `mem_addr_ready`。普通 ALU 唤醒和 load 到普通消费者的同拍旁路不受影响。
 
-最终 iteration28 的 20M `srcWithMext` IPC 为 `0.856137`，routed WNS 为 `-1.051 ns`，等效 Fmax 为 `165.26 MHz`，`IPC × Fmax = 141.49`。相对已提交 iteration23 的 routed 乘积 `137.65`，提升约 `2.8%`。
+最终 20M `srcWithMext` IPC 为 `0.856137`。在重新生成并核对 `PipeStages=2` 的 XCI/OOC DCP 后，真实两拍实现的 routed WNS 为 `-1.065885 ns`，等效 Fmax 为 `164.86 MHz`，`IPC × Fmax = 141.14`。相对 iteration23 的 routed 乘积 `137.65`，提升约 `2.5%`。
+
+审计时发现，最初 iteration28 的工程复用了旧 `MUL_0.dcp`，其中乘法 IP 实际仍为三拍；因此原先 `-1.051 ns / 141.49` 只能视为无效的缓存结果，不能证明两拍硬件 QoR。本文下面的最终数据均来自重新生成的 `PipeStages=2` XCI、OOC DCP 和完整布局布线。
 
 ## 性能瓶颈证据
 
@@ -37,7 +39,7 @@
 - `muldiv_unit.sv` 的 MUL valid pipeline 从三位缩为两位。
 - `rtl/ip/MUL_0.sv` 的行为模型改成两级寄存。
 - `fpga/create_vivado_project.tcl` 与 `fpga/test_prj/create_project.tcl` 的 `PipeStages` 改为 2。
-- iteration27/28 的全部负 slack 路径中，DSP 不是最差路径；最终 routed 路径里只有 2 条被归到乘法相关起点，最差 slack 约 `-0.600 ns`。
+- 真实两拍 routed 的 2588 个负 setup endpoint 中，乘法 IP endpoint 共 75 个，最差 slack 约 `-0.496 ns`；DSP 不是 Fmax 主导路径。
 
 ### load→ALU→访存链切分
 
@@ -70,17 +72,17 @@
 | 版本/阶段 | IPC | WNS | TNS | 等效 Fmax | IPC × Fmax |
 |---|---:|---:|---:|---:|---:|
 | iteration23 routed | 0.795558 | -0.779584 ns | -590.332 ns | 173.02 MHz | 137.65 |
-| iteration28 synthesis | 0.856137 | -1.093 ns | -616.015 ns | 164.12 MHz | 140.51 |
-| iteration28 routed | 0.856137 | -1.051 ns | -1157.711 ns | 165.26 MHz | 141.49 |
+| 真实两拍 synthesis | 0.856137 | -1.093 ns | -616.015 ns | 164.12 MHz | 140.51 |
+| 真实两拍 routed | 0.856137 | -1.065885 ns | -798.428 ns | 164.86 MHz | 141.14 |
 
 最终 routed 状态：
 
-- setup failing endpoints：`3875`
-- hold WNS：`+0.056 ns`，hold failing endpoints：`0`
+- setup failing endpoints：`2588`
+- hold WNS：`+0.037 ns`，hold failing endpoints：`0`
 - routed checkpoint：`fpga/build/digital_twin_srcWithMext/digital_twin.runs/impl_1/top_routed.dcp`
-- 全量 setup 违例：`fpga/build/digital_twin_srcWithMext/reports/iteration28_final_routed_all_violating_setup_paths.{rpt,csv}`
+- 全量 setup 违例：`fpga/build/digital_twin_srcWithMext/reports/iteration33_true_two_cycle_final_routed_all_violating_setup_paths.{rpt,csv}`
 
-最差 routed 路径为 load bypass 标志到 IQ memory-address 选择和 `exec_mem_addr_q`，WNS `-1.051 ns`。其他主要簇为 DCache tag 到 IQ/execute、scoreboard 到 IQ/execute，以及 load bypass 到 branch outcome/scoreboard。两拍乘法没有成为 Fmax 限制。
+最差 routed 路径为 load bypass 标志经 branch compare 到 `branch_outcome_q.miss`，WNS `-1.065885 ns`；第二簇为 execute/IQ 到 `exec_mem_addr_q`，最差约 `-0.971 ns`。其余主要簇为 DCache tag 到 IQ/execute、scoreboard 到 IQ/execute 和 queue payload 更新。两拍乘法没有成为 Fmax 限制。
 
 ## 被拒绝的实验
 
@@ -88,5 +90,8 @@
 - 完整双 load 镜像 DCache：理想上限约 `+0.0226 IPC`，但第二套 enqueue/completion/wakeup 无法满足现有频率预算。
 - 提交时精确 predictor 训练：`srcSmoke` 提升到 `0.701028`，但 `srcWithMext` 几乎无收益，综合 WNS 恶化到 `-1.328 ns`，乘积下降，已回退。
 - 完全结构化延迟 load-dependent fixed wakeup：形成新的 21 级 defer 控制链，综合 WNS `-1.184 ns`，已回退到轻量切分。
+- 一拍乘法：Verilator 20M IPC 提升到 `0.878594`，但真实 `PipeStages=1` 综合 WNS 恶化到 `-2.273 ns`，乘积约 `120.8`，已回退。
+- IQ 双候选/独立 memory-base 组合视图：可减少 DCache tag 路径和 TNS，但 WNS 分别恶化到 `-1.182/-1.163 ns`；wake-only 变体恶化到 `-2.346 ns`，均已回退。
+- 分支 miss 并行比较因式分解：功能与 IPC 不变，但综合 WNS 恶化到 `-1.564 ns`，已回退。
 
 后续若继续提升频率，应针对 memory address 预计算或将 AGU 选择从通用 IQ 组合锥中拆出；不应增加第二套 load completion 或扩大 IssueQueue 深度，除非先消除当前 load wakeup/AGU 扇出。

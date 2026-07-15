@@ -27,8 +27,41 @@ set repo_dir [file normalize [file join $script_dir ..]]
 set project_name digital_twin
 set project_dir [file normalize [file join $script_dir build ${project_name}_${profile}]]
 set project_file [file join $project_dir ${project_name}.xpr]
+set reused_existing_project 0
+
+proc assert_project_ip_config {script_dir project_dir cpu_mhz require_fresh_dcp} {
+    set actual_cpu_mhz [get_property CONFIG.CLKOUT2_REQUESTED_OUT_FREQ [get_ips pll]]
+    if {abs(double($actual_cpu_mhz) - double($cpu_mhz)) > 0.001} {
+        error "Stale PLL configuration: project=$actual_cpu_mhz MHz requested=$cpu_mhz MHz. Regenerate the project/IP checkpoints before implementation."
+    }
+
+    set create_script [file join $script_dir create_vivado_project.tcl]
+    set fh [open $create_script r]
+    set create_text [read $fh]
+    close $fh
+    if {![regexp {set_ip_config_required MUL_0 \{PipeStages pipeline_stages\} \{([0-9]+)\}} $create_text -> expected_mul_stages]} {
+        error "Cannot determine expected MUL_0 PipeStages from $create_script"
+    }
+    set actual_mul_stages [get_property CONFIG.PipeStages [get_ips MUL_0]]
+    if {$actual_mul_stages != $expected_mul_stages} {
+        error "Stale MUL_0 configuration: project PipeStages=$actual_mul_stages source PipeStages=$expected_mul_stages. Regenerate the project/IP checkpoints before implementation."
+    }
+
+    if {$require_fresh_dcp} {
+        foreach ip_name {pll MUL_0} {
+            set xci [get_property IP_FILE [get_ips $ip_name]]
+            set dcp [file join $project_dir digital_twin.gen sources_1 ip $ip_name ${ip_name}.dcp]
+            if {![file exists $dcp] || [file mtime $dcp] < [file mtime $xci]} {
+                error "Missing or stale $ip_name OOC checkpoint: $dcp. Rebuild IP checkpoints before implementation."
+            }
+        }
+    }
+    puts "IP_CONFIG_CHECK cpu_mhz=$actual_cpu_mhz mul_pipe_stages=$actual_mul_stages status=PASS"
+}
+
 if {$reuse_project && [file exists $project_file]} {
     open_project $project_file
+    set reused_existing_project 1
 
     # An existing XPR does not automatically notice sources newly added to the
     # repository filelists.  Refresh both RTL filelists before resetting the
@@ -68,6 +101,8 @@ if {$reuse_project && [file exists $project_file]} {
     set argv [list $profile]
     source [file join $script_dir create_vivado_project.tcl]
 }
+
+assert_project_ip_config $script_dir $project_dir $cpu_mhz $reused_existing_project
 
 launch_runs synth_1 -jobs $jobs
 wait_on_run synth_1

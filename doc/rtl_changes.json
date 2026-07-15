@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-07-15T20:55:00+08:00",
+  "timestamp": "2026-07-16T00:10:00+08:00",
   "trigger": "Improve IPC x Fmax after dump-guided bottleneck analysis of the three-entry oldest-ready issue-queue core",
   "files_modified": [
     {
@@ -31,8 +31,18 @@
       "path": "fpga/test_prj/create_project.tcl",
       "lines_changed": "MUL_0 PipeStages 3 to 2",
       "change_type": "ip_configuration"
+    },
+    {
+      "path": "fpga/run_synthesis.tcl",
+      "lines_changed": "PLL/MUL configuration and OOC checkpoint freshness guards; optional synthesis retiming",
+      "change_type": "verification_flow"
+    },
+    {
+      "path": "fpga/run_implementation.tcl",
+      "lines_changed": "PLL/MUL configuration and OOC checkpoint freshness guards",
+      "change_type": "verification_flow"
     }
   ],
   "cascade_scope": "full_reverify",
-  "notes": "Branches now execute when ready but redirect and flush only at in-order commit. A load-dependent fixed completion defers only memory-address readiness by one cycle. The 33x33 multiplier is reduced from three cycles to two in RTL, the Verilator model, and Vivado IP configuration. RV32I/M 52/52 passed; srcSmoke 500k IPC is 0.685762; srcWithMext IPC is 0.869596 at 500k and 0.856137 at 20M. Routed WNS is -1.051 ns, equivalent Fmax is 165.26 MHz, and IPC x Fmax is 141.49. All 3875 routed setup-violating endpoints were exported."
+  "notes": "Branches execute when ready but redirect and flush only at in-order commit. A load-dependent fixed completion defers only memory-address readiness by one cycle. The 33x33 multiplier is two cycles in RTL, the Verilator model, the generated XCI, and the rebuilt OOC DCP. RV32I/M 52/52 passed; srcSmoke 500k IPC is 0.685762; srcWithMext IPC is 0.869596 at 500k and 0.856137 at 20M. After correcting a stale-IP project reuse flaw, true two-cycle routed WNS is -1.065885 ns, TNS is -798.428284 ns, equivalent Fmax is 164.86 MHz, and IPC x Fmax is 141.14. All 2588 routed setup-violating endpoints were exported; routed hold WNS is +0.037 ns with zero hold failures."
 }
