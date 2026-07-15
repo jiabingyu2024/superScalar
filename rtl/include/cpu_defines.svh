@@ -118,6 +118,12 @@
 `define EX_ECALL        4'B0101   // ecall — redirect PC to mtvec, save PC→mepc
 `define EX_EBREAK       4'B0110   // ebreak — like ecall with mcause=3
 `define EX_MRET         4'B0111   // mret  — restore PC from mepc
+`define EX_ZB           4'hf
+
+// Zba reuses the existing three-bit M-operation field while EX_ZB is set.
+`define ZBA_SH1ADD      3'b000
+`define ZBA_SH2ADD      3'b001
+`define ZBA_SH3ADD      3'b010
 
 `define WB_SRC_ALU      1'b0
 `define WB_SRC_MEM      1'b1

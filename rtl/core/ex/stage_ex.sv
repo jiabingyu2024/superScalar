@@ -143,6 +143,7 @@ module stage_ex(
     logic [`DATA_BUS] fast_alu1;
     logic [`DATA_BUS] fast_alu2;
     logic [`DATA_BUS] fast_alu_res;
+    logic [`DATA_BUS] zb_result;
     logic             fast_alu_op_q;
     logic             late_load_rs1;
     logic             late_load_rs2;
@@ -414,6 +415,14 @@ module stage_ex(
         endcase
     end
 
+    always_comb begin
+        unique case (m_op_q)
+            `ZBA_SH1ADD: zb_result = (rs1_exec_registered << 1) + rs2_exec_registered;
+            `ZBA_SH2ADD: zb_result = (rs1_exec_registered << 2) + rs2_exec_registered;
+            default:     zb_result = (rs1_exec_registered << 3) + rs2_exec_registered;
+        endcase
+    end
+
     // ---- Branch unit (produces branch redirect) ----
     logic            branch_error;
     logic [`PC_BUS]  branch_update_target;
@@ -621,6 +630,8 @@ module stage_ex(
             o_alu_res = m_res;
         end else if (o_is_mul) begin
             o_alu_res = 32'd0;
+        end else if (inst_spec_q == `EX_ZB) begin
+            o_alu_res = zb_result;
         end else if (is_csr_inst) begin
             o_alu_res = csr_rdata;   // rd ← 旧 CSR 值
         end else begin

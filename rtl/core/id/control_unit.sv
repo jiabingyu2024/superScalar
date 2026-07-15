@@ -71,17 +71,28 @@ module control_unit(
                 o_uses_rs2  = 1'b1;
                 o_is_m_ext  = (func7 == `FUNC7_MULDIV);
                 o_m_op      = func3;
-                unique case (func3)
-                    `FUNC3_ADD_SUB: o_alu_ctrl = (func7 == `FUNC7_SUB) ? `ALU_SUB : `ALU_ADD;
-                    `FUNC3_SLT:     o_alu_ctrl = `ALU_LT;
-                    `FUNC3_SLTU:    o_alu_ctrl = `ALU_LTU;
-                    `FUNC3_AND:     o_alu_ctrl = `ALU_AND;
-                    `FUNC3_OR:      o_alu_ctrl = `ALU_OR;
-                    `FUNC3_XOR:     o_alu_ctrl = `ALU_XOR;
-                    `FUNC3_SLL:     o_alu_ctrl = `ALU_SL;
-                    `FUNC3_SRL_SRA: o_alu_ctrl = (func7 == `FUNC7_SRA) ? `ALU_SRA : `ALU_SRL;
-                    default:        o_alu_ctrl = `ALU_ADD;
-                endcase
+                if ((func7 == 7'b0010000) &&
+                    ((func3 == 3'b010) || (func3 == 3'b100) ||
+                     (func3 == 3'b110))) begin
+                    o_inst_spec = `EX_ZB;
+                    unique case (func3)
+                        3'b010: o_m_op = `ZBA_SH1ADD;
+                        3'b100: o_m_op = `ZBA_SH2ADD;
+                        default: o_m_op = `ZBA_SH3ADD;
+                    endcase
+                end else begin
+                    unique case (func3)
+                        `FUNC3_ADD_SUB: o_alu_ctrl = (func7 == `FUNC7_SUB) ? `ALU_SUB : `ALU_ADD;
+                        `FUNC3_SLT:     o_alu_ctrl = `ALU_LT;
+                        `FUNC3_SLTU:    o_alu_ctrl = `ALU_LTU;
+                        `FUNC3_AND:     o_alu_ctrl = `ALU_AND;
+                        `FUNC3_OR:      o_alu_ctrl = `ALU_OR;
+                        `FUNC3_XOR:     o_alu_ctrl = `ALU_XOR;
+                        `FUNC3_SLL:     o_alu_ctrl = `ALU_SL;
+                        `FUNC3_SRL_SRA: o_alu_ctrl = (func7 == `FUNC7_SRA) ? `ALU_SRA : `ALU_SRL;
+                        default:        o_alu_ctrl = `ALU_ADD;
+                    endcase
+                end
             end
 
             `OP_I_TYPE: begin
