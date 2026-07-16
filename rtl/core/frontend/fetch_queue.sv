@@ -17,29 +17,44 @@ module fetch_queue #(
     output core_types_pkg::fetch_entry_t head_o,
     output logic [$clog2(DEPTH + 1)-1:0] count_o
 );
-    localparam int unsigned PTR_W = $clog2(DEPTH);
-    typedef logic [PTR_W-1:0] ptr_t;
     typedef logic [$clog2(DEPTH + 1)-1:0] count_t;
 
     core_types_pkg::fetch_entry_t entries_q [0:DEPTH-1];
-    ptr_t head_q, tail_q;
+    core_types_pkg::fetch_entry_t entries_d [0:DEPTH-1];
     count_t count_q;
+    integer comb_i;
+    integer seq_i;
 
     assign valid_o = count_q != 0;
-    assign head_o = entries_q[head_q];
+    // Keep the dispatch payload on a fixed bank of flops.  The former
+    // entries_q[head_q] read inferred a wide distributed-RAM mux from the
+    // head pointer into decode, scoreboard allocation and IQ enqueue.
+    assign head_o = entries_q[0];
     assign count_o = count_q;
+
+    always_comb begin
+        for (comb_i = 0; comb_i < DEPTH; comb_i = comb_i + 1)
+            entries_d[comb_i] = entries_q[comb_i];
+
+        if (pop_i) begin
+            for (comb_i = 0; comb_i < DEPTH - 1; comb_i = comb_i + 1)
+                entries_d[comb_i] = entries_q[comb_i + 1];
+        end
+
+        if (push_i) begin
+            if (pop_i)
+                entries_d[count_q - 1'b1] = push_entry_i;
+            else
+                entries_d[count_q] = push_entry_i;
+        end
+    end
 
     always_ff @(posedge clk) begin
         if (rst || flush_i) begin
-            head_q <= '0;
-            tail_q <= '0;
             count_q <= '0;
         end else begin
-            if (push_i) begin
-                entries_q[tail_q] <= push_entry_i;
-                tail_q <= tail_q + 1'b1;
-            end
-            if (pop_i) head_q <= head_q + 1'b1;
+            for (seq_i = 0; seq_i < DEPTH; seq_i = seq_i + 1)
+                entries_q[seq_i] <= entries_d[seq_i];
             unique case ({push_i, pop_i})
                 2'b10: count_q <= count_q + 1'b1;
                 2'b01: count_q <= count_q - 1'b1;

@@ -40,6 +40,18 @@ The previous committed baseline had long-window IPC 0.856137 and synthesis
 Fmax 164.12 MHz, for an IPC x Fmax of approximately 140.51. The accepted macro
 fetch therefore improves the synthesis product by approximately 3.85%.
 
+Full implementation of this committed baseline completed with:
+
+- routed WNS: -1.072 ns
+- routed TNS: -1877.497 ns
+- routed setup failing endpoints: 4881
+- routed hold WNS: +0.065 ns, with no hold failures
+- estimated routed Fmax: 164.69 MHz
+- routed IPC x Fmax: approximately 156.0
+
+The complete routed violation export is tagged
+`iteration47_move_macro_final_routed`.
+
 ## Rejected narrowing
 
 Replacing the 32-bit macro instruction payload with only the move destination

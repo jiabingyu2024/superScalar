@@ -55,9 +55,7 @@ module branch_predictor #(
     logic [31:0] read_pc_q;
     logic [ENTRY_W-1:0] read_entry_q, update_entry_c;
     logic read_valid_q;
-    logic btb_collision_q, pht_collision_q;
-    logic [ENTRY_W-1:0] btb_collision_entry_q, selected_entry_c;
-    logic [1:0] read_pht_counter_q, pht_collision_counter_q;
+    logic [1:0] read_pht_counter_q;
     logic [PHT_INDEX_W-1:0] read_pht_index_q;
     logic selected_valid_c;
     logic [TAG_W-1:0] selected_tag_c;
@@ -71,11 +69,9 @@ module branch_predictor #(
     assign ras_top_c = RAS_W'(ras_count_q - 1'b1);
     assign update_entry_c = {1'b1, update_pc_i[31:BTB_INDEX_W+2],
                              update_target_i, update_kind_i};
-    assign selected_entry_c = btb_collision_q ? btb_collision_entry_q : read_entry_q;
     assign {selected_valid_c, selected_tag_c, selected_target_c,
-            selected_kind_c} = selected_entry_c;
-    assign selected_counter_c = pht_collision_q ? pht_collision_counter_q :
-                                read_pht_counter_q;
+            selected_kind_c} = read_entry_q;
+    assign selected_counter_c = read_pht_counter_q;
     assign predict_ready_o = predictor_ready_q;
     assign predict_valid_o = read_valid_q && predictor_ready_q;
     assign predict_hit_o = read_valid_q && selected_valid_c &&
@@ -119,8 +115,6 @@ module branch_predictor #(
             read_valid_q <= 1'b0;
             read_pht_counter_q <= 2'b01;
             read_pht_index_q <= '0;
-            btb_collision_q <= 1'b0;
-            pht_collision_q <= 1'b0;
         end else if (!predictor_ready_q) begin
             // Initialize both predictor memories through their normal write
             // ports.  This replaces wide asynchronously indexed valid vectors
@@ -130,8 +124,6 @@ module branch_predictor #(
             if (init_index_q < PHT_INDEX_W'(ENTRIES))
                 btb_mem[init_index_q[BTB_INDEX_W-1:0]] <= '0;
             read_valid_q <= 1'b0;
-            btb_collision_q <= 1'b0;
-            pht_collision_q <= 1'b0;
             if (init_index_q == PHT_INDEX_W'(PHT_ENTRIES - 1)) begin
                 predictor_ready_q <= 1'b1;
                 init_index_q <= '0;
@@ -140,18 +132,18 @@ module branch_predictor #(
             end
         end else begin
             read_valid_q <= predict_read_en_i;
-            btb_collision_q <= predict_read_en_i && update_valid_i &&
-                               btb_pred_idx == btb_upd_idx;
-            pht_collision_q <= predict_read_en_i && update_valid_i &&
-                               update_kind_i == PRED_COND &&
-                               pht_pred_idx == update_pred_index_i;
             if (predict_read_en_i) begin
                 read_pc_q <= predict_pc_i;
-                read_entry_q <= btb_mem[btb_pred_idx];
-                read_pht_counter_q <= pht_mem[pht_pred_idx];
+                if (update_valid_i && btb_pred_idx == btb_upd_idx)
+                    read_entry_q <= update_entry_c;
+                else
+                    read_entry_q <= btb_mem[btb_pred_idx];
+                if (update_valid_i && update_kind_i == PRED_COND &&
+                    pht_pred_idx == update_pred_index_i)
+                    read_pht_counter_q <= update_counter_c;
+                else
+                    read_pht_counter_q <= pht_mem[pht_pred_idx];
                 read_pht_index_q <= pht_pred_idx;
-                btb_collision_entry_q <= update_entry_c;
-                pht_collision_counter_q <= update_counter_c;
             end
             if (update_valid_i) begin
                 btb_mem[btb_upd_idx] <= update_entry_c;

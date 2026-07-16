@@ -58,6 +58,9 @@ module core_top (
     localparam int unsigned LD_CNT_W = $clog2(LOAD_QUEUE_DEPTH + 1);
     localparam int unsigned ISSUE_QUEUE_DEPTH = 3;
     localparam int unsigned IQ_CNT_W = $clog2(ISSUE_QUEUE_DEPTH + 1);
+    localparam int unsigned RECENT_STORE_ENTRIES = 8;
+    localparam int unsigned RECENT_STORE_INDEX_W =
+        $clog2(RECENT_STORE_ENTRIES);
 
     typedef struct packed {
         logic miss;
@@ -138,8 +141,21 @@ module core_top (
     logic store_drain_fire, load_start_fire;
     logic older_store_pending;
     logic [31:0] load_result;
+    logic [31:0] storebuf_forward_data_c;
+    logic [3:0] storebuf_forward_mask_c;
     logic [31:0] load_forward_data_c;
     logic [3:0] load_forward_mask_c;
+    logic [RECENT_STORE_ENTRIES-1:0] recent_store_valid_q;
+    logic [26:0] recent_store_tag_q [0:RECENT_STORE_ENTRIES-1];
+    logic [31:0] recent_store_data_q [0:RECENT_STORE_ENTRIES-1];
+    logic [3:0] recent_store_mask_q [0:RECENT_STORE_ENTRIES-1];
+    logic [RECENT_STORE_INDEX_W-1:0] recent_load_index_c;
+    logic [RECENT_STORE_INDEX_W-1:0] recent_drain_index_c;
+    logic recent_load_hit_c, recent_drain_hit_c;
+    logic [3:0] recent_forward_mask_c, recent_drain_mask_c;
+    logic [31:0] recent_forward_data_c, recent_drain_data_c;
+    logic [31:0] storebuf_forward_byte_mask_c;
+    logic [31:0] recent_drain_byte_mask_c;
     logic load_completion_valid, load_completion_accepted;
     logic load_forward_complete, load_pop_fire;
     logic load_direct_candidate, load_direct_start_fire, load_queue_start_fire;
@@ -174,6 +190,7 @@ module core_top (
     logic [63:0] dcache_access_q, dcache_miss_q;
     logic [63:0] stall_front_q, stall_mem_q, stall_muldiv_q, stall_load_use_q;
     logic stall_front_c, stall_mem_c, stall_muldiv_c, stall_raw_c;
+    integer recent_i;
 
     function automatic logic addr_is_dram(input logic [31:0] addr);
         begin
@@ -397,9 +414,57 @@ module core_top (
         .load_cacheable_i(addr_is_dram(exec_mem_addr_q)),
         .load_addr_i(exec_mem_addr_q), .store_entries_i(store_q),
         .store_head_i(store_head_q), .store_count_i(store_count_q),
-        .forward_mask_o(load_forward_mask_c),
-        .forward_data_o(load_forward_data_c)
+        .forward_mask_o(storebuf_forward_mask_c),
+        .forward_data_o(storebuf_forward_data_c)
     );
+
+    // A tiny committed-store value cache preserves recently drained words
+    // after they leave the StoreBuffer.  This targets spill-heavy code that
+    // repeatedly stores and reloads a handful of stack slots.  Pending stores
+    // remain newer and override matching byte lanes through the existing
+    // StoreBuffer forwarding result.
+    assign recent_load_index_c =
+        exec_mem_addr_q[RECENT_STORE_INDEX_W+1:2];
+    assign recent_load_hit_c = exec_load_enqueue &&
+        addr_is_dram(exec_mem_addr_q) &&
+        recent_store_valid_q[recent_load_index_c] &&
+        recent_store_tag_q[recent_load_index_c] == exec_mem_addr_q[31:5];
+    assign recent_forward_mask_c = recent_load_hit_c ?
+                                   recent_store_mask_q[recent_load_index_c] :
+                                   4'd0;
+    assign recent_forward_data_c = recent_load_hit_c ?
+                                   recent_store_data_q[recent_load_index_c] :
+                                   32'd0;
+    assign storebuf_forward_byte_mask_c = {
+        {8{storebuf_forward_mask_c[3]}},
+        {8{storebuf_forward_mask_c[2]}},
+        {8{storebuf_forward_mask_c[1]}},
+        {8{storebuf_forward_mask_c[0]}}
+    };
+    assign load_forward_mask_c = recent_forward_mask_c |
+                                 storebuf_forward_mask_c;
+    assign load_forward_data_c =
+        (recent_forward_data_c & ~storebuf_forward_byte_mask_c) |
+        (storebuf_forward_data_c & storebuf_forward_byte_mask_c);
+
+    assign recent_drain_index_c =
+        store_q[store_head_q].addr[RECENT_STORE_INDEX_W+1:2];
+    assign recent_drain_hit_c =
+        recent_store_valid_q[recent_drain_index_c] &&
+        recent_store_tag_q[recent_drain_index_c] ==
+            store_q[store_head_q].addr[31:5];
+    assign recent_drain_mask_c =
+        (store_q[store_head_q].wstrb << store_q[store_head_q].addr[1:0]) &
+        4'hf;
+    assign recent_drain_data_c =
+        store_q[store_head_q].wdata <<
+        {store_q[store_head_q].addr[1:0], 3'b000};
+    assign recent_drain_byte_mask_c = {
+        {8{recent_drain_mask_c[3]}},
+        {8{recent_drain_mask_c[2]}},
+        {8{recent_drain_mask_c[1]}},
+        {8{recent_drain_mask_c[0]}}
+    };
 
     muldiv_unit u_muldiv (
         .clk(clk), .rst(rst), .kill_i(full_flush),
@@ -618,6 +683,13 @@ module core_top (
             branch_kind <= PRED_NONE;
             branch_pred_counter <= 2'b01;
             branch_pred_index <= '0;
+            recent_store_valid_q <= '0;
+            for (recent_i = 0; recent_i < RECENT_STORE_ENTRIES;
+                 recent_i = recent_i + 1) begin
+                recent_store_tag_q[recent_i] <= '0;
+                recent_store_data_q[recent_i] <= '0;
+                recent_store_mask_q[recent_i] <= '0;
+            end
         end else begin
             wb_valid_q <= commit_normal && commit_entry.writes_rd && commit_entry.rd != 0;
             if (commit_normal && commit_entry.writes_rd && commit_entry.rd != 0) begin
@@ -628,9 +700,22 @@ module core_top (
             branch_predictor_update_valid_q <= branch_resolve_valid_c &&
                                                !fixed_completion.exception_valid;
             if (branch_resolve_valid_c) begin
-                branch_outcome_q[exec_q.trans_id].miss <=
-                    !fixed_completion.exception_valid &&
-                    branch_actual_next_c != exec_q.uop.pred_next_pc;
+                // Keep load-dependent branch data out of the old
+                // actual-next mux followed by a 32-bit equality compare.
+                // Direct targets and fallthrough are payload-only compares;
+                // a conditional result selects between their one-bit
+                // mismatch flags.  JALR retains the dynamic target compare.
+                if (fixed_completion.exception_valid)
+                    branch_outcome_q[exec_q.trans_id].miss <= 1'b0;
+                else if (exec_q.uop.is_jalr)
+                    branch_outcome_q[exec_q.trans_id].miss <=
+                        branch_actual_next_c != exec_q.uop.pred_next_pc;
+                else if (exec_q.uop.is_jal || branch_taken_c)
+                    branch_outcome_q[exec_q.trans_id].miss <=
+                        branch_target_c != exec_q.uop.pred_next_pc;
+                else
+                    branch_outcome_q[exec_q.trans_id].miss <=
+                        exec_q.uop.pc + 32'd4 != exec_q.uop.pred_next_pc;
                 branch_outcome_q[exec_q.trans_id].actual_next <= branch_actual_next_c;
                 branch_taken <= branch_taken_c;
                 branch_target <= branch_target_c;
@@ -654,6 +739,26 @@ module core_top (
             end
             if (load_completion_valid)
                 load_issue_bypass_data_q <= load_result;
+            if (store_drain_fire && !store_q[store_head_q].uncached &&
+                addr_is_dram(store_q[store_head_q].addr)) begin
+                recent_store_valid_q[recent_drain_index_c] <= 1'b1;
+                recent_store_tag_q[recent_drain_index_c] <=
+                    store_q[store_head_q].addr[31:5];
+                if (recent_drain_hit_c) begin
+                    recent_store_data_q[recent_drain_index_c] <=
+                        (recent_store_data_q[recent_drain_index_c] &
+                         ~recent_drain_byte_mask_c) |
+                        (recent_drain_data_c & recent_drain_byte_mask_c);
+                    recent_store_mask_q[recent_drain_index_c] <=
+                        recent_store_mask_q[recent_drain_index_c] |
+                        recent_drain_mask_c;
+                end else begin
+                    recent_store_data_q[recent_drain_index_c] <=
+                        recent_drain_data_c & recent_drain_byte_mask_c;
+                    recent_store_mask_q[recent_drain_index_c] <=
+                        recent_drain_mask_c;
+                end
+            end
             // Payload registers sample continuously; only valid is controlled
             // by issue_fire.  This keeps same-cycle load wakeup while removing
             // its high-fanout path to every payload register enable.
