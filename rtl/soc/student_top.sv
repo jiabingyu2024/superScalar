@@ -52,6 +52,8 @@ module student_top #(
 );
     logic [31:0] irom_addr;
     logic [11:0] irom_word_addr;
+    logic [11:0] irom_next_word_addr;
+    logic [31:0] instruction_next;
     logic [31:0] instruction;
     logic        irom_ena;
 
@@ -109,12 +111,17 @@ module student_top #(
     end
 
     assign irom_word_addr = irom_addr[13:2];
+    // Macro-fetch is restricted to an 8-byte-aligned producer, so the
+    // lookahead word is selected by setting the low word-address bit.  This
+    // avoids placing an incrementer after the predictor-to-IROM address path.
+    assign irom_next_word_addr = {irom_word_addr[11:1], 1'b1};
 
     myCPU Core_cpu (
         .cpu_rst          (cpu_rst_sync),
         .cpu_clk          (w_cpu_clk),
         .irom_addr        (irom_addr),
         .irom_data        (instruction),
+        .irom_data_next   (instruction_next),
         .irom_ena         (irom_ena),
         .dmem_req_valid   (dmem_req_valid),
         .dmem_req_ready   (dmem_req_ready),
@@ -160,7 +167,11 @@ module student_top #(
         .addra(irom_word_addr),
         .clka (w_cpu_clk),
         .ena  (irom_ena),
-        .douta(instruction)
+        .douta(instruction),
+        .addrb(irom_next_word_addr),
+        .clkb (w_cpu_clk),
+        .enb  (irom_ena),
+        .doutb(instruction_next)
     );
 
     SocMemBridge #(

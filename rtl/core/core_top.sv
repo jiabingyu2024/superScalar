@@ -10,6 +10,7 @@ module core_top (
     output logic [31:0] irom_addr_o,
     output logic irom_ena_o,
     input  logic [31:0] irom_data_i,
+    input  logic [31:0] irom_data_next_i,
     output logic dmem_req_valid_o,
     input  logic dmem_req_ready_i,
     output logic dmem_req_write_o,
@@ -67,6 +68,8 @@ module core_top (
     fetch_entry_t fetch_head_entry;
     logic fetch_valid, fetch_pop;
     logic dispatch_fire, dispatch_exec_c, dispatch_ready_c;
+    logic dispatch_macro_move_c;
+    logic [1:0] dispatch_allocate_count_c;
     logic [IQ_CNT_W-1:0] issue_queue_count_q;
 
     logic [31:0] rf_rs1_data, rf_rs2_data, rf_write_data;
@@ -216,8 +219,12 @@ module core_top (
 
     assign dispatch_exec_c = !decoded_uop.exception_valid &&
                              decoded_uop.fu != FU_SYSTEM;
+    assign dispatch_macro_move_c = fetch_head_entry.macro_move_valid &&
+                                   !decoded_uop.exception_valid;
+    assign dispatch_allocate_count_c = dispatch_macro_move_c ? 2'd2 : 2'd1;
     assign dispatch_ready_c = !serial_pending_q &&
-        (scoreboard_count_q < SB_CNT_W'(SCOREBOARD_DEPTH) || commit_fire) &&
+        (scoreboard_count_q + SB_CNT_W'(dispatch_allocate_count_c) <=
+         SB_CNT_W'(SCOREBOARD_DEPTH) + SB_CNT_W'(commit_fire)) &&
         (dispatch_exec_c ? issue_queue_count_q < IQ_CNT_W'(ISSUE_QUEUE_DEPTH) :
          (scoreboard_count_q == 0 && issue_queue_count_q == 0)) &&
         (!(decoded_uop.serialize || decoded_uop.exception_valid) ||
@@ -229,6 +236,7 @@ module core_top (
         .clk(clk), .rst(rst), .redirect_valid_i(redirect_valid),
         .redirect_target_i(redirect_target), .irom_addr_o(irom_addr_o),
         .irom_ena_o(irom_ena_o), .irom_data_i(irom_data_i),
+        .irom_data_next_i(irom_data_next_i),
         .fetch_valid_o(fetch_valid), .fetch_entry_o(fetch_head_entry),
         .fetch_ready_i(fetch_pop), .predictor_update_valid_i(predictor_update_valid),
         .predictor_update_pc_i(branch_pc_q), .predictor_update_taken_i(branch_taken),
@@ -242,7 +250,6 @@ module core_top (
     );
 
     decoder u_decoder (.fetch_i(fetch_head_entry), .uop_o(decoded_uop));
-
     assign rf_write_valid = wb_valid_q;
     assign rf_write_data = wb_data_q;
     regfile u_regfile (
@@ -255,7 +262,12 @@ module core_top (
     scoreboard u_scoreboard (
         .clk(clk), .rst(rst), .flush_i(full_flush),
         .allocate_i(dispatch_fire), .allocate_uop_i(decoded_uop),
-        .allocate_csr_src_i(csr_src_value), .allocate_trans_id_o(dispatch_ptr_q),
+        .allocate_csr_src_i(csr_src_value),
+        .allocate_second_i(dispatch_fire && dispatch_macro_move_c),
+        .allocate_second_pc_i(fetch_head_entry.pc + 32'd4),
+        .allocate_second_instr_i(fetch_head_entry.macro_move_instr),
+        .allocate_second_rd_i(fetch_head_entry.macro_move_instr[11:7]),
+        .allocate_trans_id_o(dispatch_ptr_q),
         .fixed_complete_i(fixed_completion_valid),
         .fixed_completion_i(fixed_completion),
         .load_complete_i(load_completion_valid),

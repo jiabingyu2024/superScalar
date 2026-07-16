@@ -1,48 +1,63 @@
 {
-  "timestamp": "2026-07-16T00:10:00+08:00",
-  "trigger": "Improve IPC x Fmax after dump-guided bottleneck analysis of the three-entry oldest-ready issue-queue core",
+  "timestamp": "2026-07-16T16:15:00+08:00",
+  "trigger": "Raise IPC x Fmax with a narrow dual-port fetch macro after generic dual issue and mirrored DCache evaluation were rejected",
   "files_modified": [
     {
+      "path": "rtl/core/frontend/frontend.sv",
+      "lines_changed": "dual-word fetch recognition and eight-byte advance for aligned producer-plus-move pairs",
+      "change_type": "microarchitecture"
+    },
+    {
+      "path": "rtl/core/issue/scoreboard.sv",
+      "lines_changed": "two-entry allocation and producer completion propagation into an adjacent move alias",
+      "change_type": "microarchitecture"
+    },
+    {
       "path": "rtl/core/core_top.sv",
-      "lines_changed": "branch outcome storage, commit-time recovery, and load-dependent memory wakeup control",
-      "change_type": "logic_fix"
+      "lines_changed": "macro dispatch capacity accounting and second scoreboard entry allocation",
+      "change_type": "integration"
     },
     {
-      "path": "rtl/core/issue/inorder_issue_queue.sv",
-      "lines_changed": "branch readiness and deferred memory-address wakeup",
-      "change_type": "logic_fix"
+      "path": "rtl/core/pkg/core_types_pkg.sv",
+      "lines_changed": "macro fetch and adjacent alias metadata",
+      "change_type": "interface"
     },
     {
-      "path": "rtl/core/execute/muldiv_unit.sv",
-      "lines_changed": "MUL response valid pipeline",
-      "change_type": "latency_change"
+      "path": "rtl/core/myCPU.sv",
+      "lines_changed": "second IROM data input",
+      "change_type": "interface"
     },
     {
-      "path": "rtl/ip/MUL_0.sv",
-      "lines_changed": "portable MUL pipeline model",
-      "change_type": "latency_change"
+      "path": "rtl/soc/student_top.sv",
+      "lines_changed": "aligned second IROM address and dual-port connection",
+      "change_type": "integration"
+    },
+    {
+      "path": "rtl/ip/IROM_0.sv",
+      "lines_changed": "dual-read-port Verilator ROM model",
+      "change_type": "ip_model"
     },
     {
       "path": "fpga/create_vivado_project.tcl",
-      "lines_changed": "MUL_0 PipeStages 3 to 2",
+      "lines_changed": "IROM_0 changed to Dual_Port_ROM",
       "change_type": "ip_configuration"
     },
     {
       "path": "fpga/test_prj/create_project.tcl",
-      "lines_changed": "MUL_0 PipeStages 3 to 2",
+      "lines_changed": "IROM_0 changed to Dual_Port_ROM",
       "change_type": "ip_configuration"
     },
     {
       "path": "fpga/run_synthesis.tcl",
-      "lines_changed": "PLL/MUL configuration and OOC checkpoint freshness guards; optional synthesis retiming",
+      "lines_changed": "dual-port IROM configuration and checkpoint freshness validation",
       "change_type": "verification_flow"
     },
     {
       "path": "fpga/run_implementation.tcl",
-      "lines_changed": "PLL/MUL configuration and OOC checkpoint freshness guards",
+      "lines_changed": "dual-port IROM configuration and checkpoint freshness validation",
       "change_type": "verification_flow"
     }
   ],
   "cascade_scope": "full_reverify",
-  "notes": "Branches execute when ready but redirect and flush only at in-order commit. A load-dependent fixed completion defers only memory-address readiness by one cycle. The 33x33 multiplier is two cycles in RTL, the Verilator model, the generated XCI, and the rebuilt OOC DCP. RV32I/M 52/52 passed; srcSmoke 500k IPC is 0.685762; srcWithMext IPC is 0.869596 at 500k and 0.856137 at 20M. After correcting a stale-IP project reuse flaw, true two-cycle routed WNS is -1.065885 ns, TNS is -798.428284 ns, equivalent Fmax is 164.86 MHz, and IPC x Fmax is 141.14. All 2588 routed setup-violating endpoints were exported; routed hold WNS is +0.037 ns with zero hold failures."
+  "notes": "RV32IM 52/52 passed. srcSmoke 500k IPC is 0.688324. srcWithMext IPC is 0.896398 at 500k and 0.947182 at 20M, with RV32I=37, M=8, fail=0. Synthesis WNS is -1.491 ns at a 5 ns constraint, estimated Fmax is 154.06 MHz, and IPC x Fmax is approximately 145.92, about 3.85% above the previous synthesis baseline. A narrower five-bit macro payload was rejected because it preserved IPC but degraded WNS to -1.911 ns."
 }

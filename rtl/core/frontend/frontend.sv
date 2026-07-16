@@ -12,6 +12,7 @@ module frontend (
     output logic [31:0] irom_addr_o,
     output logic irom_ena_o,
     input  logic [31:0] irom_data_i,
+    input  logic [31:0] irom_data_next_i,
     output logic fetch_valid_o,
     output core_types_pkg::fetch_entry_t fetch_entry_o,
     input  logic fetch_ready_i,
@@ -35,6 +36,8 @@ module frontend (
     logic pending_valid_q;
     logic [31:0] pending_pc_q;
     logic [31:0] request_pc_c;
+    logic [31:0] response_next_pc_c;
+    logic macro_move_response_c;
     logic predictor_ready, predictor_result_valid, predicted_hit;
     logic [31:0] predicted_next_pc;
     pred_kind_e predicted_kind;
@@ -42,6 +45,17 @@ module frontend (
     logic [GSHARE_HISTORY_BITS-1:0] predicted_index;
     fetch_entry_t push_entry;
     logic queue_push, queue_pop;
+
+    function automatic logic writes_rd_noncontrol(input logic [31:0] instr);
+        logic [6:0] opcode;
+        begin
+            opcode = instr[6:0];
+            writes_rd_noncontrol = instr[11:7] != 0 &&
+                (opcode == 7'b0110111 || opcode == 7'b0010111 ||
+                 opcode == 7'b0000011 || opcode == 7'b0010011 ||
+                 opcode == 7'b0110011);
+        end
+    endfunction
 
     branch_predictor u_branch_predictor (
         .clk(clk), .rst(rst), .predict_read_en_i(irom_ena_o),
@@ -62,8 +76,19 @@ module frontend (
     // The previous synchronous predictor response chooses the address for the
     // next lockstep IROM+BTB read.  When no response is pending (reset,
     // redirect, or a queue-credit stall), fetch_pc_q preserves that address.
+    assign macro_move_response_c = pending_valid_q && predictor_result_valid &&
+        !pending_pc_q[2] &&
+        predicted_next_pc == pending_pc_q + 32'd4 &&
+        writes_rd_noncontrol(irom_data_i) &&
+        irom_data_next_i[6:0] == 7'b0010011 &&
+        irom_data_next_i[14:12] == 3'b000 &&
+        irom_data_next_i[31:20] == 12'd0 &&
+        irom_data_next_i[19:15] == irom_data_i[11:7] &&
+        irom_data_next_i[11:7] != 0;
+    assign response_next_pc_c = macro_move_response_c ?
+                                pending_pc_q + 32'd8 : predicted_next_pc;
     assign request_pc_c = (pending_valid_q && predictor_result_valid) ?
-                          predicted_next_pc : fetch_pc_q;
+                          response_next_pc_c : fetch_pc_q;
     assign irom_addr_o = request_pc_c;
     assign irom_ena_o = !rst && predictor_ready && !redirect_valid_i &&
                         ((queue_count + COUNT_W'(pending_valid_q)) < COUNT_W'(FETCH_QUEUE_DEPTH));
@@ -78,6 +103,8 @@ module frontend (
         push_entry.pred_hit = predicted_hit;
         push_entry.pred_counter = predicted_counter;
         push_entry.pred_index = predicted_index;
+        push_entry.macro_move_valid = macro_move_response_c;
+        push_entry.macro_move_instr = irom_data_next_i;
     end
 
     fetch_queue u_fetch_queue (
@@ -97,7 +124,7 @@ module frontend (
         end else begin
             pending_valid_q <= irom_ena_o;
             if (pending_valid_q && predictor_result_valid)
-                fetch_pc_q <= predicted_next_pc;
+                fetch_pc_q <= response_next_pc_c;
             if (irom_ena_o) begin
                 pending_pc_q <= request_pc_c;
             end
@@ -109,6 +136,8 @@ module frontend (
         if (!rst) begin
             assert (queue_count + COUNT_W'(pending_valid_q) <= COUNT_W'(FETCH_QUEUE_DEPTH));
             assert (pending_valid_q == predictor_result_valid);
+            if (macro_move_response_c)
+                assert (response_next_pc_c == pending_pc_q + 32'd8);
         end
     end
 `endif

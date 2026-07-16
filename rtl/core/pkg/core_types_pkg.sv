@@ -56,6 +56,8 @@ package core_types_pkg;
         logic        pred_hit;
         logic [1:0]  pred_counter;
         logic [GSHARE_HISTORY_BITS-1:0] pred_index;
+        logic        macro_move_valid;
+        logic [31:0] macro_move_instr;
     } fetch_entry_t;
 
     typedef struct packed {
@@ -110,6 +112,7 @@ package core_types_pkg;
         logic [31:0] exception_tval;
         logic        store_slot_valid;
         logic [STORE_ID_W-1:0] store_slot;
+        logic        adjacent_move_alias;
         logic        is_call;
         logic        is_return;
         logic [31:0] link_addr;

@@ -56,7 +56,16 @@ proc assert_project_ip_config {script_dir project_dir cpu_mhz} {
         error "Stale MUL_0 configuration: project PipeStages=$actual_mul_stages source PipeStages=$expected_mul_stages. Regenerate the project/IP checkpoints before timing analysis."
     }
 
-    foreach ip_name {pll MUL_0} {
+    set actual_irom_type [get_property CONFIG.Memory_Type [get_ips IROM_0]]
+    set actual_irom_width_b [get_property CONFIG.Read_Width_B [get_ips IROM_0]]
+    set actual_irom_enable_b [get_property CONFIG.Enable_B [get_ips IROM_0]]
+    if {$actual_irom_type ne "Dual_Port_ROM" ||
+        $actual_irom_width_b != 32 ||
+        $actual_irom_enable_b ne "Use_ENB_Pin"} {
+        error "Stale IROM_0 configuration: Memory_Type=$actual_irom_type Read_Width_B=$actual_irom_width_b Enable_B=$actual_irom_enable_b. Regenerate the dual-port ROM before timing analysis."
+    }
+
+    foreach ip_name {pll MUL_0 IROM_0} {
         set xci [get_property IP_FILE [get_ips $ip_name]]
         set dcp [file join $project_dir digital_twin.gen sources_1 ip $ip_name ${ip_name}.dcp]
         if {![file exists $dcp]} {
@@ -66,7 +75,7 @@ proc assert_project_ip_config {script_dir project_dir cpu_mhz} {
             error "Stale $ip_name OOC checkpoint: $dcp is older than $xci. Rebuild IP checkpoints before timing analysis."
         }
     }
-    puts "IP_CONFIG_CHECK cpu_mhz=$actual_cpu_mhz mul_pipe_stages=$actual_mul_stages status=PASS"
+    puts "IP_CONFIG_CHECK cpu_mhz=$actual_cpu_mhz mul_pipe_stages=$actual_mul_stages irom_type=$actual_irom_type status=PASS"
 }
 
 if {$reuse_project && [file exists $project_file]} {

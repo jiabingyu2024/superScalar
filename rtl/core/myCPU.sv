@@ -9,6 +9,7 @@ module myCPU (
     input  logic        cpu_clk,
     output logic [31:0] irom_addr,
     input  logic [31:0] irom_data,
+    input  logic [31:0] irom_data_next,
     output logic        irom_ena,
     output logic        dmem_req_valid,
     input  logic        dmem_req_ready,
@@ -56,6 +57,7 @@ module myCPU (
     core_top u_core_top (
         .clk(cpu_clk), .rst(cpu_rst),
         .irom_addr_o(irom_addr), .irom_ena_o(irom_ena), .irom_data_i(irom_data),
+        .irom_data_next_i(irom_data_next),
         .dmem_req_valid_o(dmem_req_valid), .dmem_req_ready_i(dmem_req_ready),
         .dmem_req_write_o(dmem_req_write), .dmem_req_addr_o(dmem_req_addr),
         .dmem_req_wdata_o(dmem_req_wdata), .dmem_req_wstrb_o(dmem_req_wstrb),
