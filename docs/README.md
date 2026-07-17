@@ -23,6 +23,16 @@
 | --- | --- |
 | `fpga/vivado_project.md` | Vivado Tcl 生成工程、IP 生成参数和上板源文件边界。 |
 
+## 架构学习报告
+
+| 文档 | 内容 |
+| --- | --- |
+| `report/cpu_core_microarchitecture_and_ppt_guide.md` | 当前 Core 架构、微架构、流水阶段、特殊处理以及 PowerPoint 架构图绘制指南。 |
+| `report/pipeline_lsu_bypass_detailed_walkthrough.md` | 典型指令逐周期流水、Load/Store 与 DCache 生命周期、完整旁路/禁止旁路矩阵。 |
+| `report/issue_subsystem_modules_detailed_guide.md` | `rtl/core/issue/` 四模块的接口、数据流、旁路、Scoreboard 和发射控制深度讲解。 |
+| `report/one_page_cpu_core_architecture_ppt_guide.md` | 单页 CPU Core 架构图的流水阶段、关键模块、必要连线和 PowerPoint 绘制规范。 |
+| `report/cpu_project_full_technical_report_draft.md` | 按项目概述、CPU设计、性能优化、特色机制、仿真、结果、上板和总结组织的完整技术报告Markdown初稿。 |
+
 ## 归档文档
 
 | 文档 | 内容 |
