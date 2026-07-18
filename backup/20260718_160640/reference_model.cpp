@@ -82,7 +82,7 @@ bool execute_bitmanip(uint32_t inst, uint32_t a, uint32_t b, uint32_t& result) {
                 if ((a & (0xffu << (8 * i))) != 0) result |= 0xffu << (8 * i);
             return true;
         }
-        if ((REF_ZBB || REF_ZBKB) && funct3 == 5 && imm12 == 0x698) {
+        if (REF_ZBB && funct3 == 5 && imm12 == 0x698) {
             result = __builtin_bswap32(a); return true;
         }
         if (REF_ZBKB && funct3 == 5 && imm12 == 0x687) {

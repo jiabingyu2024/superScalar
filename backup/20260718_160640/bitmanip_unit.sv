@@ -87,7 +87,7 @@ module bitmanip_unit (
                     simple_result_c[i*8 +: 8] =
                         (req_a_i[i*8 +: 8] == 8'd0) ? 8'h00 : 8'hff;
             end
-            BM_REV8: if (CFG_ZBB || CFG_ZBKB)
+            BM_REV8: if (CFG_ZBB)
                 simple_result_c = {req_a_i[7:0], req_a_i[15:8],
                                    req_a_i[23:16], req_a_i[31:24]};
             BM_SEXT_B: if (CFG_ZBB) simple_result_c = {{24{req_a_i[7]}}, req_a_i[7:0]};

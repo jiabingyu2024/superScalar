@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-07-18T16:06:58+08:00",
+  "trigger": "Static review: Zbkb-only configuration incorrectly treats rev8 as illegal",
+  "files_modified": [
+    {
+      "path": "rtl/core/decode/decoder.sv",
+      "lines_changed": "125-127",
+      "change_type": "logic_fix"
+    },
+    {
+      "path": "rtl/core/execute/bitmanip_unit.sv",
+      "lines_changed": "90-92",
+      "change_type": "logic_fix"
+    },
+    {
+      "path": "tb/difftest/adapter/reference_model.cpp",
+      "lines_changed": "85-86",
+      "change_type": "reference_model_fix"
+    }
+  ],
+  "cascade_scope": "full_reverify",
+  "notes": "Recognize and execute rev8 whenever either Zbb or Zbkb is enabled, and keep the independent DiffTest reference model aligned. No interface or timing changes."
+}

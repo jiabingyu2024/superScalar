@@ -122,8 +122,7 @@ module decoder (
                     uop_o.bitmanip_op = BM_SEXT_H; uop_o.exception_valid = 1'b0;
                 end else if (CFG_ZBB && funct3 == 3'b101 && fetch_i.instr[31:20] == 12'h287) begin
                     uop_o.bitmanip_op = BM_ORC_B; uop_o.exception_valid = 1'b0;
-                end else if ((CFG_ZBB || CFG_ZBKB) && funct3 == 3'b101 &&
-                             fetch_i.instr[31:20] == 12'h698) begin
+                end else if (CFG_ZBB && funct3 == 3'b101 && fetch_i.instr[31:20] == 12'h698) begin
                     uop_o.bitmanip_op = BM_REV8; uop_o.exception_valid = 1'b0;
                 end else if (CFG_ZBKB && funct3 == 3'b101 && fetch_i.instr[31:20] == 12'h687) begin
                     uop_o.bitmanip_op = BM_BREV8; uop_o.exception_valid = 1'b0;
