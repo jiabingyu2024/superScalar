@@ -9,6 +9,7 @@
 | `design/project_framework.md` | 项目目录职责、受保护文件、后续行动规约。 |
 | `design/memory_and_test_contract.md` | rv32/src DUT 分流、IROM/DRAM 时序、测试契约。 |
 | `design/rtl_core_design.md` | 当前 `rtl/core` 微架构、流水级、队列资源、恢复路径和维护风险。 |
+| `design/zb_extensions.md` | 六个 RV32 Zb 配置位、39 条指令覆盖、复杂整数执行取舍和回归结果。 |
 
 ## 仿真文档
 

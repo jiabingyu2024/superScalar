@@ -64,58 +64,16 @@ package CoreTypesPkg;
         LSU_OP_STORE = 3'd2
     } CoreLsuOp;
 
-    // Shared complex-integer execution queue operation.  Values 1..8 are M;
-    // the Zb values use the same back-pressured pipe to keep their logic out
-    // of the ordinary two-wide INT ALU timing cone.
-    typedef enum logic [5:0] {
-        MULDIV_OP_NONE    = 6'd0,
-        MULDIV_OP_MUL     = 6'd1,
-        MULDIV_OP_MULH    = 6'd2,
-        MULDIV_OP_MULHSU  = 6'd3,
-        MULDIV_OP_MULHU   = 6'd4,
-        MULDIV_OP_DIV     = 6'd5,
-        MULDIV_OP_DIVU    = 6'd6,
-        MULDIV_OP_REM     = 6'd7,
-        MULDIV_OP_REMU    = 6'd8,
-        MULDIV_OP_SH1ADD  = 6'd9,
-        MULDIV_OP_SH2ADD  = 6'd10,
-        MULDIV_OP_SH3ADD  = 6'd11,
-        MULDIV_OP_ANDN    = 6'd12,
-        MULDIV_OP_ORN     = 6'd13,
-        MULDIV_OP_XNOR    = 6'd14,
-        MULDIV_OP_CLZ     = 6'd15,
-        MULDIV_OP_CTZ     = 6'd16,
-        MULDIV_OP_CPOP    = 6'd17,
-        MULDIV_OP_MAX     = 6'd18,
-        MULDIV_OP_MAXU    = 6'd19,
-        MULDIV_OP_MIN     = 6'd20,
-        MULDIV_OP_MINU    = 6'd21,
-        MULDIV_OP_ORC_B   = 6'd22,
-        MULDIV_OP_REV8    = 6'd23,
-        MULDIV_OP_ROL     = 6'd24,
-        MULDIV_OP_ROR     = 6'd25,
-        MULDIV_OP_RORI    = 6'd26,
-        MULDIV_OP_SEXT_B  = 6'd27,
-        MULDIV_OP_SEXT_H  = 6'd28,
-        MULDIV_OP_ZEXT_H  = 6'd29,
-        MULDIV_OP_CLMUL   = 6'd30,
-        MULDIV_OP_CLMULH  = 6'd31,
-        MULDIV_OP_CLMULR  = 6'd32,
-        MULDIV_OP_BREV8   = 6'd33,
-        MULDIV_OP_PACK    = 6'd34,
-        MULDIV_OP_PACKH   = 6'd35,
-        MULDIV_OP_ZIP     = 6'd36,
-        MULDIV_OP_UNZIP   = 6'd37,
-        MULDIV_OP_XPERM4  = 6'd38,
-        MULDIV_OP_XPERM8  = 6'd39,
-        MULDIV_OP_BCLR    = 6'd40,
-        MULDIV_OP_BCLRI   = 6'd41,
-        MULDIV_OP_BEXT    = 6'd42,
-        MULDIV_OP_BEXTI   = 6'd43,
-        MULDIV_OP_BINV    = 6'd44,
-        MULDIV_OP_BINVI   = 6'd45,
-        MULDIV_OP_BSET    = 6'd46,
-        MULDIV_OP_BSETI   = 6'd47
+    typedef enum logic [3:0] {
+        MULDIV_OP_NONE   = 4'd0,
+        MULDIV_OP_MUL    = 4'd1,
+        MULDIV_OP_MULH   = 4'd2,
+        MULDIV_OP_MULHSU = 4'd3,
+        MULDIV_OP_MULHU  = 4'd4,
+        MULDIV_OP_DIV    = 4'd5,
+        MULDIV_OP_DIVU   = 4'd6,
+        MULDIV_OP_REM    = 4'd7,
+        MULDIV_OP_REMU   = 4'd8
     } CoreMulDivOp;
 
     typedef enum logic [2:0] {

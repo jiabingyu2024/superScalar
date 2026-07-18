@@ -780,5 +780,61 @@
     "Post-fix compile, simulation, synthesis, and board verification are pending; this RTL-development stage does not run EDA verification."
   ],
   "notes": "Recommended implementation keeps the primitive BRAM output register for timing and delays response ownership by one stage. Rebuild from a fresh Vivado project before board acceptance."
+},
+{
+  "timestamp": "2026-07-18T17:58:32+08:00",
+  "trigger": "Add independently configurable RV32 Zba/Zbb/Zbc/Zbkb/Zbkx/Zbs support for the expanded data/rv32uzb* regression set while preserving base-core IPC and timing structure.",
+  "backup_dir": "rtl/core/backup/20260718_173850_zb_config",
+  "files_modified": [
+    {
+      "path": "rtl/core/CoreConfigPkg.sv",
+      "change_type": "compile_time_feature_config",
+      "notes": "Added six default-enabled SUPPORT_ZB* constants."
+    },
+    {
+      "path": "rtl/core/CoreTypesPkg.sv",
+      "change_type": "internal_uop_operation_extension",
+      "notes": "Expanded the shared complex-integer operation enum to 6 bits and assigned operations for all 39 covered Zb instructions."
+    },
+    {
+      "path": "rtl/core/decode/Rv32Decoder.sv",
+      "change_type": "isa_decode_extension",
+      "notes": "Added config-gated OP/OP-IMM decode, including Zbb/Zbkb shared-instruction OR gating and illegal-instruction fallback when disabled."
+    },
+    {
+      "path": "rtl/core/execute/MulDivPipe.sv",
+      "change_type": "complex_integer_execution_extension",
+      "notes": "Added single-cycle registered Zb functions and a shared 32-step 64-bit carry-less multiply engine without modifying the ordinary two-wide INT ALU path."
+    },
+    {
+      "path": "docs/design/zb_extensions.md",
+      "change_type": "design_documentation",
+      "notes": "Documented configuration, complete covered instruction list, pipeline/latency tradeoffs, verification, and physical-timing acceptance items."
+    },
+    {
+      "path": "docs/README.md",
+      "change_type": "documentation_index",
+      "notes": "Added the Zb design record to the current-document index."
+    },
+    {
+      "path": "docs/rtl_changes.json",
+      "change_type": "change_manifest",
+      "notes": "Recorded the Zb feature implementation and verification evidence."
+    }
+  ],
+  "cascade_scope": "recompile_and_run_all_zb_plus_rv32ui_rv32um_rv32mi_and_srcSmoke_then_resynthesize",
+  "verification": [
+    "Verilator myCPU and student_top models rebuilt successfully.",
+    "RV32UZba 3/3, RV32UZbb 18/18, RV32UZbc 3/3, RV32UZbkb 5/5, RV32UZbkx 2/2, and RV32UZbs 8/8 passed (39/39 total).",
+    "RV32UI 40/40, RV32UM 8/8, and RV32MI 4/4 passed.",
+    "srcSmoke passed at 42,504,434 cycles and 30,758,614 commits with IPC 0.723657, matching the recorded pre-change same-version baseline.",
+    "The final Verilator build introduced no Zb-related width warning and no new LATCH, MULTIDRIVEN, or UNOPTFLAT diagnostic; existing repository warnings remain.",
+    "git diff --check and python3 -m json.tool docs/rtl_changes.json passed."
+  ],
+  "remaining_physical_verification": [
+    "Run fresh Vivado synthesis and implementation from the current worktree before claiming unchanged Fmax.",
+    "Inspect the single-cycle Zb special-result path, 6-bit operation decode fanout, and 64-bit CLMUL accumulator path."
+  ],
+  "notes": "Zb operations share the back-pressured MULDIV/complex-integer queue to keep new logic out of the ordinary two-wide INT ALU cone. This preserves base-workload structure and measured IPC, while intentionally trading Zb-heavy throughput for timing isolation."
 }
 ]

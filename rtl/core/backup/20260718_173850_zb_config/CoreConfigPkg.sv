@@ -1,14 +1,4 @@
 package CoreConfigPkg;
-    // Optional RV32 bit-manipulation instructions covered by the repository's
-    // data/rv32uzb* regression suites.  Each constant is a compile-time feature
-    // gate: 1 decodes the corresponding instruction, 0 makes it illegal.
-    localparam logic SUPPORT_ZBA  = 1'b1;
-    localparam logic SUPPORT_ZBB  = 1'b1;
-    localparam logic SUPPORT_ZBC  = 1'b1;
-    localparam logic SUPPORT_ZBKB = 1'b1;
-    localparam logic SUPPORT_ZBKX = 1'b1;
-    localparam logic SUPPORT_ZBS  = 1'b1;
-
     localparam int BYTE_WIDTH = 8;
     localparam int INST_WIDTH = 32;
     localparam int ADDR_WIDTH = 32;

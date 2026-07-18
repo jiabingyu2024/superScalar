@@ -1,4 +1,3 @@
-import CoreConfigPkg::*;
 import CoreTypesPkg::*;
 
 module CoreRv32Decoder (
@@ -27,18 +26,6 @@ module CoreRv32Decoder (
             uop_o.illegal = 1'b1;
             uop_o.exception = 1'b1;
             uop_o.exception_cause = EXC_CAUSE_ILLEGAL_INST;
-        end
-    endtask
-
-    // The existing MULDIV queue is the core's back-pressured complex-integer
-    // execution path.  Routing Zb operations through it keeps their extra
-    // logic out of both ordinary INT-ALU issue lanes.
-    task automatic mark_complex_int(input CoreMulDivOp op);
-        begin
-            uop_o.tube = TUBE_TYPE_MUL;
-            uop_o.fu_type = FU_TYPE_MULDIV;
-            uop_o.is_muldiv = 1'b1;
-            uop_o.muldiv_op = op;
         end
     endtask
 
@@ -167,57 +154,14 @@ module CoreRv32Decoder (
                         3'b110: uop_o.alu_op = ALU_OP_OR;
                         3'b111: uop_o.alu_op = ALU_OP_AND;
                         3'b001: begin
-                            if (SUPPORT_ZBB && (inst[31:20] == 12'h600)) begin
-                                mark_complex_int(MULDIV_OP_CLZ);
-                            end else if (SUPPORT_ZBB &&
-                                         (inst[31:20] == 12'h601)) begin
-                                mark_complex_int(MULDIV_OP_CTZ);
-                            end else if (SUPPORT_ZBB &&
-                                         (inst[31:20] == 12'h602)) begin
-                                mark_complex_int(MULDIV_OP_CPOP);
-                            end else if (SUPPORT_ZBB &&
-                                         (inst[31:20] == 12'h604)) begin
-                                mark_complex_int(MULDIV_OP_SEXT_B);
-                            end else if (SUPPORT_ZBB &&
-                                         (inst[31:20] == 12'h605)) begin
-                                mark_complex_int(MULDIV_OP_SEXT_H);
-                            end else if (SUPPORT_ZBKB &&
-                                         (inst[31:20] == 12'h08f)) begin
-                                mark_complex_int(MULDIV_OP_ZIP);
-                            end else if (SUPPORT_ZBS &&
-                                         (funct7 == 7'b0010100)) begin
-                                mark_complex_int(MULDIV_OP_BSETI);
-                            end else if (SUPPORT_ZBS &&
-                                         (funct7 == 7'b0100100)) begin
-                                mark_complex_int(MULDIV_OP_BCLRI);
-                            end else if (SUPPORT_ZBS &&
-                                         (funct7 == 7'b0110100)) begin
-                                mark_complex_int(MULDIV_OP_BINVI);
-                            end else if (funct7 == 7'b0000000) begin
+                            if (funct7 == 7'b0000000) begin
                                 uop_o.alu_op = ALU_OP_SLL;
                             end else begin
                                 mark_illegal();
                             end
                         end
                         3'b101: begin
-                            if (SUPPORT_ZBKB && (inst[31:20] == 12'h687)) begin
-                                mark_complex_int(MULDIV_OP_BREV8);
-                            end else if (SUPPORT_ZBKB &&
-                                         (inst[31:20] == 12'h08f)) begin
-                                mark_complex_int(MULDIV_OP_UNZIP);
-                            end else if (SUPPORT_ZBB &&
-                                         (inst[31:20] == 12'h287)) begin
-                                mark_complex_int(MULDIV_OP_ORC_B);
-                            end else if ((SUPPORT_ZBB || SUPPORT_ZBKB) &&
-                                         (inst[31:20] == 12'h698)) begin
-                                mark_complex_int(MULDIV_OP_REV8);
-                            end else if ((SUPPORT_ZBB || SUPPORT_ZBKB) &&
-                                         (funct7 == 7'b0110000)) begin
-                                mark_complex_int(MULDIV_OP_RORI);
-                            end else if (SUPPORT_ZBS &&
-                                         (funct7 == 7'b0100100)) begin
-                                mark_complex_int(MULDIV_OP_BEXTI);
-                            end else if (funct7 == 7'b0000000) begin
+                            if (funct7 == 7'b0000000) begin
                                 uop_o.alu_op = ALU_OP_SRL;
                             end else if (funct7 == 7'b0100000) begin
                                 uop_o.alu_op = ALU_OP_SRA;
@@ -246,84 +190,6 @@ module CoreRv32Decoder (
                             3'b111: uop_o.muldiv_op = MULDIV_OP_REMU;
                             default: mark_illegal();
                         endcase
-                    end else if (SUPPORT_ZBA &&
-                                 (funct7 == 7'b0010000)) begin
-                        unique case (funct3)
-                            3'b010: mark_complex_int(MULDIV_OP_SH1ADD);
-                            3'b100: mark_complex_int(MULDIV_OP_SH2ADD);
-                            3'b110: mark_complex_int(MULDIV_OP_SH3ADD);
-                            default: mark_illegal();
-                        endcase
-                    end else if ((SUPPORT_ZBB || SUPPORT_ZBKB) &&
-                                 (funct7 == 7'b0100000) &&
-                                 (funct3 inside {3'b100, 3'b110, 3'b111})) begin
-                        unique case (funct3)
-                            3'b100: mark_complex_int(MULDIV_OP_XNOR);
-                            3'b110: mark_complex_int(MULDIV_OP_ORN);
-                            3'b111: mark_complex_int(MULDIV_OP_ANDN);
-                            default: mark_illegal();
-                        endcase
-                    end else if (SUPPORT_ZBB &&
-                                 (funct7 == 7'b0000101) &&
-                                 funct3[2]) begin
-                        unique case (funct3)
-                            3'b100: mark_complex_int(MULDIV_OP_MIN);
-                            3'b101: mark_complex_int(MULDIV_OP_MINU);
-                            3'b110: mark_complex_int(MULDIV_OP_MAX);
-                            3'b111: mark_complex_int(MULDIV_OP_MAXU);
-                            default: mark_illegal();
-                        endcase
-                    end else if (SUPPORT_ZBC &&
-                                 (funct7 == 7'b0000101)) begin
-                        unique case (funct3)
-                            3'b001: mark_complex_int(MULDIV_OP_CLMUL);
-                            3'b010: mark_complex_int(MULDIV_OP_CLMULR);
-                            3'b011: mark_complex_int(MULDIV_OP_CLMULH);
-                            default: mark_illegal();
-                        endcase
-                    end else if ((SUPPORT_ZBB || SUPPORT_ZBKB) &&
-                                 (funct7 == 7'b0110000) &&
-                                 (funct3 inside {3'b001, 3'b101})) begin
-                        if (funct3 == 3'b001) begin
-                            mark_complex_int(MULDIV_OP_ROL);
-                        end else begin
-                            mark_complex_int(MULDIV_OP_ROR);
-                        end
-                    end else if (SUPPORT_ZBKB &&
-                                 (funct7 == 7'b0000100) &&
-                                 (funct3 inside {3'b100, 3'b111})) begin
-                        if (funct3 == 3'b100) begin
-                            mark_complex_int(MULDIV_OP_PACK);
-                        end else begin
-                            mark_complex_int(MULDIV_OP_PACKH);
-                        end
-                    end else if (SUPPORT_ZBB &&
-                                 (funct7 == 7'b0000100) &&
-                                 (funct3 == 3'b100) &&
-                                 (inst[24:20] == 5'b0)) begin
-                        mark_complex_int(MULDIV_OP_ZEXT_H);
-                    end else if (SUPPORT_ZBKX &&
-                                 (funct7 == 7'b0010100) &&
-                                 (funct3 inside {3'b010, 3'b100})) begin
-                        if (funct3 == 3'b010) begin
-                            mark_complex_int(MULDIV_OP_XPERM4);
-                        end else begin
-                            mark_complex_int(MULDIV_OP_XPERM8);
-                        end
-                    end else if (SUPPORT_ZBS &&
-                                 (funct3 == 3'b001) &&
-                                 (funct7 inside {7'b0010100, 7'b0100100,
-                                                 7'b0110100})) begin
-                        unique case (funct7)
-                            7'b0010100: mark_complex_int(MULDIV_OP_BSET);
-                            7'b0100100: mark_complex_int(MULDIV_OP_BCLR);
-                            7'b0110100: mark_complex_int(MULDIV_OP_BINV);
-                            default: mark_illegal();
-                        endcase
-                    end else if (SUPPORT_ZBS &&
-                                 (funct7 == 7'b0100100) &&
-                                 (funct3 == 3'b101)) begin
-                        mark_complex_int(MULDIV_OP_BEXT);
                     end else if (funct7 == 7'b0000000 || funct7 == 7'b0100000) begin
                         unique case (funct3)
                             3'b000: uop_o.alu_op = (funct7 == 7'b0100000) ? ALU_OP_SUB : ALU_OP_ADD;
