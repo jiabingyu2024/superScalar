@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-07-16T16:15:00+08:00",
+  "trigger": "Raise IPC x Fmax with a narrow dual-port fetch macro after generic dual issue and mirrored DCache evaluation were rejected",
+  "files_modified": [
+    {
+      "path": "rtl/core/frontend/frontend.sv",
+      "lines_changed": "dual-word fetch recognition and eight-byte advance for aligned producer-plus-move pairs",
+      "change_type": "microarchitecture"
+    },
+    {
+      "path": "rtl/core/issue/scoreboard.sv",
+      "lines_changed": "two-entry allocation and producer completion propagation into an adjacent move alias",
+      "change_type": "microarchitecture"
+    },
+    {
+      "path": "rtl/core/core_top.sv",
+      "lines_changed": "macro dispatch capacity accounting and second scoreboard entry allocation",
+      "change_type": "integration"
+    },
+    {
+      "path": "rtl/core/pkg/core_types_pkg.sv",
+      "lines_changed": "macro fetch and adjacent alias metadata",
+      "change_type": "interface"
+    },
+    {
+      "path": "rtl/core/myCPU.sv",
+      "lines_changed": "second IROM data input",
+      "change_type": "interface"
+    },
+    {
+      "path": "rtl/soc/student_top.sv",
+      "lines_changed": "aligned second IROM address and dual-port connection",
+      "change_type": "integration"
+    },
+    {
+      "path": "rtl/ip/IROM_0.sv",
+      "lines_changed": "dual-read-port Verilator ROM model",
+      "change_type": "ip_model"
+    },
+    {
+      "path": "fpga/create_vivado_project.tcl",
+      "lines_changed": "IROM_0 changed to Dual_Port_ROM",
+      "change_type": "ip_configuration"
+    },
+    {
+      "path": "fpga/test_prj/create_project.tcl",
+      "lines_changed": "IROM_0 changed to Dual_Port_ROM",
+      "change_type": "ip_configuration"
+    },
+    {
+      "path": "fpga/run_synthesis.tcl",
+      "lines_changed": "dual-port IROM configuration and checkpoint freshness validation",
+      "change_type": "verification_flow"
+    },
+    {
+      "path": "fpga/run_implementation.tcl",
+      "lines_changed": "dual-port IROM configuration and checkpoint freshness validation",
+      "change_type": "verification_flow"
+    }
+  ],
+  "cascade_scope": "full_reverify",
+  "notes": "RV32IM 52/52 passed. srcSmoke 500k IPC is 0.688324. srcWithMext IPC is 0.896398 at 500k and 0.947182 at 20M, with RV32I=37, M=8, fail=0. Synthesis WNS is -1.491 ns at a 5 ns constraint, estimated Fmax is 154.06 MHz, and IPC x Fmax is approximately 145.92, about 3.85% above the previous synthesis baseline. A narrower five-bit macro payload was rejected because it preserved IPC but degraded WNS to -1.911 ns."
+}

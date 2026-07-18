@@ -78,7 +78,6 @@ module dcache #(
     logic [31:0] bank_write_data;
     logic [3:0] bank_write_mask;
     logic cacheable_c, lookup_hit_c, lookup_load_miss_c, lookup_stall_c;
-    logic victim_invalidate_c;
     logic metadata_read_en;
     logic [INDEX_W-1:0] index_c;
     logic [CACHE_ADDR_W-1:TAG_LSB] tag_c;
@@ -97,10 +96,6 @@ module dcache #(
     assign lookup_hit_c = lookup_valid_q && tag_read_data[TAG_W] &&
                           tag_read_data[TAG_W-1:0] == lookup_tag_q;
     assign lookup_load_miss_c = lookup_valid_q && !lookup_write_q && !lookup_hit_c;
-    // Refill data writes the victim bank one word at a time.  Invalidate the
-    // old tag before the first word can arrive, so a killed partial refill can
-    // never expose new-line data through the victim's still-valid old tag.
-    assign victim_invalidate_c = state_q == DC_IDLE && lookup_load_miss_c;
     // A store lookup occupies one extra cycle so its cache update reaches the
     // data RAM before a following load can observe that word.
     assign lookup_stall_c = lookup_valid_q && (lookup_write_q || !lookup_hit_c);
@@ -109,17 +104,15 @@ module dcache #(
     assign store_aligned_mask_c = (cpu_req_wstrb_i << cpu_req_addr_i[1:0]) & 4'hf;
     assign idle_o = state_q == DC_IDLE;
 
-    // Initialization, victim invalidation and the last refill beat occur in
-    // mutually exclusive states and therefore share the single tag RAM write
-    // port without changing its inference template.
+    // DC_INIT and the last refill beat are mutually exclusive writers.  Their
+    // address/data mux is outside the RAM inference template so the array maps
+    // to one block RAM instead of hundreds of cascaded RAM64M primitives.
     assign tag_write_en = state_q == DC_INIT ||
-                          victim_invalidate_c ||
                           (state_q == DC_REFILL_WAIT && mem_resp_valid_i &&
                            !killed_q && !kill_i && refill_count_q == 2'd3);
     assign tag_write_index = state_q == DC_INIT ? init_index_q :
-                             victim_invalidate_c ? lookup_index_q :
                              req_addr_q[TAG_LSB-1:4];
-    assign tag_write_data = (state_q == DC_INIT || victim_invalidate_c) ? '0 :
+    assign tag_write_data = state_q == DC_INIT ? '0 :
                             {1'b1, req_addr_q[CACHE_ADDR_W-1:TAG_LSB]};
 
     dcache_tag_bank #(
