@@ -65,8 +65,6 @@
 | `archive/2026-07-05/036_srcWithMext_post_phase12_ipc_root_cause.md` | 基于阶段 1/2 后 100M 长窗口重新定位 IPC 仍低原因，确认新主瓶颈为 IssueQueue 满且缺少 ready 项。 |
 | `archive/2026-07-08/049_srcWithMext_current_result_optimization_space.md` | 基于当前单发射阻塞核的完整 `srcWithMext` PASS 结果，重新归因 memory/MulDiv stall 并给出优化优先级。 |
 | `archive/2026-07-08/050_fpga_board_all_zero_bringup_review.md` | 审查 Tcl 建工程上板后 SEG/LED 全 0 的原因，修复 FPGA source 边界和 reset 同步释放，并记录官方模板对比。 |
-| `archive/2026-07-18/062_src2_dcache_killed_refill_corruption.md` | 定位并修复 DCache refill 被分支 flush 中止后暴露“旧 tag + 新数据”的伪命中，并记录重建后的 src2 4M 门禁。 |
-| `archive/2026-07-19/063_branch_alias_zero_offset_agu_timing_optimization.md` | 以低 IPC 损失切断 branch miss、fused-move producer map 和 fixed-result 双加法 AGU 路径，并记录唯一一次 synthesis-only 的路径迁移与新瓶颈。 |
 
 ## 后续维护规则
 

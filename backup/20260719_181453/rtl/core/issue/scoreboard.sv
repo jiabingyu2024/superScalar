@@ -173,6 +173,13 @@ module scoreboard #(
                     entries_q[fixed_completion_i.trans_id + 1'b1].done <= 1'b1;
                     entries_q[fixed_completion_i.trans_id + 1'b1].result <=
                         fixed_completion_i.result;
+                    if (entries_q[fixed_completion_i.trans_id + 1'b1].writes_rd &&
+                        entries_q[fixed_completion_i.trans_id + 1'b1].rd != 0 &&
+                        producer_valid_q[entries_q[fixed_completion_i.trans_id + 1'b1].rd] &&
+                        producer_tid_q[entries_q[fixed_completion_i.trans_id + 1'b1].rd] ==
+                        fixed_completion_i.trans_id)
+                        producer_tid_q[entries_q[fixed_completion_i.trans_id + 1'b1].rd] <=
+                            fixed_completion_i.trans_id + 1'b1;
                 end
             end
             if (load_complete_accepted_o) begin
@@ -182,6 +189,13 @@ module scoreboard #(
                     entries_q[load_trans_id_i + 1'b1].adjacent_move_alias) begin
                     entries_q[load_trans_id_i + 1'b1].done <= 1'b1;
                     entries_q[load_trans_id_i + 1'b1].result <= load_result_i;
+                    if (entries_q[load_trans_id_i + 1'b1].writes_rd &&
+                        entries_q[load_trans_id_i + 1'b1].rd != 0 &&
+                        producer_valid_q[entries_q[load_trans_id_i + 1'b1].rd] &&
+                        producer_tid_q[entries_q[load_trans_id_i + 1'b1].rd] ==
+                        load_trans_id_i)
+                        producer_tid_q[entries_q[load_trans_id_i + 1'b1].rd] <=
+                            load_trans_id_i + 1'b1;
                 end
             end
             if (slow_complete_i && entries_q[slow_trans_id_i].occupied) begin
@@ -191,6 +205,13 @@ module scoreboard #(
                     entries_q[slow_trans_id_i + 1'b1].adjacent_move_alias) begin
                     entries_q[slow_trans_id_i + 1'b1].done <= 1'b1;
                     entries_q[slow_trans_id_i + 1'b1].result <= slow_result_i;
+                    if (entries_q[slow_trans_id_i + 1'b1].writes_rd &&
+                        entries_q[slow_trans_id_i + 1'b1].rd != 0 &&
+                        producer_valid_q[entries_q[slow_trans_id_i + 1'b1].rd] &&
+                        producer_tid_q[entries_q[slow_trans_id_i + 1'b1].rd] ==
+                        slow_trans_id_i)
+                        producer_tid_q[entries_q[slow_trans_id_i + 1'b1].rd] <=
+                            slow_trans_id_i + 1'b1;
                 end
             end
 
@@ -199,23 +220,6 @@ module scoreboard #(
                     producer_valid_q[commit_entry_o.rd] &&
                     producer_tid_q[commit_entry_o.rd] == commit_ptr_q)
                     producer_valid_q[commit_entry_o.rd] <= 1'b0;
-                // The fused move initially aliases the producer transaction so
-                // consumers wake from the producer's completion.  Redirect
-                // that architectural destination to the already-completed
-                // alias slot only when the producer retires.  This keeps the
-                // freed producer slot from being observed after reuse, while
-                // removing load/forwarding completion from producer_tid D.
-                if (entries_q[commit_ptr_q + 1'b1].occupied &&
-                    entries_q[commit_ptr_q + 1'b1].adjacent_move_alias &&
-                    entries_q[commit_ptr_q + 1'b1].writes_rd &&
-                    entries_q[commit_ptr_q + 1'b1].rd != 0 &&
-                    producer_valid_q[entries_q[commit_ptr_q + 1'b1].rd] &&
-                    producer_tid_q[entries_q[commit_ptr_q + 1'b1].rd] ==
-                    commit_ptr_q) begin
-                    producer_valid_q[entries_q[commit_ptr_q + 1'b1].rd] <= 1'b1;
-                    producer_tid_q[entries_q[commit_ptr_q + 1'b1].rd] <=
-                        commit_ptr_q + 1'b1;
-                end
                 entries_q[commit_ptr_q].occupied <= 1'b0;
                 commit_ptr_q <= commit_ptr_q + 1'b1;
                 if (commit_entry_o.sys_op != SYS_NONE || commit_entry_o.exception_valid)

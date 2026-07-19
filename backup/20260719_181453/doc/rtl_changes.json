@@ -26,35 +26,5 @@
     "srcSmoke 500k window reached RV32I pass/fail=37/0 and SEG 0x37000000.",
     "srcWithMext 500k window reached RV32I pass/fail=37/0, M/Z count=8, and SEG 0x37800000."
   ],
-  "follow_up_timing_optimization": {
-    "timestamp": "2026-07-19T18:32:40+08:00",
-    "trigger": "Optimize the current 200 MHz setup critical paths while keeping srcWithMext IPC loss below 2 percent and invoking Vivado synthesis only once after RTL verification.",
-    "backup_dir": "backup/20260719_181453",
-    "rtl_files_modified": [
-      {
-        "path": "rtl/core/core_top.sv",
-        "change": "derive conditional/direct-jump miss from saved predictor metadata and conservatively recover JALR"
-      },
-      {
-        "path": "rtl/core/issue/scoreboard.sv",
-        "change": "move fused-move producer-to-alias map redirection from completion to in-order producer commit"
-      },
-      {
-        "path": "rtl/core/issue/inorder_issue_queue.sv",
-        "change": "add a zero-offset fixed-completion address bypass and register non-zero-offset fixed bases before AGU"
-      }
-    ],
-    "cascade_scope": "full_reverify",
-    "verification": [
-      "Rebuilt both myCPU and student_top Verilator models.",
-      "RV32I/MI/M base suites passed 52/52.",
-      "srcWithMext 500k reached RV32I 37/0 and M=8 with IPC 0.896248.",
-      "srcWithMext 20M reached RV32I 37/0 and M=8 with IPC 0.944961, 0.235 percent below the 0.947182 baseline.",
-      "srcSmoke 500k reached RV32I 37/0 with IPC 0.668484.",
-      "The single Vivado synthesis-only run completed with WNS -1.236 ns, timing-summary TNS -2041.110 ns, and 3665 failing setup endpoints."
-    ],
-    "report": "docs/archive/2026-07-19/063_branch_alias_zero_offset_agu_timing_optimization.md",
-    "vivado_report_tag": "v42_branch_alias_zeroimm_agu"
-  },
   "notes": "No interface or filelist changes. The victim valid/tag is cleared at miss detection using the existing single tag-RAM write port. A refill killed after partial data writes therefore leaves the set invalid instead of exposing mixed-line data under the old tag. Full src2 was intentionally not run; TIMEOUT in the bounded windows is expected and was evaluated using progress counters and absence of the historical FAIL signature."
 }

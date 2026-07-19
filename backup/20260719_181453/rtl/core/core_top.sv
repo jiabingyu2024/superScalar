@@ -87,7 +87,6 @@ module core_top (
     completion_t fixed_completion;
     logic fixed_completion_valid;
     logic branch_resolve_valid_c, branch_taken_c;
-    logic branch_execution_miss_c;
     logic [31:0] branch_target_c, branch_actual_next_c;
     pred_kind_e branch_kind_c;
     logic branch_resolve_valid, branch_taken, branch_miss;
@@ -383,26 +382,6 @@ module core_top (
         .store_enqueue_o(exec_store_enqueue), .mem_addr_o(exec_mem_addr_calc)
     );
 
-    // Conditional and direct-jump targets are immutable in the IROM image.
-    // Their saved predictor metadata therefore determines whether prediction
-    // matched without rebuilding actual_next and comparing two 32-bit PCs on
-    // the branch-outcome D path.  JALR has a dynamic target, so conservatively
-    // recover it as a miss instead of putting an add-plus-compare chain back
-    // on the common conditional-branch path.
-    always_comb begin
-        if (exec_q.uop.is_jalr) begin
-            branch_execution_miss_c = 1'b1;
-        end else if (exec_q.uop.is_jal) begin
-            branch_execution_miss_c = !(exec_q.uop.pred_hit &&
-                                        exec_q.uop.pred_kind == PRED_JUMP);
-        end else begin
-            branch_execution_miss_c = branch_taken_c ^
-                (exec_q.uop.pred_hit &&
-                 exec_q.uop.pred_kind == PRED_COND &&
-                 exec_q.uop.pred_counter[1]);
-        end
-    end
-
     assign commit_branch_outcome_c = branch_outcome_q[commit_ptr_q];
     assign branch_commit_valid_c = commit_normal && commit_entry.fu == FU_BRANCH;
     assign branch_resolve_valid = branch_commit_valid_c;
@@ -651,7 +630,7 @@ module core_top (
             if (branch_resolve_valid_c) begin
                 branch_outcome_q[exec_q.trans_id].miss <=
                     !fixed_completion.exception_valid &&
-                    branch_execution_miss_c;
+                    branch_actual_next_c != exec_q.uop.pred_next_pc;
                 branch_outcome_q[exec_q.trans_id].actual_next <= branch_actual_next_c;
                 branch_taken <= branch_taken_c;
                 branch_target <= branch_target_c;

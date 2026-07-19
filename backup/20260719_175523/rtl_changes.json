@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-07-18T13:30:37+08:00",
+  "trigger": "RTL logic bug diagnosed in docs/archive/2026-07-18/062_src2_dcache_killed_refill_corruption.md",
+  "files_modified": [
+    {
+      "path": "rtl/core/memory/dcache.sv",
+      "lines_changed": "invalidate the victim tag when a cacheable load miss is detected, before any refill data beat can overwrite the victim data bank",
+      "change_type": "logic_fix"
+    },
+    {
+      "path": "docs/archive/2026-07-18/062_src2_dcache_killed_refill_corruption.md",
+      "lines_changed": "record implemented fix, invariant, and pending regression scope",
+      "change_type": "documentation"
+    }
+  ],
+  "cascade_scope": "full_reverify",
+  "notes": "No interface or filelist changes. The victim valid/tag is cleared at miss detection using the existing single tag-RAM write port. A refill killed after partial data writes therefore leaves the set invalid instead of exposing mixed-line data under the old tag. Verification is pending because the selected RTL incremental-fix workflow does not perform compilation or simulation."
+}

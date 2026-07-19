@@ -82,9 +82,6 @@ module inorder_issue_queue #(
     logic select_src2_ready_c [0:DEPTH-1];
     logic select_src1_load_bypass_c [0:DEPTH-1];
     logic select_src2_load_bypass_c [0:DEPTH-1];
-    logic fixed_zero_addr_bypass_c [0:DEPTH-1];
-    logic load_addr_bypass_c [0:DEPTH-1];
-    logic slow_addr_bypass_c [0:DEPTH-1];
     integer comb_i;
     integer comb_j;
     integer seq_i;
@@ -105,20 +102,6 @@ module inorder_issue_queue #(
             enqueue_src1_ready_i;
 
         for (comb_i = 0; comb_i < DEPTH; comb_i = comb_i + 1) begin
-            fixed_zero_addr_bypass_c[comb_i] = entries_q[comb_i].valid &&
-                !entries_q[comb_i].src1_ready && fixed_complete_i &&
-                entries_q[comb_i].src1_trans_id == fixed_completion_i.trans_id &&
-                (entries_q[comb_i].uop.fu == FU_LOAD ||
-                 entries_q[comb_i].uop.fu == FU_STORE) &&
-                entries_q[comb_i].uop.imm == 32'd0 &&
-                !fixed_mem_addr_defer_i;
-            load_addr_bypass_c[comb_i] = entries_q[comb_i].valid &&
-                !entries_q[comb_i].src1_ready && load_addr_wakeup_valid_q &&
-                entries_q[comb_i].src1_trans_id ==
-                load_addr_wakeup_trans_id_q;
-            slow_addr_bypass_c[comb_i] = entries_q[comb_i].valid &&
-                !entries_q[comb_i].src1_ready && slow_complete_i &&
-                entries_q[comb_i].src1_trans_id == slow_trans_id_i;
             entries_d[comb_i] = entries_q[comb_i];
             if (entries_d[comb_i].valid && !entries_d[comb_i].src1_ready) begin
                 if (fixed_complete_i &&
@@ -127,8 +110,7 @@ module inorder_issue_queue #(
                     entries_d[comb_i].src1_value = fixed_completion_i.result;
                     if ((entries_d[comb_i].uop.fu == FU_LOAD ||
                          entries_d[comb_i].uop.fu == FU_STORE) &&
-                        !fixed_mem_addr_defer_i &&
-                        entries_d[comb_i].uop.imm == 32'd0)
+                        !fixed_mem_addr_defer_i)
                         entries_d[comb_i].mem_addr_ready = 1'b1;
                 end else if (load_addr_wakeup_valid_q &&
                              entries_d[comb_i].src1_trans_id ==
@@ -147,10 +129,10 @@ module inorder_issue_queue #(
                         entries_d[comb_i].mem_addr_ready = 1'b1;
                 end
             end
-            // A non-zero memory offset after a fixed completion would put two
-            // carry chains in one cycle.  Zero-offset memory operations use a
-            // direct completion-result address below; every other fixed base
-            // crosses this registered readiness boundary first.
+            // A fixed result produced from the load-return bypass would make
+            // load data cross the ALU, completion wakeup and AGU in one cycle.
+            // The operand value may wake immediately, but make a dependent
+            // memory operation wait one cycle before its address can issue.
             if (entries_d[comb_i].valid &&
                 (entries_d[comb_i].uop.fu == FU_LOAD ||
                  entries_d[comb_i].uop.fu == FU_STORE) &&
@@ -249,16 +231,8 @@ module inorder_issue_queue #(
                 memory_addr_selected_c = 1'b1;
                 memory_addr_age_c = entry_age_c;
                 memory_addr_valid_o = 1'b1;
-                if (fixed_zero_addr_bypass_c[comb_i])
-                    memory_addr_o = fixed_completion_i.result;
-                else if (load_addr_bypass_c[comb_i])
-                    memory_addr_o = load_addr_wakeup_result_q +
-                                    entries_q[comb_i].uop.imm;
-                else if (slow_addr_bypass_c[comb_i])
-                    memory_addr_o = slow_result_i + entries_q[comb_i].uop.imm;
-                else
-                    memory_addr_o = entries_q[comb_i].src1_value +
-                                    entries_q[comb_i].uop.imm;
+                memory_addr_o = entries_d[comb_i].src1_value +
+                                entries_d[comb_i].uop.imm;
             end
 
             if (!issue_block_i && entries_d[comb_i].valid &&
@@ -295,8 +269,9 @@ module inorder_issue_queue #(
                 entries_q[seq_i] <= '0;
         end else begin
             load_addr_wakeup_valid_q <= load_complete_i;
-            fixed_mem_addr_wakeup_valid_q <= fixed_complete_i;
-            if (fixed_complete_i)
+            fixed_mem_addr_wakeup_valid_q <= fixed_complete_i &&
+                                             fixed_mem_addr_defer_i;
+            if (fixed_complete_i && fixed_mem_addr_defer_i)
                 fixed_mem_addr_wakeup_trans_id_q <= fixed_completion_i.trans_id;
             if (load_complete_i) begin
                 load_addr_wakeup_trans_id_q <= load_trans_id_i;
