@@ -86,34 +86,5 @@
     "report": "docs/archive/2026-07-19/064_dispatch_predictor_timing_optimization.md",
     "vivado_report_tag": "v42_dispatch_collision_preselect"
   },
-  "timing_optimization_20260719_214339": {
-    "timestamp": "2026-07-19T21:43:39+08:00",
-    "trigger": "Continue 200 MHz critical-path optimization with bounded IPC loss, complete simulation regression, and export one new synthesis timing report.",
-    "backup_dir": "backup/20260719_212824",
-    "rtl_files_modified": [
-      {
-        "path": "rtl/core/frontend/branch_predictor.sv",
-        "change": "store only IROM-local BTB tag/target bits, explicitly use distributed RAM, and remove timing-critical same-cycle collision forwarding"
-      },
-      {
-        "path": "rtl/core/frontend/frontend.sv",
-        "change": "remove the redundant predicted-next-PC equality from immutable non-control macro-move detection"
-      }
-    ],
-    "rejected_experiment": "Registering DCache hit responses alone stalled src2 after about 800 commits because LoadQueue active metadata was no longer cycle-aligned; the DCache RTL was restored exactly before final verification.",
-    "cascade_scope": "full_reverify",
-    "verification": [
-      "Rebuilt both myCPU and student_top Verilator models from the final RTL.",
-      "RV32I/MI/M base suites passed 52/52.",
-      "src2 500k reached 314488 commits, RV32I 37/0, and SEG 0x37000000 without the load-return deadlock seen in the rejected DCache experiment.",
-      "srcWithMext 500k reached RV32I 37/0, M=8, and IPC 0.895602.",
-      "srcWithMext 20M reached RV32I 37/0, M=8, and IPC 0.944644, 0.0335 percent below the 0.944961 baseline.",
-      "srcSmoke 500k reached RV32I 37/0 and SEG 0x37000000 with IPC 0.627926.",
-      "The single Vivado 2023.2 synthesis-only run completed with 0 errors, WNS -0.837 ns, timing-summary TNS -472.339 ns, and 1401 failing setup endpoints.",
-      "Predictor-internal negative paths fell from 60 to zero; total LUTs fell from 11592 to 11089, LUTRAMs from 564 to 276, and FFs from 10331 to 10254."
-    ],
-    "report": "docs/archive/2026-07-19/065_local_btb_macro_feedback_timing_optimization.md",
-    "vivado_report_tag": "v42_local_btb_macro_fast"
-  },
   "notes": "No interface or filelist changes. The victim valid/tag is cleared at miss detection using the existing single tag-RAM write port. A refill killed after partial data writes therefore leaves the set invalid instead of exposing mixed-line data under the old tag. Full src2 was intentionally not run; TIMEOUT in the bounded windows is expected and was evaluated using progress counters and absence of the historical FAIL signature."
 }

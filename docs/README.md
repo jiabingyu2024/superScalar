@@ -68,6 +68,7 @@
 | `archive/2026-07-18/062_src2_dcache_killed_refill_corruption.md` | 定位并修复 DCache refill 被分支 flush 中止后暴露“旧 tag + 新数据”的伪命中，并记录重建后的 src2 4M 门禁。 |
 | `archive/2026-07-19/063_branch_alias_zero_offset_agu_timing_optimization.md` | 以低 IPC 损失切断 branch miss、fused-move producer map 和 fixed-result 双加法 AGU 路径，并记录唯一一次 synthesis-only 的路径迁移与新瓶颈。 |
 | `archive/2026-07-19/064_dispatch_predictor_timing_optimization.md` | 增加可同拍替换的 dispatch 寄存器，切断 frontend 到 Scoreboard/IssueQueue 的大规模负路径，并记录 predictor 新 WNS 与唯一一次 synthesis-only 结果。 |
+| `archive/2026-07-19/065_local_btb_macro_feedback_timing_optimization.md` | 缩窄 BTB 为 IROM 局部地址并删除 macro-move 冗余 next-PC 比较，记录 IPC 回归、DCache 加拍否决原因以及新一轮 WNS/TNS 路径迁移。 |
 
 ## 后续维护规则
 

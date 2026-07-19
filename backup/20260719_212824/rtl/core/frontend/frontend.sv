@@ -76,12 +76,9 @@ module frontend (
     // The previous synchronous predictor response chooses the address for the
     // next lockstep IROM+BTB read.  When no response is pending (reset,
     // redirect, or a queue-credit stall), fetch_pc_q preserves that address.
-    // IROM is immutable and writes_rd_noncontrol excludes every control-flow
-    // opcode.  Such a PC can never own a legitimate BTB redirect, so checking
-    // predicted_next_pc against pc+4 would only duplicate a 32-bit carry/compare
-    // chain on the synchronous predictor feedback path.
     assign macro_move_response_c = pending_valid_q && predictor_result_valid &&
         !pending_pc_q[2] &&
+        predicted_next_pc == pending_pc_q + 32'd4 &&
         writes_rd_noncontrol(irom_data_i) &&
         irom_data_next_i[6:0] == 7'b0010011 &&
         irom_data_next_i[14:12] == 3'b000 &&
