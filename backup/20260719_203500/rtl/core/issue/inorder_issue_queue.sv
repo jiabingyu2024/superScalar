@@ -261,7 +261,7 @@ module inorder_issue_queue #(
                                     entries_q[comb_i].uop.imm;
             end
 
-            if (entries_d[comb_i].valid &&
+            if (!issue_block_i && entries_d[comb_i].valid &&
                 select_src1_ready_c[comb_i] && select_src2_ready_c[comb_i] &&
                 fu_ready_c && (!selected_c || entry_age_c < selected_age_c)) begin
                 selected_c = 1'b1;
@@ -277,11 +277,6 @@ module inorder_issue_queue #(
             end
         end
 
-        // Keep payload preselection independent from recovery/serialization.
-        // Only the issue handshake is blocked; the continuously sampled exec
-        // payload therefore does not inherit the commit-to-flush control cone.
-        if (issue_block_i)
-            issue_valid_o = 1'b0;
         if (issue_valid_o)
             entries_d[selected_index_c].valid = 1'b0;
         if (enqueue_i)

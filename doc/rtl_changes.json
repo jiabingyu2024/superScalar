@@ -56,5 +56,35 @@
     "report": "docs/archive/2026-07-19/063_branch_alias_zero_offset_agu_timing_optimization.md",
     "vivado_report_tag": "v42_branch_alias_zeroimm_agu"
   },
+  "timing_optimization_20260719_203500": {
+    "timestamp": "2026-07-19T20:35:00+08:00",
+    "trigger": "Analyze the latest 200 MHz routed timing report, remove the shared violating cones with limited IPC impact, and invoke Vivado synthesis only once.",
+    "backup_dir": "backup/20260719_203500",
+    "rtl_files_modified": [
+      {
+        "path": "rtl/core/core_top.sv",
+        "change": "add a one-entry consume/refill dispatch register and bypass the branch taken mux for Scoreboard exception_tval"
+      },
+      {
+        "path": "rtl/core/frontend/branch_predictor.sv",
+        "change": "move BTB/PHT same-address write-first forwarding to the lookup result register inputs"
+      },
+      {
+        "path": "rtl/core/issue/inorder_issue_queue.sv",
+        "change": "preselect issue payload independently from recovery/serialization and mask only the final issue handshake"
+      }
+    ],
+    "cascade_scope": "full_reverify",
+    "verification": [
+      "git diff --check passed.",
+      "The single Vivado 2023.2 synthesis-only run completed with 0 errors.",
+      "Timing summary: WNS -1.400 ns, TNS -260.038 ns, 1006 failing setup endpoints.",
+      "The previous synthesis had WNS -1.236 ns, TNS -2041.110 ns, and 3665 failing setup endpoints.",
+      "FetchQueue-to-Scoreboard and FetchQueue-to-IssueQueue violating paths both fell to zero.",
+      "No full simulation or place/route was run by user request; steady-state IPC impact is structurally assessed but not measured."
+    ],
+    "report": "docs/archive/2026-07-19/064_dispatch_predictor_timing_optimization.md",
+    "vivado_report_tag": "v42_dispatch_collision_preselect"
+  },
   "notes": "No interface or filelist changes. The victim valid/tag is cleared at miss detection using the existing single tag-RAM write port. A refill killed after partial data writes therefore leaves the set invalid instead of exposing mixed-line data under the old tag. Full src2 was intentionally not run; TIMEOUT in the bounded windows is expected and was evaluated using progress counters and absence of the historical FAIL signature."
 }

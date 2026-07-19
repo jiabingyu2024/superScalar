@@ -64,13 +64,11 @@ module core_top (
         logic [31:0] actual_next;
     } branch_outcome_t;
 
-    uop_t id_uop_q, decoded_uop, dispatch_uop_q;
+    uop_t id_uop_q, decoded_uop;
     fetch_entry_t fetch_head_entry;
     logic fetch_valid, fetch_pop;
-    logic dispatch_valid_q, dispatch_fire, dispatch_exec_c, dispatch_ready_c;
+    logic dispatch_fire, dispatch_exec_c, dispatch_ready_c;
     logic dispatch_macro_move_c;
-    logic dispatch_macro_move_valid_q;
-    logic [31:0] dispatch_macro_move_instr_q;
     logic [1:0] dispatch_allocate_count_c;
     logic [IQ_CNT_W-1:0] issue_queue_count_q;
 
@@ -86,7 +84,7 @@ module core_top (
     logic [31:0] sb_src1_data, sb_src2_data;
 
     exec_req_t exec_q;
-    completion_t fixed_completion, scoreboard_fixed_completion_c;
+    completion_t fixed_completion;
     logic fixed_completion_valid;
     logic branch_resolve_valid_c, branch_taken_c;
     logic branch_execution_miss_c;
@@ -202,7 +200,7 @@ module core_top (
     assign stall_mem_c = issue_queue_count_q != 0 && !iq_load_ready_c;
     assign stall_muldiv_c = issue_queue_count_q != 0 &&
                             (!iq_muldiv_ready_c || !iq_bitmanip_ready_c);
-    assign stall_front_c = dispatch_valid_q && !dispatch_fire;
+    assign stall_front_c = fetch_valid && !dispatch_fire;
 
     perf_counters u_perf_counters (
         .clk(clk), .rst(rst), .commit_i(commit_normal),
@@ -220,23 +218,20 @@ module core_top (
         .stall_raw_o(stall_load_use_q)
     );
 
-    assign dispatch_exec_c = !dispatch_uop_q.exception_valid &&
-                             dispatch_uop_q.fu != FU_SYSTEM;
-    assign dispatch_macro_move_c = dispatch_macro_move_valid_q &&
-                                   !dispatch_uop_q.exception_valid;
+    assign dispatch_exec_c = !decoded_uop.exception_valid &&
+                             decoded_uop.fu != FU_SYSTEM;
+    assign dispatch_macro_move_c = fetch_head_entry.macro_move_valid &&
+                                   !decoded_uop.exception_valid;
     assign dispatch_allocate_count_c = dispatch_macro_move_c ? 2'd2 : 2'd1;
     assign dispatch_ready_c = !serial_pending_q &&
         (scoreboard_count_q + SB_CNT_W'(dispatch_allocate_count_c) <=
          SB_CNT_W'(SCOREBOARD_DEPTH) + SB_CNT_W'(commit_fire)) &&
         (dispatch_exec_c ? issue_queue_count_q < IQ_CNT_W'(ISSUE_QUEUE_DEPTH) :
          (scoreboard_count_q == 0 && issue_queue_count_q == 0)) &&
-        (!(dispatch_uop_q.serialize || dispatch_uop_q.exception_valid) ||
+        (!(decoded_uop.serialize || decoded_uop.exception_valid) ||
          (scoreboard_count_q == 0 && issue_queue_count_q == 0));
-    assign dispatch_fire = dispatch_valid_q && dispatch_ready_c && !redirect_valid;
-    // A one-entry registered dispatch stage accepts a replacement in the same
-    // cycle that the current uop dispatches, preserving one-uop/cycle steady
-    // throughput while cutting the fetch/decode-to-scoreboard timing cone.
-    assign fetch_pop = (!dispatch_valid_q || dispatch_fire) && !redirect_valid;
+    assign dispatch_fire = fetch_valid && dispatch_ready_c && !redirect_valid;
+    assign fetch_pop = dispatch_fire;
 
     frontend u_frontend (
         .clk(clk), .rst(rst), .redirect_valid_i(redirect_valid),
@@ -256,26 +251,10 @@ module core_top (
     );
 
     decoder u_decoder (.fetch_i(fetch_head_entry), .uop_o(decoded_uop));
-    always_ff @(posedge clk) begin
-        if (rst || full_flush) begin
-            dispatch_valid_q <= 1'b0;
-            dispatch_macro_move_valid_q <= 1'b0;
-        end else if (fetch_pop) begin
-            dispatch_valid_q <= fetch_valid;
-            if (fetch_valid) begin
-                dispatch_uop_q <= decoded_uop;
-                dispatch_macro_move_valid_q <= fetch_head_entry.macro_move_valid;
-                dispatch_macro_move_instr_q <= fetch_head_entry.macro_move_instr;
-            end else begin
-                dispatch_macro_move_valid_q <= 1'b0;
-            end
-        end
-    end
     assign rf_write_valid = wb_valid_q;
     assign rf_write_data = wb_data_q;
     regfile u_regfile (
-        .clk(clk), .rst(rst), .rs1_addr_i(dispatch_uop_q.rs1),
-        .rs2_addr_i(dispatch_uop_q.rs2),
+        .clk(clk), .rst(rst), .rs1_addr_i(decoded_uop.rs1), .rs2_addr_i(decoded_uop.rs2),
         .rs1_data_o(rf_rs1_data), .rs2_data_o(rf_rs2_data),
         .write_valid_i(rf_write_valid), .write_addr_i(wb_rd_q),
         .write_data_i(rf_write_data)
@@ -283,15 +262,15 @@ module core_top (
 
     scoreboard u_scoreboard (
         .clk(clk), .rst(rst), .flush_i(full_flush),
-        .allocate_i(dispatch_fire), .allocate_uop_i(dispatch_uop_q),
+        .allocate_i(dispatch_fire), .allocate_uop_i(decoded_uop),
         .allocate_csr_src_i(csr_src_value),
         .allocate_second_i(dispatch_fire && dispatch_macro_move_c),
-        .allocate_second_pc_i(dispatch_uop_q.pc + 32'd4),
-        .allocate_second_instr_i(dispatch_macro_move_instr_q),
-        .allocate_second_rd_i(dispatch_macro_move_instr_q[11:7]),
+        .allocate_second_pc_i(fetch_head_entry.pc + 32'd4),
+        .allocate_second_instr_i(fetch_head_entry.macro_move_instr),
+        .allocate_second_rd_i(fetch_head_entry.macro_move_instr[11:7]),
         .allocate_trans_id_o(dispatch_ptr_q),
         .fixed_complete_i(fixed_completion_valid),
-        .fixed_completion_i(scoreboard_fixed_completion_c),
+        .fixed_completion_i(fixed_completion),
         .load_complete_i(load_completion_valid),
         .load_trans_id_i(load_completion_meta.trans_id),
         .load_result_i(load_result),
@@ -300,7 +279,7 @@ module core_top (
         .slow_trans_id_i(slow_resp_tid), .slow_result_i(slow_resp_result),
         .commit_i(commit_fire), .commit_trans_id_o(commit_ptr_q),
         .commit_entry_o(commit_entry), .count_o(scoreboard_count_q),
-        .serial_pending_o(serial_pending_q), .query_uop_i(dispatch_uop_q),
+        .serial_pending_o(serial_pending_q), .query_uop_i(decoded_uop),
         .query_rs1_found_o(src1_found), .query_rs1_ready_o(sb_src1_ready),
         .query_rs1_trans_id_o(src1_tid), .query_rs1_data_o(sb_src1_data),
         .query_rs2_found_o(src2_found), .query_rs2_ready_o(sb_src2_ready),
@@ -308,7 +287,7 @@ module core_top (
     );
 
     operand_resolver u_operand_resolver (
-        .uop_i(dispatch_uop_q), .rf_rs1_data_i(rf_rs1_data),
+        .uop_i(decoded_uop), .rf_rs1_data_i(rf_rs1_data),
         .rf_rs2_data_i(rf_rs2_data), .wb_valid_i(wb_valid_q),
         .wb_rd_i(wb_rd_q), .wb_data_i(wb_data_q),
         .rs1_found_i(src1_found), .rs1_scoreboard_ready_i(sb_src1_ready),
@@ -336,9 +315,8 @@ module core_top (
     // routing the general completion bypass into csr_src created hundreds of
     // false-by-construction DCache-data paths.
     always_comb begin
-        csr_src_value = dispatch_uop_q.rs1 == 0 ? 32'd0 : rf_rs1_data;
-        if (wb_valid_q && dispatch_uop_q.rs1 == wb_rd_q &&
-            dispatch_uop_q.rs1 != 0)
+        csr_src_value = decoded_uop.rs1 == 0 ? 32'd0 : rf_rs1_data;
+        if (wb_valid_q && decoded_uop.rs1 == wb_rd_q && decoded_uop.rs1 != 0)
             csr_src_value = wb_data_q;
     end
 
@@ -357,13 +335,13 @@ module core_top (
     inorder_issue_queue #(.DEPTH(ISSUE_QUEUE_DEPTH)) u_issue_queue (
         .clk(clk), .rst(rst), .flush_i(full_flush),
         .enqueue_i(dispatch_fire && dispatch_exec_c),
-        .enqueue_uop_i(dispatch_uop_q), .enqueue_trans_id_i(dispatch_ptr_q),
-        .enqueue_src1_ready_i((dispatch_uop_q.fu == FU_LOAD ||
-                               dispatch_uop_q.fu == FU_STORE) ?
+        .enqueue_uop_i(decoded_uop), .enqueue_trans_id_i(dispatch_ptr_q),
+        .enqueue_src1_ready_i((decoded_uop.fu == FU_LOAD ||
+                               decoded_uop.fu == FU_STORE) ?
                               src1_mem_ready : src1_ready),
         .enqueue_src1_trans_id_i(src1_tid),
-        .enqueue_src1_value_i((dispatch_uop_q.fu == FU_LOAD ||
-                               dispatch_uop_q.fu == FU_STORE) ?
+        .enqueue_src1_value_i((decoded_uop.fu == FU_LOAD ||
+                               decoded_uop.fu == FU_STORE) ?
                               src1_mem_value : src1_value),
         .enqueue_src2_ready_i(src2_ready),
         .enqueue_src2_trans_id_i(src2_tid),
@@ -404,15 +382,6 @@ module core_top (
         .branch_kind_o(branch_kind_c), .load_enqueue_o(exec_load_enqueue),
         .store_enqueue_o(exec_store_enqueue), .mem_addr_o(exec_mem_addr_calc)
     );
-
-    // exception_tval is observed only when exception_valid is set.  For a
-    // branch alignment fault it is always the target address, so bypass the
-    // taken/not-taken actual-next mux on the wide Scoreboard payload path.
-    always_comb begin
-        scoreboard_fixed_completion_c = fixed_completion;
-        if (exec_q.uop.fu == FU_BRANCH)
-            scoreboard_fixed_completion_c.exception_tval = branch_target_c;
-    end
 
     // Conditional and direct-jump targets are immutable in the IROM image.
     // Their saved predictor metadata therefore determines whether prediction
