@@ -78,6 +78,33 @@ private:
     bool done_ = false;
 };
 
+class RtThreadChecker : public SrcObserveChecker {
+public:
+    explicit RtThreadChecker(const Options& opt) : SrcObserveChecker(opt) {}
+    std::string kind() const override { return "rtthread"; }
+    void pre_tick(uint64_t cycle, const Request& req, const MemoryModel& mem,
+                  SimResult& result) override;
+    bool done() const override { return done_; }
+
+private:
+    bool done_ = false;
+};
+
+class RtThreadLiveChecker : public SrcObserveChecker {
+public:
+    explicit RtThreadLiveChecker(const Options& opt)
+        : SrcObserveChecker(opt), commands_(rtthread_live_commands(opt.test_name)) {}
+    std::string kind() const override { return "rtthread_live"; }
+    void pre_tick(uint64_t cycle, const Request& req, const MemoryModel& mem,
+                  SimResult& result) override;
+    bool done() const override { return done_; }
+
+private:
+    std::vector<uint32_t> commands_;
+    size_t response_index_ = 0;
+    bool done_ = false;
+};
+
 }  // namespace sim
 
 #endif  // TB_VERILATOR_CHECKER_SRC_H

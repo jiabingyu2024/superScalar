@@ -16,27 +16,34 @@ module csr_file (
     input  logic [31:0] trap_pc_i,
     input  logic [4:0]  trap_cause_i,
     input  logic [31:0] trap_tval_i,
+    input  logic        timer_interrupt_valid_i,
+    input  logic [31:0] interrupt_pc_i,
+    input  logic        timer_irq_i,
     input  logic        mret_valid_i,
     input  logic [63:0] cycle_i,
     input  logic [63:0] instret_i,
     output logic [31:0] mtvec_o,
-    output logic [31:0] mepc_o
+    output logic [31:0] mepc_o,
+    output logic        timer_interrupt_pending_o
 );
-    logic [31:0] mstatus_q, mtvec_q, mscratch_q, mepc_q, mcause_q, mtval_q;
+    logic [31:0] mstatus_q, mie_q, mtvec_q, mscratch_q, mepc_q, mcause_q, mtval_q;
 
     assign mtvec_o = {mtvec_q[31:2], 2'b00};
     assign mepc_o  = {mepc_q[31:2], 2'b00};
+    assign timer_interrupt_pending_o = mstatus_q[3] && mie_q[7] && timer_irq_i;
 
     always_comb begin
         read_data_o = 32'd0;
         unique case (read_addr_i)
             12'h300: read_data_o = mstatus_q;
             12'h301: read_data_o = 32'h4000_1100;
+            12'h304: read_data_o = mie_q;
             12'h305: read_data_o = mtvec_q;
             12'h340: read_data_o = mscratch_q;
             12'h341: read_data_o = mepc_q;
             12'h342: read_data_o = mcause_q;
             12'h343: read_data_o = mtval_q;
+            12'h344: read_data_o = {24'd0, timer_irq_i, 7'd0};
             12'hC00: read_data_o = cycle_i[31:0];
             12'hC80: read_data_o = cycle_i[63:32];
             12'hC02: read_data_o = instret_i[31:0];
@@ -49,6 +56,7 @@ module csr_file (
     always_ff @(posedge clk) begin
         if (rst) begin
             mstatus_q  <= 32'h0000_1800;
+            mie_q      <= 32'd0;
             mtvec_q    <= 32'd0;
             mscratch_q <= 32'd0;
             mepc_q     <= 32'd0;
@@ -61,6 +69,13 @@ module csr_file (
             mstatus_q[7] <= mstatus_q[3];
             mstatus_q[3] <= 1'b0;
             mstatus_q[12:11] <= 2'b11;
+        end else if (timer_interrupt_valid_i) begin
+            mepc_q <= {interrupt_pc_i[31:2], 2'b00};
+            mcause_q <= 32'h8000_0007;
+            mtval_q <= 32'd0;
+            mstatus_q[7] <= mstatus_q[3];
+            mstatus_q[3] <= 1'b0;
+            mstatus_q[12:11] <= 2'b11;
         end else begin
             if (mret_valid_i) begin
                 mstatus_q[3] <= mstatus_q[7];
@@ -70,6 +85,7 @@ module csr_file (
             if (write_valid_i) begin
                 unique case (write_addr_i)
                     12'h300: mstatus_q <= write_data_i;
+                    12'h304: mie_q <= write_data_i & 32'h0000_0080;
                     12'h305: mtvec_q <= {write_data_i[31:2], 2'b00};
                     12'h340: mscratch_q <= write_data_i;
                     12'h341: mepc_q <= {write_data_i[31:2], 2'b00};

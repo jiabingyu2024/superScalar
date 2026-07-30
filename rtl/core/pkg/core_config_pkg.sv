@@ -19,7 +19,7 @@ package core_config_pkg;
 
     localparam int unsigned XLEN               = 32;
     localparam logic [31:0] RESET_PC           = 32'h8000_0000;
-    localparam int unsigned IROM_BYTE_ADDR_W   = 14;
+    localparam int unsigned IROM_BYTE_ADDR_W   = 16;
     localparam int unsigned FETCH_QUEUE_DEPTH  = 4;
     localparam int unsigned SCOREBOARD_DEPTH   = 8;
     localparam int unsigned STORE_BUFFER_DEPTH = 4;

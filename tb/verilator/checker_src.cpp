@@ -230,4 +230,58 @@ void SrcLampSegChecker::post_tick(uint64_t cycle, const Request& req, const Memo
     }
 }
 
+void RtThreadChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryModel& mem,
+                               SimResult& result) {
+    SrcObserveChecker::pre_tick(cycle, req, mem, result);
+    if (!req.perip_wen || (req.perip_addr & ~uint32_t{3}) != RTT_STATUS_ADDR) return;
+
+    const uint32_t marker = req.perip_wdata;
+    result.fail_code = marker & 0xffu;
+    result.cycles = cycle;
+    if ((marker & 0xffffff00u) == 0x52544600u) {
+        result.status = "FAIL";
+        result.reason = "RT-Thread firmware reported failure";
+    } else if ((marker & 0xffff00ffu) == 0x52540001u) {
+        result.status = "PASS";
+        result.reason = "RT-Thread firmware reported success";
+    } else {
+        result.status = "FAIL";
+        result.reason = "unknown RT-Thread status marker";
+    }
+    done_ = true;
+}
+
+void RtThreadLiveChecker::pre_tick(uint64_t cycle, const Request& req,
+                                   const MemoryModel& mem, SimResult& result) {
+    SrcObserveChecker::pre_tick(cycle, req, mem, result);
+    if (!req.perip_wen || (req.perip_addr & ~uint32_t{3}) != RTT_STATUS_ADDR) return;
+
+    const uint32_t marker = req.perip_wdata;
+    if (marker == RTT_LIVE_READY) return;
+    if ((marker & 0xffff0000u) == RTT_LIVE_FAIL) {
+        result.status = "FAIL";
+        result.reason = "live RT-Thread command failed";
+        result.fail_code = marker & 0xffu;
+        result.cycles = cycle;
+        done_ = true;
+        return;
+    }
+    if ((marker & 0xffffff00u) != RTT_LIVE_PASS ||
+        response_index_ >= commands_.size() ||
+        (marker & 0xffu) != commands_[response_index_]) {
+        result.status = "FAIL";
+        result.reason = "unexpected live RT-Thread response";
+        result.cycles = cycle;
+        done_ = true;
+        return;
+    }
+    ++response_index_;
+    if (response_index_ == commands_.size()) {
+        result.status = "PASS";
+        result.reason = "all live RT-Thread commands passed";
+        result.cycles = cycle;
+        done_ = true;
+    }
+}
+
 }  // namespace sim

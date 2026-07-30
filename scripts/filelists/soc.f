@@ -5,6 +5,7 @@
 rtl/soc/seg7.sv
 rtl/soc/display_seg.sv
 rtl/soc/counter.sv
+rtl/soc/MachineTimer.sv
 rtl/soc/DramBramAdapter.sv
 rtl/soc/SocMemBridge.sv
 rtl/soc/dram_driver.sv

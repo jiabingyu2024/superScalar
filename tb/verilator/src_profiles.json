@@ -56,4 +56,17 @@
     "fail_marker": "0x90606090",
     "expected_rv32i_count": 37
   }
+  ,
+  {"name":"rtthread-startup","checker":"rtthread"},
+  {"name":"rtthread-boot","checker":"rtthread"},
+  {"name":"rtthread-tick","checker":"rtthread"},
+  {"name":"rtthread-context","checker":"rtthread"},
+  {"name":"rtthread-preempt","checker":"rtthread"}
+  ,
+  {"name":"rtthread-live-ping","image":"rtthread-live","checker":"rtthread-live"},
+  {"name":"rtthread-live-tick","image":"rtthread-live","checker":"rtthread-live"},
+  {"name":"rtthread-live-context","image":"rtthread-live","checker":"rtthread-live"},
+  {"name":"rtthread-live-memory","image":"rtthread-live","checker":"rtthread-live"},
+  {"name":"rtthread-live-preempt","image":"rtthread-live","checker":"rtthread-live"},
+  {"name":"rtthread-live-all","image":"rtthread-live","checker":"rtthread-live"}
 ]

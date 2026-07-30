@@ -23,6 +23,7 @@ module fixed_execute (
 
     always_comb begin
         completion_o = '0;
+        completion_o.next_pc = exec_i.uop.pc + 32'd4;
         completion_valid_o = 1'b0;
         branch_resolve_valid_o = 1'b0;
         branch_taken_o = 1'b0;
@@ -85,6 +86,7 @@ module fixed_execute (
                         branch_kind_o = PRED_COND;
                     end
                     completion_o.result = exec_i.uop.pc + 32'd4;
+                    completion_o.next_pc = branch_actual_next_o;
                     if (branch_taken_o && branch_actual_next_o[1:0] != 0) begin
                         completion_o.exception_valid = 1'b1;
                         completion_o.exception_cause = 5'd0;

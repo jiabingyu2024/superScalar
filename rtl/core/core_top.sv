@@ -7,6 +7,7 @@
 module core_top (
     input  logic clk,
     input  logic rst,
+    input  logic timer_irq_i,
     output logic [31:0] irom_addr_o,
     output logic irom_ena_o,
     input  logic [31:0] irom_data_i,
@@ -142,6 +143,7 @@ module core_top (
     logic [31:0] csr_read_data, csr_write_data, csr_result;
     logic csr_write_valid, csr_trap_valid, csr_mret_valid;
     logic [31:0] csr_mtvec, csr_mepc;
+    logic csr_timer_interrupt_pending, timer_interrupt_take;
 
     logic predictor_update_valid, predictor_commit_call, predictor_commit_return;
     logic [31:0] predictor_update_target;
@@ -469,10 +471,17 @@ module core_top (
     end
     assign commit_fire = commit_ready;
     assign commit_normal = commit_fire && !commit_entry.exception_valid;
+    // Conservatively take an interrupt only after a normal architectural
+    // commit and with no outstanding memory transaction.  This keeps the
+    // first RTOS-capable implementation precise without requiring committed
+    // stores to survive the existing full-flush path.
+    assign timer_interrupt_take = csr_timer_interrupt_pending && commit_normal &&
+                                  commit_entry.sys_op == SYS_NONE && mem_quiescent;
     assign commit_store_mark = commit_normal && commit_entry.fu == FU_STORE && commit_entry.store_slot_valid;
     recovery_ctrl u_recovery_ctrl (
         .commit_fire_i(commit_fire), .commit_entry_i(commit_entry),
-        .mtvec_i(csr_mtvec), .mepc_i(csr_mepc), .branch_miss_i(branch_miss),
+        .mtvec_i(csr_mtvec), .mepc_i(csr_mepc),
+        .timer_interrupt_take_i(timer_interrupt_take), .branch_miss_i(branch_miss),
         .branch_actual_next_i(branch_actual_next), .full_flush_o(full_flush),
         .redirect_valid_o(redirect_valid), .redirect_target_o(redirect_target)
     );
@@ -498,8 +507,12 @@ module core_top (
         .write_valid_i(csr_write_valid), .write_addr_i(csr_write_addr),
         .write_data_i(csr_write_data), .trap_valid_i(csr_trap_valid),
         .trap_pc_i(commit_entry.pc), .trap_cause_i(commit_entry.exception_cause),
-        .trap_tval_i(commit_entry.exception_tval), .mret_valid_i(csr_mret_valid),
-        .cycle_i(cycle_q), .instret_i(commit_count_q), .mtvec_o(csr_mtvec), .mepc_o(csr_mepc)
+        .trap_tval_i(commit_entry.exception_tval),
+        .timer_interrupt_valid_i(timer_interrupt_take),
+        .interrupt_pc_i(commit_entry.next_pc), .timer_irq_i(timer_irq_i),
+        .mret_valid_i(csr_mret_valid), .cycle_i(cycle_q), .instret_i(commit_count_q),
+        .mtvec_o(csr_mtvec), .mepc_o(csr_mepc),
+        .timer_interrupt_pending_o(csr_timer_interrupt_pending)
     );
 
     assign predictor_commit_call = commit_normal && commit_entry.is_call;

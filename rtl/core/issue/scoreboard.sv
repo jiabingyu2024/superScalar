@@ -96,6 +96,7 @@ module scoreboard #(
             if (fixed_complete_i && entries_q[fixed_completion_i.trans_id].occupied) begin
                 entries_q[fixed_completion_i.trans_id].done <= 1'b1;
                 entries_q[fixed_completion_i.trans_id].result <= fixed_completion_i.result;
+                entries_q[fixed_completion_i.trans_id].next_pc <= fixed_completion_i.next_pc;
                 entries_q[fixed_completion_i.trans_id].exception_valid <=
                     fixed_completion_i.exception_valid;
                 entries_q[fixed_completion_i.trans_id].exception_cause <=
@@ -133,6 +134,7 @@ module scoreboard #(
                                                   allocate_uop_i.fu == FU_SYSTEM;
                 entries_q[allocate_ptr_q].pc <= allocate_uop_i.pc;
                 entries_q[allocate_ptr_q].instr <= allocate_uop_i.instr;
+                entries_q[allocate_ptr_q].next_pc <= allocate_uop_i.pc + 32'd4;
                 entries_q[allocate_ptr_q].rd <= allocate_uop_i.rd;
                 entries_q[allocate_ptr_q].writes_rd <= allocate_uop_i.writes_rd;
                 entries_q[allocate_ptr_q].fu <= allocate_uop_i.fu;

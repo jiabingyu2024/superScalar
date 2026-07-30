@@ -51,9 +51,13 @@ module student_top #(
 `endif
 );
     logic [31:0] irom_addr;
-    logic [11:0] irom_word_addr;
+    logic [13:0] irom_word_addr;
+    logic [13:0] irom_data_word_addr;
     logic [31:0] instruction;
+    logic [31:0] irom_data_read;
     logic        irom_ena;
+    logic        irom_data_ena;
+    logic        timer_irq;
 
     logic        dmem_req_valid;
     logic        dmem_req_ready;
@@ -108,11 +112,12 @@ module student_top #(
         end
     end
 
-    assign irom_word_addr = irom_addr[13:2];
+    assign irom_word_addr = irom_addr[15:2];
 
     myCPU Core_cpu (
         .cpu_rst          (cpu_rst_sync),
         .cpu_clk          (w_cpu_clk),
+        .timer_irq        (timer_irq),
         .irom_addr        (irom_addr),
         .irom_data        (instruction),
         .irom_ena         (irom_ena),
@@ -163,6 +168,16 @@ module student_top #(
         .douta(instruction)
     );
 
+    // A second ROM instance gives the Harvard core a read-only data view of
+    // program memory.  This is required for C string literals, .rodata, and
+    // startup copies of initialized .data without redesigning the fetch port.
+    IROM_0 Mem_IROM_Data (
+        .addra(irom_data_word_addr),
+        .clka (w_cpu_clk),
+        .ena  (irom_data_ena),
+        .douta(irom_data_read)
+    );
+
     SocMemBridge #(
         .P_DRAM_ADDR_START(P_DRAM_ADDR_START),
         .P_DRAM_ADDR_END  (P_DRAM_ADDR_END)
@@ -180,6 +195,10 @@ module student_top #(
         .req_uncached      (dmem_req_uncached),
         .resp_valid        (dmem_resp_valid),
         .resp_rdata        (dmem_resp_rdata),
+        .irom_data_addr_o  (irom_data_word_addr),
+        .irom_data_ena_o   (irom_data_ena),
+        .irom_data_i       (irom_data_read),
+        .timer_irq_o       (timer_irq),
         .virtual_sw_input  (virtual_sw_cpu_d2),
         .virtual_key_input (virtual_key_cpu_d2),
         .virtual_seg_output(virtual_seg),

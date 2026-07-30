@@ -270,15 +270,17 @@ def rv32_tests(args: argparse.Namespace) -> list[TestCase]:
 
 
 def src_tests(args: argparse.Namespace) -> list[TestCase]:
+    profiles = load_src_profiles()
     roots: list[Path]
     if args.test:
-        roots = [REPO / "data" / args.test]
+        profile = profiles.get(args.test, {})
+        image_name = str(profile.get("image", args.test))
+        roots = [REPO / "data" / image_name]
         if not roots[0].is_dir():
             raise SystemExit(f"unknown src test: {args.test}")
     else:
         roots = sorted(p for p in (REPO / "data").glob("src*") if p.is_dir())
 
-    profiles = load_src_profiles()
     tests: list[TestCase] = []
     for root in roots:
         irom = root / "irom.hex"
@@ -286,8 +288,9 @@ def src_tests(args: argparse.Namespace) -> list[TestCase]:
         if not irom.exists() or not dram.exists():
             continue
         dumps = sorted(root.glob("*.dump"))
-        profile = profiles.get(root.name, {})
-        tests.append(TestCase(name=root.name, mode="src", irom_hex=irom,
+        test_name = args.test if args.test else root.name
+        profile = profiles.get(test_name, {})
+        tests.append(TestCase(name=test_name, mode="src", irom_hex=irom,
                               dram_hex=dram, dump=dumps[0] if dumps else None,
                               src_checker=str(profile.get("checker", "observe")),
                               src_led_pass=parse_int_value(profile.get("led_pass")),

@@ -55,12 +55,12 @@ void MemoryModel::load_sparse_words(const std::string& path, uint32_t base) {
 }
 
 uint32_t MemoryModel::irom_data_a() const {
-    size_t idx = (irom_addr_a_q_ >> 2) & 0xfffu;
+    size_t idx = (irom_addr_a_q_ >> 2) & 0x3fffu;
     return idx < irom_.size() ? irom_[idx] : 0;
 }
 
 uint32_t MemoryModel::irom_data_b() const {
-    size_t idx = (irom_addr_b_q_ >> 2) & 0xfffu;
+    size_t idx = (irom_addr_b_q_ >> 2) & 0x3fffu;
     return idx < irom_.size() ? irom_[idx] : 0;
 }
 
@@ -107,11 +107,24 @@ uint32_t MemoryModel::current_perip_rdata() const {
     if (cnt_sel_pipe0_) {
         return counter_ms;
     }
+    if (timer_sel_pipe0_) {
+        switch (mmio_addr_pipe0_) {
+            case MTIMECMP_LO_ADDR: return static_cast<uint32_t>(mtimecmp);
+            case MTIMECMP_HI_ADDR: return static_cast<uint32_t>(mtimecmp >> 32);
+            case MTIME_LO_ADDR: return static_cast<uint32_t>(mtime);
+            case MTIME_HI_ADDR: return static_cast<uint32_t>(mtime >> 32);
+            default: return 0;
+        }
+    }
     return 0;
 }
 
 bool MemoryModel::current_dmem_resp_valid() const {
-    return read_valid_pipe0_ || mmio_sel_pipe0_ || cnt_sel_pipe0_;
+    return read_valid_pipe0_ || mmio_sel_pipe0_ || cnt_sel_pipe0_ || timer_sel_pipe0_;
+}
+
+bool MemoryModel::machine_timer_irq() const {
+    return mtime >= mtimecmp;
 }
 
 void MemoryModel::tick_counter(uint64_t cycles_per_ms) {
@@ -139,8 +152,11 @@ void MemoryModel::tick_request(const Request& req, bool advance_counter,
                         (req.perip_addr == SW0_ADDR || req.perip_addr == SW1_ADDR ||
                          req.perip_addr == KEY_ADDR || req.perip_addr == SEG_ADDR);
     bool is_counter_read = !req.perip_wen && req.perip_addr == CNT_ADDR;
+    bool is_timer = req.perip_addr == MTIMECMP_LO_ADDR ||
+                    req.perip_addr == MTIMECMP_HI_ADDR ||
+                    req.perip_addr == MTIME_LO_ADDR || req.perip_addr == MTIME_HI_ADDR;
     bool is_normal_mem_read = !req.perip_wen && req.perip_addr != 0 &&
-                              !is_mmio_read && !is_counter_read;
+                              !is_mmio_read && !is_counter_read && !is_timer;
 
     read_valid_pipe1_ = read_valid_pipe0_;
     read_addr_pipe1_ = read_addr_pipe0_;
@@ -149,9 +165,11 @@ void MemoryModel::tick_request(const Request& req, bool advance_counter,
 
     mmio_sel_pipe1_ = mmio_sel_pipe0_;
     cnt_sel_pipe1_ = cnt_sel_pipe0_;
+    timer_sel_pipe1_ = timer_sel_pipe0_;
     mmio_addr_pipe1_ = mmio_addr_pipe0_;
     mmio_sel_pipe0_ = is_mmio_read;
     cnt_sel_pipe0_ = is_counter_read;
+    timer_sel_pipe0_ = !req.perip_wen && is_timer;
     mmio_addr_pipe0_ = req.perip_addr;
 
     if (req.perip_wen) {
@@ -162,6 +180,16 @@ void MemoryModel::tick_request(const Request& req, bool advance_counter,
         } else if (req.perip_addr == CNT_ADDR) {
             if (req.perip_wdata == CNT_START_CMD) counter_enabled = true;
             if (req.perip_wdata == CNT_STOP_CMD) counter_enabled = false;
+        } else if (req.perip_addr == MTIMECMP_LO_ADDR) {
+            mtimecmp = (mtimecmp & 0xffffffff00000000ull) | req.perip_wdata;
+        } else if (req.perip_addr == MTIMECMP_HI_ADDR) {
+            mtimecmp = (mtimecmp & 0x00000000ffffffffull) |
+                       (static_cast<uint64_t>(req.perip_wdata) << 32);
+        } else if (req.perip_addr == MTIME_LO_ADDR) {
+            mtime = (mtime & 0xffffffff00000000ull) | req.perip_wdata;
+        } else if (req.perip_addr == MTIME_HI_ADDR) {
+            mtime = (mtime & 0x00000000ffffffffull) |
+                    (static_cast<uint64_t>(req.perip_wdata) << 32);
         } else {
             write_word_masked(req.perip_addr, req.perip_wdata, req.perip_mask);
         }
@@ -170,6 +198,7 @@ void MemoryModel::tick_request(const Request& req, bool advance_counter,
     if (advance_counter) {
         tick_counter(cycles_per_ms);
     }
+    mtime++;
 }
 
 void MemoryModel::tick_posedge(const Request& req, uint64_t cycles_per_ms) {

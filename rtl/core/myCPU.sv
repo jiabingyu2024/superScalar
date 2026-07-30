@@ -7,6 +7,7 @@
 module myCPU (
     input  logic        cpu_rst,
     input  logic        cpu_clk,
+    input  logic        timer_irq,
     output logic [31:0] irom_addr,
     input  logic [31:0] irom_data,
     output logic        irom_ena,
@@ -54,7 +55,7 @@ module myCPU (
     logic [63:0] perf_stall_front, perf_stall_mem, perf_stall_muldiv, perf_stall_load_use;
 
     core_top u_core_top (
-        .clk(cpu_clk), .rst(cpu_rst),
+        .clk(cpu_clk), .rst(cpu_rst), .timer_irq_i(timer_irq),
         .irom_addr_o(irom_addr), .irom_ena_o(irom_ena), .irom_data_i(irom_data),
         .dmem_req_valid_o(dmem_req_valid), .dmem_req_ready_i(dmem_req_ready),
         .dmem_req_write_o(dmem_req_write), .dmem_req_addr_o(dmem_req_addr),

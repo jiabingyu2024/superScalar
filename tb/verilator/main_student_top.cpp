@@ -38,6 +38,8 @@ int main(int argc, char** argv) {
         sim::PerfStats perf;
         perf.set_cpu_freq_mhz(opt.cpu_freq_mhz);
         sim::SimResult result;
+        const std::vector<uint32_t> live_commands = sim::rtthread_live_commands(opt.test_name);
+        size_t live_command_index = 0;
 
         double sim_time_ps = 0.0;
         uint64_t trace_time = 0;
@@ -113,12 +115,22 @@ int main(int argc, char** argv) {
                                !sim::stop_requested(); ++cycle) {
             uint64_t now = cycle + 1;
             last_cycle = now;
+            if (live_command_index < live_commands.size()) {
+                top.virtual_sw = (static_cast<uint64_t>(live_command_index + 1) << 32) |
+                                 live_commands[live_command_index];
+            }
             sim::Request req = advance_to_next_cpu_posedge();
 
             sim::log_interesting_request(now, opt, req);
             perf.observe_request(now, req);
             perf.observe_core(now, sim::capture_student_top_perf(top));
             checker->pre_tick(now, req, mirror, result);
+            if (req.perip_wen && (req.perip_addr & ~uint32_t{3}) == sim::RTT_STATUS_ADDR &&
+                (req.perip_wdata & 0xffffff00u) == sim::RTT_LIVE_PASS &&
+                live_command_index < live_commands.size() &&
+                (req.perip_wdata & 0xffu) == live_commands[live_command_index]) {
+                ++live_command_index;
+            }
             mirror.tick_request(req, false, opt.counter_cycles_per_ms);
             checker->post_tick(now, req, mirror, result);
             perf.observe_state(now, mirror.counter_ms);

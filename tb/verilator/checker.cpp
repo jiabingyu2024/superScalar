@@ -28,6 +28,12 @@ std::unique_ptr<Checker> make_checker(const Options& opt) {
         if (opt.src_checker == "lampseg") {
             return std::make_unique<SrcLampSegChecker>(opt);
         }
+        if (opt.src_checker == "rtthread") {
+            return std::make_unique<RtThreadChecker>(opt);
+        }
+        if (opt.src_checker == "rtthread-live") {
+            return std::make_unique<RtThreadLiveChecker>(opt);
+        }
         throw std::runtime_error("unknown src checker: " + opt.src_checker);
     }
     throw std::runtime_error("unknown mode: " + opt.mode);

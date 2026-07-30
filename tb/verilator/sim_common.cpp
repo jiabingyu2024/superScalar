@@ -7,6 +7,16 @@
 
 namespace sim {
 
+std::vector<uint32_t> rtthread_live_commands(const std::string& test_name) {
+    if (test_name == "rtthread-live-ping") return {1};
+    if (test_name == "rtthread-live-tick") return {2};
+    if (test_name == "rtthread-live-context") return {3};
+    if (test_name == "rtthread-live-memory") return {4};
+    if (test_name == "rtthread-live-preempt") return {5};
+    if (test_name == "rtthread-live-all") return {1, 2, 3, 4, 5};
+    return {};
+}
+
 std::string hex32(uint32_t value) {
     std::ostringstream os;
     os << "0x" << std::hex << std::setw(8) << std::setfill('0') << value;

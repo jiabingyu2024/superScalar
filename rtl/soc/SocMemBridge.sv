@@ -1,6 +1,8 @@
 `timescale 1ns / 1ps
 
 module SocMemBridge #(
+    parameter logic [31:0] P_IROM_ADDR_START = 32'h8000_0000,
+    parameter logic [31:0] P_IROM_ADDR_END   = 32'h8001_0000,
     parameter logic [31:0] P_DRAM_ADDR_START = 32'h8010_0000,
     parameter logic [31:0] P_DRAM_ADDR_END   = 32'h8014_0000
 ) (
@@ -20,6 +22,11 @@ module SocMemBridge #(
     output logic        resp_valid,
     output logic [31:0] resp_rdata,
 
+    output logic [13:0] irom_data_addr_o,
+    output logic        irom_data_ena_o,
+    input  logic [31:0] irom_data_i,
+    output logic        timer_irq_o,
+
     input  logic [63:0] virtual_sw_input,
     input  logic [7:0]  virtual_key_input,
     output logic [39:0] virtual_seg_output,
@@ -35,12 +42,18 @@ module SocMemBridge #(
     localparam logic [31:0] CNT_STOP_CMD  = 32'hffff_ffff;
 
     logic dram_sel;
+    logic irom_sel;
+    logic timer_sel;
     logic mmio_sel;
     logic cnt_sel;
     logic dram_req_valid;
     logic dram_req_ready;
     logic dram_resp_valid;
     logic [31:0] dram_resp_rdata;
+    logic timer_resp_valid;
+    logic [31:0] timer_resp_rdata;
+    logic irom_resp_valid_q;
+    logic [1:0] irom_offset_q;
     logic mmio_resp_valid_q;
     logic [31:0] mmio_resp_rdata_q;
     logic [31:0] led_q;
@@ -52,6 +65,9 @@ module SocMemBridge #(
     logic [31:0] cnt_rdata;
 
     assign dram_sel = (req_addr >= P_DRAM_ADDR_START) && (req_addr < P_DRAM_ADDR_END);
+    assign irom_sel = (req_addr >= P_IROM_ADDR_START) && (req_addr < P_IROM_ADDR_END);
+    assign timer_sel = (req_addr == 32'h0200_4000) || (req_addr == 32'h0200_4004) ||
+                       (req_addr == 32'h0200_BFF8) || (req_addr == 32'h0200_BFFC);
     assign cnt_sel = req_addr == CNT_ADDR;
     assign mmio_sel = (req_addr == SW0_ADDR) || (req_addr == SW1_ADDR) ||
                       (req_addr == KEY_ADDR) || (req_addr == SEG_ADDR) ||
@@ -59,6 +75,8 @@ module SocMemBridge #(
 
     assign dram_req_valid = req_valid && dram_sel;
     assign req_ready = dram_sel ? dram_req_ready : 1'b1;
+    assign irom_data_addr_o = req_addr[15:2];
+    assign irom_data_ena_o = req_valid && irom_sel && !req_write;
 
     DramBramAdapter dram_adapter (
         .clk       (clk),
@@ -73,6 +91,14 @@ module SocMemBridge #(
         .resp_rdata(dram_resp_rdata)
     );
 
+    MachineTimer machine_timer (
+        .clk(clk), .rst(rst), .req_valid_i(req_valid && timer_sel),
+        .req_write_i(req_write), .req_addr_i(req_addr),
+        .req_wdata_i(req_wdata), .req_wstrb_i(req_wstrb),
+        .resp_valid_o(timer_resp_valid), .resp_rdata_o(timer_resp_rdata),
+        .timer_irq_o(timer_irq_o)
+    );
+
     always_ff @(posedge clk) begin
         if (rst) begin
             led_q <= 32'd0;
@@ -80,10 +106,14 @@ module SocMemBridge #(
             cnt_enable_cfg_q <= 1'b0;
             mmio_resp_valid_q <= 1'b0;
             mmio_resp_rdata_q <= 32'd0;
+            irom_resp_valid_q <= 1'b0;
+            irom_offset_q <= 2'd0;
         end else begin
-            mmio_resp_valid_q <= req_valid && !dram_sel && !req_write;
+            mmio_resp_valid_q <= req_valid && (mmio_sel || cnt_sel) && !req_write;
+            irom_resp_valid_q <= req_valid && irom_sel && !req_write;
+            if (req_valid && irom_sel && !req_write) irom_offset_q <= req_addr[1:0];
             mmio_resp_rdata_q <= 32'd0;
-            if (req_valid && !dram_sel && !req_write) begin
+            if (req_valid && (mmio_sel || cnt_sel) && !req_write) begin
                 unique case (req_addr)
                     SW0_ADDR: mmio_resp_rdata_q <= virtual_sw_input[31:0];
                     SW1_ADDR: mmio_resp_rdata_q <= virtual_sw_input[63:32];
@@ -94,7 +124,7 @@ module SocMemBridge #(
                 endcase
             end
 
-            if (req_valid && !dram_sel && req_write) begin
+            if (req_valid && (mmio_sel || cnt_sel) && req_write) begin
                 unique case (req_addr)
                     LED_ADDR: led_q <= req_wdata;
                     SEG_ADDR: seg_wdata_q <= req_wdata;
@@ -151,6 +181,12 @@ module SocMemBridge #(
         if (dram_resp_valid) begin
             resp_valid = 1'b1;
             resp_rdata = dram_resp_rdata;
+        end else if (irom_resp_valid_q) begin
+            resp_valid = 1'b1;
+            resp_rdata = irom_data_i >> {irom_offset_q, 3'b000};
+        end else if (timer_resp_valid) begin
+            resp_valid = 1'b1;
+            resp_rdata = timer_resp_rdata;
         end else begin
             resp_valid = mmio_resp_valid_q;
             resp_rdata = mmio_resp_rdata_q;
@@ -162,6 +198,6 @@ module SocMemBridge #(
 
     logic unused_req_uncached;
     always_comb begin
-        unused_req_uncached = req_uncached || mmio_sel || cnt_sel;
+        unused_req_uncached = req_uncached || mmio_sel || cnt_sel || irom_sel || timer_sel;
     end
 endmodule

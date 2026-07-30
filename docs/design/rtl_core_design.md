@@ -167,10 +167,17 @@ Commit 条件：
 恢复优先级由 `recovery_ctrl` 生成：
 
 1. exception -> `mtvec`
-2. mret -> `mepc`
-3. branch miss -> actual next PC
+2. machine timer interrupt -> `mtvec`
+3. mret -> `mepc`
+4. fence.i -> current PC + 4
+5. branch miss -> actual next PC
 
 full flush 清 Scoreboard、LoadQueue 和 EX valid，StoreBuffer 只清投机项。Branch predictor update 信息仍打一拍，避免 EX 比较结果直接驱动全局 redirect/allocation。
+
+当前异步中断只实现 machine timer interrupt。CSR File 实现 `mie.MTIE` 和只读
+`mip.MTIP`；Core 在正常提交且 memory quiescent 时接受 pending interrupt。
+Scoreboard entry 保存每条指令的架构 `next_pc`，用于在分支提交点被中断时写入
+正确的 `mepc`。该首版策略优先保证精确性，不实现 MSIP/MEIP 或中断嵌套。
 
 ## 11. Debug 和综合隔离
 

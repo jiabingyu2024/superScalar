@@ -21,33 +21,35 @@
 
 ## IROM 契约
 
-`myCPU` 暴露两个取指端口：
+`myCPU` 暴露一个同步 IROM 取指端口：
 
 ```text
-irom_addrA = 当前取指地址
-irom_addrB = 当前取指地址 + 4
-irom_enaA/B = 取指使能
-irom_dataA/B = 返回的两条指令
+irom_addr = 当前取指地址
+irom_ena = 取指使能
+irom_data = 返回的一条指令
 ```
 
 取指时序固定为 BRAM 风格的一拍地址寄存、寄存地址组合读：
 
 | 周期 | 行为 |
 | --- | --- |
-| T0 上升沿前 | `myCPU` 给出 `irom_addrA/B` 和 `irom_enaA/B`。 |
-| T0 上升沿 | IROM 行为模型寄存 `addrA/B`；`FetchStage` 同时寄存 PF 阶段 PC/预测 payload。 |
-| T0 上升沿后 | `irom_dataA/B = mem[addr_q]` 组合有效，并和 `FetchStage` 保存的 payload 同拍绑定。 |
+| T0 上升沿前 | `myCPU` 给出 `irom_addr` 和 `irom_ena`。 |
+| T0 上升沿 | IROM 行为模型寄存地址；Frontend 同时保存 pending PC/预测 payload。 |
+| T0 上升沿后 | `irom_data = mem[addr_q]` 组合有效，并和 Frontend 保存的 payload 同拍绑定。 |
 
 因此主 Verilator TB 不允许把 IROM 简化成“当前地址组合读当前指令”的零延迟模型，也不应额外增加到两拍同步读。否则 IF 阶段 PC 和指令会错位。
 
 IROM 地址映射由 `student_top` 完成：
 
 ```text
-inst_addrA = irom_addrA[13:2]
-inst_addrB = irom_addrB[13:2]
+inst_addr = irom_addr[15:2]
 ```
 
-当前 IROM 容量是 4096 words = 16 KiB。程序应位于 `0x8000_0000..0x8000_3fff`，超过后会因只取 `[13:2]` 发生回绕。后续运行脚本应检查 irom hex 不超过 4096 words。
+当前 IROM 容量是 16384 words = 64 KiB，程序位于
+`0x8000_0000..0x8000_ffff`。`student_top` 另实例化一份相同 ROM，作为
+CPU 数据口的只读程序存储器视图；因此 C 字符串、`.rodata` 和启动阶段的
+`.data` 初值可以通过 load 读取。两份 FPGA ROM 使用同一 COE 初始化文件，
+不提供数据口写能力。
 
 ## DRAM/MMIO 契约
 
@@ -83,6 +85,11 @@ rv32 的 `myCPU` Verilator memory model 必须保留两拍 load 返回关系，�
 
 | 地址/范围 | 目标 | 说明 |
 | --- | --- | --- |
+| `0x0200_4000` | `mtimecmp[31:0]` | 机器定时器比较值低 32 位。 |
+| `0x0200_4004` | `mtimecmp[63:32]` | 机器定时器比较值高 32 位。 |
+| `0x0200_bff8` | `mtime[31:0]` | 机器时间低 32 位。 |
+| `0x0200_bffc` | `mtime[63:32]` | 机器时间高 32 位。 |
+| `0x8000_0000 <= addr < 0x8001_0000` | IROM data view | 64 KiB，只读；写无效果。 |
 | `0x8010_0000 <= addr < 0x8014_0000` | DRAM | 256 KiB，排他上界为 `0x8014_0000`。 |
 | `0x8020_0000` | SW0 | 读 `virtual_sw[31:0]`。 |
 | `0x8020_0004` | SW1 | 读 `virtual_sw[63:32]`。 |
@@ -141,12 +148,22 @@ CSR 当前只承诺测试子集：
 | CSR | 地址 | 当前行为 |
 | --- | --- | --- |
 | `mstatus` | `0x300` | 支持有限 MIE/MPIE 位读写。 |
+| `misa` | `0x301` | 只读 `0x40001100`，声明 RV32IM。 |
+| `mie` | `0x304` | 当前只实现 `MTIE`（bit 7）。 |
 | `mtvec` | `0x305` | 写入时低两位清零；ECALL 跳转使用它。 |
 | `mscratch` | `0x340` | 普通可读写 scratch CSR，用于当前 `rv32mi-p-csr`。 |
 | `mepc` | `0x341` | ECALL/EBREAK 写入 trap PC，MRET 使用它返回。 |
 | `mcause` | `0x342` | ECALL 写入 machine ecall cause 11，EBREAK 写入 breakpoint cause 3。 |
+| `mtval` | `0x343` | 保存同步异常附加值；定时器中断写 0。 |
+| `mip` | `0x344` | 只读 `MTIP`（bit 7），直接反映 timer IRQ。 |
 
-非白名单 CSR 当前读 0、写忽略；`misa` 当前读 0，不声明未实现的 U/S/F 等能力。这不是完整 RISC-V privileged 行为。rv32/src 测试选择必须和这个子集一致，除非后续明确扩展 CSR 实现。
+机器定时器中断在 `mstatus.MIE && mie.MTIE && mip.MTIP` 成立后等待精确提交点，
+以内存子系统 quiescent 为附加保守条件接受。接受时写
+`mcause=0x8000_0007`、`mtval=0`，`mepc` 保存刚提交指令的架构 next-PC，
+再 full flush 并重定向到 `mtvec`。软件把 `mtimecmp` 移到未来后解除 MTIP，
+最终通过 `mret` 返回。
+
+非白名单 CSR 当前读 0、写忽略；这仍不是完整 RISC-V privileged 行为。
 
 ## rv32 通过标准
 

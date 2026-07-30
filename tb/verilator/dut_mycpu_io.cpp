@@ -5,6 +5,7 @@
 namespace sim {
 
 void drive_mycpu_inputs(VmyCPU& top, const MemoryModel& mem) {
+    top.timer_irq       = mem.machine_timer_irq();
     top.irom_data        = mem.irom_data_a();
     top.dmem_req_ready   = 1;
     top.dmem_resp_valid  = mem.current_dmem_resp_valid();

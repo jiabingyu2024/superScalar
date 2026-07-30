@@ -19,6 +19,7 @@ public:
     uint32_t irom_data_b() const;
     uint32_t current_perip_rdata() const;
     bool current_dmem_resp_valid() const;
+    bool machine_timer_irq() const;
     void tick_posedge(const Request& req, uint64_t cycles_per_ms);
     void tick_request(const Request& req, bool advance_counter,
                       uint64_t cycles_per_ms);
@@ -36,6 +37,8 @@ public:
     bool counter_enabled = false;
     uint64_t counter_subcycle = 0;
     uint32_t counter_ms = 0;
+    uint64_t mtime = 0;
+    uint64_t mtimecmp = UINT64_MAX;
 
 private:
     void tick_counter(uint64_t cycles_per_ms);
@@ -52,6 +55,8 @@ private:
     bool mmio_sel_pipe1_ = false;
     bool cnt_sel_pipe0_ = false;
     bool cnt_sel_pipe1_ = false;
+    bool timer_sel_pipe0_ = false;
+    bool timer_sel_pipe1_ = false;
     uint32_t mmio_addr_pipe0_ = 0;
     uint32_t mmio_addr_pipe1_ = 0;
 };

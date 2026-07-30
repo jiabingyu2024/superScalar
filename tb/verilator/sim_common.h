@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <iosfwd>
 #include <string>
+#include <vector>
 
 namespace sim {
 
@@ -15,8 +16,16 @@ constexpr uint32_t KEY_ADDR = 0x80200010u;
 constexpr uint32_t SEG_ADDR = 0x80200020u;
 constexpr uint32_t LED_ADDR = 0x80200040u;
 constexpr uint32_t CNT_ADDR = 0x80200050u;
+constexpr uint32_t RTT_STATUS_ADDR = 0x80200064u;
+constexpr uint32_t RTT_LIVE_READY = 0x4c495600u;
+constexpr uint32_t RTT_LIVE_PASS = 0x4c500000u;
+constexpr uint32_t RTT_LIVE_FAIL = 0x4c460000u;
 constexpr uint32_t CNT_START_CMD = 0x80000000u;
 constexpr uint32_t CNT_STOP_CMD = 0xffffffffu;
+constexpr uint32_t MTIMECMP_LO_ADDR = 0x02004000u;
+constexpr uint32_t MTIMECMP_HI_ADDR = 0x02004004u;
+constexpr uint32_t MTIME_LO_ADDR = 0x0200bff8u;
+constexpr uint32_t MTIME_HI_ADDR = 0x0200bffcu;
 
 constexpr uint32_t DEFAULT_SRC_LED_FAIL = 0x24181824u;
 constexpr uint32_t DEFAULT_SRC_LED_PASS = 0x01221c08u;
@@ -176,6 +185,7 @@ bool parse_u32(const std::string& text, uint32_t& out);
 bool is_known_mmio_addr(uint32_t addr);
 void write_json_string_field(std::ostream& out, const std::string& key,
                              const std::string& value, bool comma);
+std::vector<uint32_t> rtthread_live_commands(const std::string& test_name);
 
 }  // namespace sim
 

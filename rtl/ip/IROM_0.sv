@@ -2,12 +2,12 @@
 
 /**
  * @module IROM
- * @description 32-bit instruction ROM, depth 4096 words (16 KiB).
+ * @description 32-bit instruction ROM, depth 16384 words (64 KiB).
  *              Single read port replacement for the Vivado blk_mem_gen
  *              Single_Port_ROM used by the five-stage core.
  */
 module IROM_0 #(
-    parameter int unsigned ADDR_WIDTH = 12,
+    parameter int unsigned ADDR_WIDTH = 14,
     parameter int unsigned DATA_WIDTH = 32,
     parameter string INIT_FILE = ""
 ) (

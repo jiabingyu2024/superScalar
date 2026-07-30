@@ -9,6 +9,7 @@ module recovery_ctrl (
     input  core_types_pkg::scoreboard_entry_t commit_entry_i,
     input  logic [31:0] mtvec_i,
     input  logic [31:0] mepc_i,
+    input  logic timer_interrupt_take_i,
     input  logic branch_miss_i,
     input  logic [31:0] branch_actual_next_i,
     output logic full_flush_o,
@@ -18,12 +19,14 @@ module recovery_ctrl (
     import core_types_pkg::*;
 
     always_comb begin
-        full_flush_o = commit_fire_i &&
-                       (commit_entry_i.exception_valid ||
+        full_flush_o = timer_interrupt_take_i ||
+                       (commit_fire_i &&
+                        (commit_entry_i.exception_valid ||
                         commit_entry_i.sys_op == SYS_MRET ||
-                        commit_entry_i.sys_op == SYS_FENCE_I);
+                        commit_entry_i.sys_op == SYS_FENCE_I));
         redirect_valid_o = full_flush_o || branch_miss_i;
         if (commit_entry_i.exception_valid) redirect_target_o = mtvec_i;
+        else if (timer_interrupt_take_i) redirect_target_o = mtvec_i;
         else if (commit_entry_i.sys_op == SYS_MRET) redirect_target_o = mepc_i;
         else if (commit_entry_i.sys_op == SYS_FENCE_I)
             redirect_target_o = commit_entry_i.pc + 32'd4;
@@ -34,6 +37,7 @@ module recovery_ctrl (
     always_comb begin
         if (full_flush_o) assert (commit_fire_i);
         if (commit_fire_i && commit_entry_i.exception_valid) assert (redirect_target_o == mtvec_i);
+        if (timer_interrupt_take_i) assert (commit_fire_i && redirect_target_o == mtvec_i);
     end
 `endif
 endmodule
