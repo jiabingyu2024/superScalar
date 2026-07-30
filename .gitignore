@@ -1,4 +1,5 @@
 build/
+/rt-thread/
 fpga/digital_twin/
 fpga/build/
 
