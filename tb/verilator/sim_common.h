@@ -17,6 +17,12 @@ constexpr uint32_t SEG_ADDR = 0x80200020u;
 constexpr uint32_t LED_ADDR = 0x80200040u;
 constexpr uint32_t CNT_ADDR = 0x80200050u;
 constexpr uint32_t RTT_STATUS_ADDR = 0x80200064u;
+constexpr uint32_t COREMARK_TICKS_LO_ADDR = 0x80200068u;
+constexpr uint32_t COREMARK_TICKS_HI_ADDR = 0x8020006cu;
+constexpr uint32_t COREMARK_ITERATIONS_ADDR = 0x80200070u;
+constexpr uint32_t COREMARK_CRC_LM_ADDR = 0x80200074u;
+constexpr uint32_t COREMARK_CRC_SF_ADDR = 0x80200078u;
+constexpr uint32_t COREMARK_FLAGS_ADDR = 0x8020007cu;
 constexpr uint32_t RTT_LIVE_READY = 0x4c495600u;
 constexpr uint32_t RTT_LIVE_PASS = 0x4c500000u;
 constexpr uint32_t RTT_LIVE_FAIL = 0x4c460000u;
@@ -167,6 +173,14 @@ struct SimResult {
     uint32_t last_src_test_lamps = 0;
     uint32_t last_rv32i_count = 0;
     uint32_t last_mext_count = 0;
+
+    uint64_t coremark_ticks = 0;
+    uint32_t coremark_iterations = 0;
+    uint16_t coremark_crclist = 0;
+    uint16_t coremark_crcmatrix = 0;
+    uint16_t coremark_crcstate = 0;
+    uint16_t coremark_crcfinal = 0;
+    uint32_t coremark_flags = 0;
 
     bool has_difftest = false;
     bool difftest_reference_enabled = false;

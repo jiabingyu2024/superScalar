@@ -13,7 +13,9 @@ std::vector<uint32_t> rtthread_live_commands(const std::string& test_name) {
     if (test_name == "rtthread-live-context") return {3};
     if (test_name == "rtthread-live-memory") return {4};
     if (test_name == "rtthread-live-preempt") return {5};
-    if (test_name == "rtthread-live-all") return {1, 2, 3, 4, 5};
+    if (test_name == "rtthread-live-coremark") return {6};
+    if (test_name == "rtthread-live-coremark-official") return {7};
+    if (test_name == "rtthread-live-all") return {1, 2, 3, 4, 5, 6};
     return {};
 }
 

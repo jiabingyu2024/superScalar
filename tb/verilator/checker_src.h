@@ -102,6 +102,7 @@ public:
 private:
     std::vector<uint32_t> commands_;
     size_t response_index_ = 0;
+    uint32_t coremark_fields_seen_ = 0;
     bool done_ = false;
 };
 

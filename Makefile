@@ -60,7 +60,7 @@ sim-rv32-difftest:
 sim-src-difftest:
 	$(PYTHON) scripts/run_difftest.py src $(if $(TEST),--test $(TEST),) $(if $(DIFFTRACE),--difftrace,) $(SRC_SIM_ARGS)
 .PHONY: rtthread-images sim-rtthread sim-rtthread-all
-.PHONY: rtthread-live-image sim-rtthread-live sim-rtthread-live-all
+.PHONY: rtthread-live-image sim-rtthread-live sim-rtthread-live-all sim-coremark sim-coremark-official
 
 rtthread-images:
 	python3 scripts/build_rtthread_images.py
@@ -80,3 +80,9 @@ sim-rtthread-live:
 
 sim-rtthread-live-all:
 	python3 scripts/test_rtthread_live.py $(if $(NO_BUILD),--no-build-verilator,) --max-cycles $(or $(MAX_CYCLES),12000000)
+
+sim-coremark:
+	python3 scripts/test_rtthread_live.py --scenario coremark $(if $(NO_BUILD),--no-build-verilator,) --max-cycles $(or $(MAX_CYCLES),12000000)
+
+sim-coremark-official:
+	python3 scripts/test_rtthread_live.py --scenario coremark-official $(if $(NO_BUILD),--no-build-verilator,) --max-cycles $(or $(MAX_CYCLES),650000000)

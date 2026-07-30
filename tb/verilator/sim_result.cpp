@@ -213,7 +213,29 @@ void write_result_json(const Options& opt, const SimResult& result,
         out << "      \"counter_ms\": " << perf.final_counter_ms << ",\n";
         out << "      \"counter_start_cycle\": " << perf.counter_start_cycle << ",\n";
         out << "      \"counter_stop_cycle\": " << perf.counter_stop_cycle << "\n";
-        out << "    }\n";
+        out << "    }";
+        if (result.coremark_iterations != 0) {
+            double coremark_per_mhz = result.coremark_ticks == 0 ? 0.0 :
+                static_cast<double>(result.coremark_iterations) * 1000000.0 /
+                static_cast<double>(result.coremark_ticks);
+            out << ",\n";
+            out << "    \"coremark\": {\n";
+            out << "      \"ticks\": " << result.coremark_ticks << ",\n";
+            out << "      \"iterations\": " << result.coremark_iterations << ",\n";
+            out << "      \"coremark_per_mhz\": " << coremark_per_mhz << ",\n";
+            out << "      \"crclist\": \"" << hex32(result.coremark_crclist) << "\",\n";
+            out << "      \"crcmatrix\": \"" << hex32(result.coremark_crcmatrix) << "\",\n";
+            out << "      \"crcstate\": \"" << hex32(result.coremark_crcstate) << "\",\n";
+            out << "      \"crcfinal\": \"" << hex32(result.coremark_crcfinal) << "\",\n";
+            out << "      \"algorithm_valid\": ";
+            write_bool(out, (result.coremark_flags & 1u) != 0u);
+            out << ",\n";
+            out << "      \"official_10_second_valid\": ";
+            write_bool(out, (result.coremark_flags & 2u) != 0u);
+            out << "\n";
+            out << "    }";
+        }
+        out << "\n";
     }
     out << "  },\n";
     perf.write_json_fields(out);

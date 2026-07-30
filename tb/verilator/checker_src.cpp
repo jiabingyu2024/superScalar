@@ -254,7 +254,44 @@ void RtThreadChecker::pre_tick(uint64_t cycle, const Request& req, const MemoryM
 void RtThreadLiveChecker::pre_tick(uint64_t cycle, const Request& req,
                                    const MemoryModel& mem, SimResult& result) {
     SrcObserveChecker::pre_tick(cycle, req, mem, result);
-    if (!req.perip_wen || (req.perip_addr & ~uint32_t{3}) != RTT_STATUS_ADDR) return;
+    if (!req.perip_wen) return;
+
+    const uint32_t aligned = req.perip_addr & ~uint32_t{3};
+    if (aligned == COREMARK_TICKS_LO_ADDR) {
+        result.coremark_ticks = (result.coremark_ticks & 0xffffffff00000000ull) |
+                                req.perip_wdata;
+        coremark_fields_seen_ |= 1u << 0;
+        return;
+    }
+    if (aligned == COREMARK_TICKS_HI_ADDR) {
+        result.coremark_ticks = (result.coremark_ticks & 0x00000000ffffffffull) |
+                                (static_cast<uint64_t>(req.perip_wdata) << 32);
+        coremark_fields_seen_ |= 1u << 1;
+        return;
+    }
+    if (aligned == COREMARK_ITERATIONS_ADDR) {
+        result.coremark_iterations = req.perip_wdata;
+        coremark_fields_seen_ |= 1u << 2;
+        return;
+    }
+    if (aligned == COREMARK_CRC_LM_ADDR) {
+        result.coremark_crclist = req.perip_wdata & 0xffffu;
+        result.coremark_crcmatrix = req.perip_wdata >> 16;
+        coremark_fields_seen_ |= 1u << 3;
+        return;
+    }
+    if (aligned == COREMARK_CRC_SF_ADDR) {
+        result.coremark_crcstate = req.perip_wdata & 0xffffu;
+        result.coremark_crcfinal = req.perip_wdata >> 16;
+        coremark_fields_seen_ |= 1u << 4;
+        return;
+    }
+    if (aligned == COREMARK_FLAGS_ADDR) {
+        result.coremark_flags = req.perip_wdata;
+        coremark_fields_seen_ |= 1u << 5;
+        return;
+    }
+    if (aligned != RTT_STATUS_ADDR) return;
 
     const uint32_t marker = req.perip_wdata;
     if (marker == RTT_LIVE_READY) return;
@@ -274,6 +311,22 @@ void RtThreadLiveChecker::pre_tick(uint64_t cycle, const Request& req,
         result.cycles = cycle;
         done_ = true;
         return;
+    }
+    const uint32_t command = commands_[response_index_];
+    if (command == 6u || command == 7u) {
+        const bool crc_ok = result.coremark_crclist == 0xe714u &&
+                            result.coremark_crcmatrix == 0x1fd7u &&
+                            result.coremark_crcstate == 0x8e3au;
+        const bool flags_ok = (result.coremark_flags & 1u) != 0u &&
+                              (command != 7u || (result.coremark_flags & 2u) != 0u);
+        if (coremark_fields_seen_ != 0x3fu || result.coremark_ticks == 0u ||
+            result.coremark_iterations == 0u || !crc_ok || !flags_ok) {
+            result.status = "FAIL";
+            result.reason = "CoreMark result fields or CRC validation failed";
+            result.cycles = cycle;
+            done_ = true;
+            return;
+        }
     }
     ++response_index_;
     if (response_index_ == commands_.size()) {

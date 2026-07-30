@@ -6,12 +6,13 @@ import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-SCENARIOS = ("ping", "tick", "context", "memory", "preempt", "all")
+SCENARIOS = ("ping", "tick", "context", "memory", "preempt", "coremark", "all")
+SCENARIO_CHOICES = SCENARIOS + ("coremark-official",)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scenario", choices=SCENARIOS)
+    parser.add_argument("--scenario", choices=SCENARIO_CHOICES)
     parser.add_argument("--no-build-image", action="store_true")
     parser.add_argument("--no-build-verilator", action="store_true")
     parser.add_argument("--max-cycles", type=int, default=12_000_000)

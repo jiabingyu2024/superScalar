@@ -68,5 +68,7 @@
   {"name":"rtthread-live-context","image":"rtthread-live","checker":"rtthread-live"},
   {"name":"rtthread-live-memory","image":"rtthread-live","checker":"rtthread-live"},
   {"name":"rtthread-live-preempt","image":"rtthread-live","checker":"rtthread-live"},
+  {"name":"rtthread-live-coremark","image":"rtthread-live","checker":"rtthread-live"},
+  {"name":"rtthread-live-coremark-official","image":"rtthread-live","checker":"rtthread-live"},
   {"name":"rtthread-live-all","image":"rtthread-live","checker":"rtthread-live"}
 ]
