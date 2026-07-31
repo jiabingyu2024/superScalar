@@ -2306,10 +2306,10 @@ static void start_worker(const char *name, void (*entry)(void *))
 800011ec:	00812423          	sw	s0,8(sp)
 800011f0:	00112623          	sw	ra,12(sp)
 800011f4:	00050413          	mv	s0,a0
-    coremark_set_iterations(official ? 800U : 1U);
+    coremark_set_iterations(official ? 1000U : 1U);
 800011f8:	00100513          	li	a0,1
 800011fc:	00040463          	beqz	s0,80001204 <live_coremark_test+0x1c>
-80001200:	32000513          	li	a0,800
+80001200:	3e800513          	li	a0,1000
 80001204:	c95ff0ef          	jal	ra,80000e98 <coremark_set_iterations>
     coremark_main();
 80001208:	605000ef          	jal	ra,8000200c <coremark_main>

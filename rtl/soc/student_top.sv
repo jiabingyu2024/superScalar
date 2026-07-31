@@ -1,5 +1,7 @@
 `timescale 1ns / 1ps
 
+import CoreConfigPkg::*;
+
 module student_top #(
     parameter int unsigned              P_SW_CNT          = 64,
     parameter int unsigned              P_LED_CNT         = 32,
@@ -34,28 +36,89 @@ module student_top #(
     output logic [63:0]                  dbg_perf_stall_mem,
     output logic [63:0]                  dbg_perf_stall_muldiv,
     output logic [63:0]                  dbg_perf_stall_load_use,
-    output logic                         dbg_commit_valid,
-    output logic [31:0]                  dbg_commit_pc,
-    output logic [31:0]                  dbg_commit_inst,
-    output logic                         dbg_commit_wen,
-    output logic [4:0]                   dbg_commit_rd,
-    output logic [31:0]                  dbg_commit_wdata,
-    output logic                         dbg_commit_is_load,
-    output logic                         dbg_commit_is_store,
-    output logic                         dbg_commit_is_trap,
-    output logic [31:0]                  dbg_commit_cause,
-    output logic [31:0]                  dbg_commit_next_pc,
-    output logic [31:0]                  dbg_commit_mem_addr,
-    output logic [31:0]                  dbg_commit_mem_wdata,
-    output logic [3:0]                   dbg_commit_mem_wstrb
+    output logic [63:0]                  dbg_perf_cond_branch,
+    output logic [63:0]                  dbg_perf_cond_branch_miss,
+    output logic [63:0]                  dbg_perf_jal,
+    output logic [63:0]                  dbg_perf_jal_miss,
+    output logic [63:0]                  dbg_perf_jalr,
+    output logic [63:0]                  dbg_perf_jalr_miss,
+    output logic [63:0]                  dbg_perf_frontend_stall_cycles,
+    output logic [63:0]                  dbg_perf_id_stall_cycles,
+    output logic [63:0]                  dbg_perf_rn_stall_cycles,
+    output logic [63:0]                  dbg_perf_ds_stall_cycles,
+    output logic [63:0]                  dbg_perf_is_stall_cycles,
+    output logic [63:0]                  dbg_perf_rr_stall_cycles,
+    output logic [63:0]                  dbg_perf_ex_stall_cycles,
+    output logic [63:0]                  dbg_perf_wb_stall_cycles,
+    output logic [63:0]                  dbg_perf_rob_full_cycles,
+    output logic [63:0]                  dbg_perf_issue_queue_full_cycles,
+    output logic [63:0]                  dbg_perf_int_issue_queue_full_cycles,
+    output logic [63:0]                  dbg_perf_mem_issue_queue_full_cycles,
+    output logic [63:0]                  dbg_perf_mul_issue_queue_full_cycles,
+    output logic [63:0]                  dbg_perf_rob_head_not_done_cycles,
+    output logic [63:0]                  dbg_perf_rob_head_not_done_int_cycles,
+    output logic [63:0]                  dbg_perf_rob_head_not_done_mem_cycles,
+    output logic [63:0]                  dbg_perf_rob_head_not_done_mul_cycles,
+    output logic [63:0]                  dbg_perf_rob_head_not_done_other_cycles,
+    output logic [63:0]                  dbg_perf_rob_head_store_commit_wait_cycles,
+    output logic [63:0]                  dbg_perf_free_list_empty_cycles,
+    output logic [63:0]                  dbg_perf_store_buffer_full_cycles,
+    output logic [63:0]                  dbg_perf_serial_block_cycles,
+    output logic [63:0]                  dbg_perf_mem_load_return_block_cycles,
+    output logic [63:0]                  dbg_perf_mem_load_access_block_cycles,
+    output logic [63:0]                  dbg_perf_store_commit_blocked_by_load_cycles,
+    output logic [63:0]                  dbg_perf_recovery_cycles,
+    output logic [63:0]                  dbg_perf_dispatch_width0_cycles,
+    output logic [63:0]                  dbg_perf_dispatch_width1_cycles,
+    output logic [63:0]                  dbg_perf_dispatch_width2_cycles,
+    output logic [63:0]                  dbg_perf_issue_width0_cycles,
+    output logic [63:0]                  dbg_perf_issue_width1_cycles,
+    output logic [63:0]                  dbg_perf_issue_width2_cycles,
+    output logic [63:0]                  dbg_perf_commit_width0_cycles,
+    output logic [63:0]                  dbg_perf_commit_width1_cycles,
+    output logic [63:0]                  dbg_perf_commit_width2_cycles,
+    output logic [63:0]                  dbg_perf_int_issue_count,
+    output logic [63:0]                  dbg_perf_mem_issue_count,
+    output logic [63:0]                  dbg_perf_mul_issue_count,
+    output logic [63:0]                  dbg_perf_mem_req_valid_cycles,
+    output logic [63:0]                  dbg_perf_mem_partial_alias_cycles,
+    output logic [63:0]                  dbg_perf_mem_no_alias_cycles,
+    output logic [63:0]                  dbg_perf_mem_forward_cycles,
+    output logic [63:0]                  dbg_perf_mem_iq_head_not_ready_cycles,
+    output logic [63:0]                  dbg_perf_mem_iq_younger_ready_cycles,
+    output logic [63:0]                  dbg_perf_mem_iq_occupancy_sum,
+    output logic [63:0]                  dbg_perf_mem_iq_probe_launch_count,
+    output logic [63:0]                  dbg_perf_mem_iq_probe_accept_count,
+    output logic [63:0]                  dbg_perf_mem_iq_probe_reject_count,
+    output logic [63:0]                  dbg_perf_mul_op_count,
+    output logic [63:0]                  dbg_perf_div_op_count,
+    output logic [63:0]                  dbg_perf_rem_op_count,
+    output logic [63:0]                  dbg_perf_muldiv_busy_cycles,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_valid,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_pc,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_inst,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_wen,
+    output logic [RETIRE_WIDTH-1:0][4:0]  dbg_commit_rd,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_wdata,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_load,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_store,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_mmio,
+    output logic [RETIRE_WIDTH-1:0]       dbg_commit_is_trap,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_cause,
+    output logic [RETIRE_WIDTH-1:0][31:0] dbg_commit_next_pc
 `endif
 );
-    logic [31:0] irom_addr;
-    logic [13:0] irom_word_addr;
+    logic [31:0] irom_addrA;
+    logic [31:0] irom_addrB;
+    logic [13:0] irom_word_addrA;
+    logic [13:0] irom_word_addrB;
     logic [13:0] irom_data_word_addr;
-    logic [31:0] instruction;
+    logic [31:0] instructionA;
+    logic [31:0] instructionB;
     logic [31:0] irom_data_read;
-    logic        irom_ena;
+    logic [31:0] irom_data_unused;
+    logic        irom_enaA;
+    logic        irom_enaB;
     logic        irom_data_ena;
     logic        timer_irq;
 
@@ -112,15 +175,19 @@ module student_top #(
         end
     end
 
-    assign irom_word_addr = irom_addr[15:2];
+    assign irom_word_addrA = irom_addrA[15:2];
+    assign irom_word_addrB = irom_addrB[15:2];
 
     myCPU Core_cpu (
         .cpu_rst          (cpu_rst_sync),
         .cpu_clk          (w_cpu_clk),
         .timer_irq        (timer_irq),
-        .irom_addr        (irom_addr),
-        .irom_data        (instruction),
-        .irom_ena         (irom_ena),
+        .irom_addrA       (irom_addrA),
+        .irom_dataA       (instructionA),
+        .irom_enaA        (irom_enaA),
+        .irom_addrB       (irom_addrB),
+        .irom_dataB       (instructionB),
+        .irom_enaB        (irom_enaB),
         .dmem_req_valid   (dmem_req_valid),
         .dmem_req_ready   (dmem_req_ready),
         .dmem_req_write   (dmem_req_write),
@@ -144,38 +211,100 @@ module student_top #(
         .dbg_perf_stall_mem  (dbg_perf_stall_mem),
         .dbg_perf_stall_muldiv(dbg_perf_stall_muldiv),
         .dbg_perf_stall_load_use(dbg_perf_stall_load_use),
-        .dbg_commit_valid      (dbg_commit_valid),
-        .dbg_commit_pc         (dbg_commit_pc),
-        .dbg_commit_inst       (dbg_commit_inst),
-        .dbg_commit_wen        (dbg_commit_wen),
-        .dbg_commit_rd         (dbg_commit_rd),
-        .dbg_commit_wdata      (dbg_commit_wdata),
-        .dbg_commit_is_load    (dbg_commit_is_load),
-        .dbg_commit_is_store   (dbg_commit_is_store),
-        .dbg_commit_is_trap    (dbg_commit_is_trap),
-        .dbg_commit_cause      (dbg_commit_cause),
-        .dbg_commit_next_pc    (dbg_commit_next_pc),
-        .dbg_commit_mem_addr   (dbg_commit_mem_addr),
-        .dbg_commit_mem_wdata  (dbg_commit_mem_wdata),
-        .dbg_commit_mem_wstrb  (dbg_commit_mem_wstrb)
+        .dbg_perf_cond_branch(dbg_perf_cond_branch),
+        .dbg_perf_cond_branch_miss(dbg_perf_cond_branch_miss),
+        .dbg_perf_jal(dbg_perf_jal),
+        .dbg_perf_jal_miss(dbg_perf_jal_miss),
+        .dbg_perf_jalr(dbg_perf_jalr),
+        .dbg_perf_jalr_miss(dbg_perf_jalr_miss),
+        .dbg_perf_frontend_stall_cycles(dbg_perf_frontend_stall_cycles),
+        .dbg_perf_id_stall_cycles(dbg_perf_id_stall_cycles),
+        .dbg_perf_rn_stall_cycles(dbg_perf_rn_stall_cycles),
+        .dbg_perf_ds_stall_cycles(dbg_perf_ds_stall_cycles),
+        .dbg_perf_is_stall_cycles(dbg_perf_is_stall_cycles),
+        .dbg_perf_rr_stall_cycles(dbg_perf_rr_stall_cycles),
+        .dbg_perf_ex_stall_cycles(dbg_perf_ex_stall_cycles),
+        .dbg_perf_wb_stall_cycles(dbg_perf_wb_stall_cycles),
+        .dbg_perf_rob_full_cycles(dbg_perf_rob_full_cycles),
+        .dbg_perf_issue_queue_full_cycles(dbg_perf_issue_queue_full_cycles),
+        .dbg_perf_int_issue_queue_full_cycles(dbg_perf_int_issue_queue_full_cycles),
+        .dbg_perf_mem_issue_queue_full_cycles(dbg_perf_mem_issue_queue_full_cycles),
+        .dbg_perf_mul_issue_queue_full_cycles(dbg_perf_mul_issue_queue_full_cycles),
+        .dbg_perf_rob_head_not_done_cycles(dbg_perf_rob_head_not_done_cycles),
+        .dbg_perf_rob_head_not_done_int_cycles(dbg_perf_rob_head_not_done_int_cycles),
+        .dbg_perf_rob_head_not_done_mem_cycles(dbg_perf_rob_head_not_done_mem_cycles),
+        .dbg_perf_rob_head_not_done_mul_cycles(dbg_perf_rob_head_not_done_mul_cycles),
+        .dbg_perf_rob_head_not_done_other_cycles(dbg_perf_rob_head_not_done_other_cycles),
+        .dbg_perf_rob_head_store_commit_wait_cycles(dbg_perf_rob_head_store_commit_wait_cycles),
+        .dbg_perf_free_list_empty_cycles(dbg_perf_free_list_empty_cycles),
+        .dbg_perf_store_buffer_full_cycles(dbg_perf_store_buffer_full_cycles),
+        .dbg_perf_serial_block_cycles(dbg_perf_serial_block_cycles),
+        .dbg_perf_mem_load_return_block_cycles(dbg_perf_mem_load_return_block_cycles),
+        .dbg_perf_mem_load_access_block_cycles(dbg_perf_mem_load_access_block_cycles),
+        .dbg_perf_store_commit_blocked_by_load_cycles(dbg_perf_store_commit_blocked_by_load_cycles),
+        .dbg_perf_recovery_cycles(dbg_perf_recovery_cycles),
+        .dbg_perf_dispatch_width0_cycles(dbg_perf_dispatch_width0_cycles),
+        .dbg_perf_dispatch_width1_cycles(dbg_perf_dispatch_width1_cycles),
+        .dbg_perf_dispatch_width2_cycles(dbg_perf_dispatch_width2_cycles),
+        .dbg_perf_issue_width0_cycles(dbg_perf_issue_width0_cycles),
+        .dbg_perf_issue_width1_cycles(dbg_perf_issue_width1_cycles),
+        .dbg_perf_issue_width2_cycles(dbg_perf_issue_width2_cycles),
+        .dbg_perf_commit_width0_cycles(dbg_perf_commit_width0_cycles),
+        .dbg_perf_commit_width1_cycles(dbg_perf_commit_width1_cycles),
+        .dbg_perf_commit_width2_cycles(dbg_perf_commit_width2_cycles),
+        .dbg_perf_int_issue_count(dbg_perf_int_issue_count),
+        .dbg_perf_mem_issue_count(dbg_perf_mem_issue_count),
+        .dbg_perf_mul_issue_count(dbg_perf_mul_issue_count),
+        .dbg_perf_mem_req_valid_cycles(dbg_perf_mem_req_valid_cycles),
+        .dbg_perf_mem_partial_alias_cycles(dbg_perf_mem_partial_alias_cycles),
+        .dbg_perf_mem_no_alias_cycles(dbg_perf_mem_no_alias_cycles),
+        .dbg_perf_mem_forward_cycles(dbg_perf_mem_forward_cycles),
+        .dbg_perf_mem_iq_head_not_ready_cycles(dbg_perf_mem_iq_head_not_ready_cycles),
+        .dbg_perf_mem_iq_younger_ready_cycles(dbg_perf_mem_iq_younger_ready_cycles),
+        .dbg_perf_mem_iq_occupancy_sum(dbg_perf_mem_iq_occupancy_sum),
+        .dbg_perf_mem_iq_probe_launch_count(dbg_perf_mem_iq_probe_launch_count),
+        .dbg_perf_mem_iq_probe_accept_count(dbg_perf_mem_iq_probe_accept_count),
+        .dbg_perf_mem_iq_probe_reject_count(dbg_perf_mem_iq_probe_reject_count),
+        .dbg_perf_mul_op_count(dbg_perf_mul_op_count),
+        .dbg_perf_div_op_count(dbg_perf_div_op_count),
+        .dbg_perf_rem_op_count(dbg_perf_rem_op_count),
+        .dbg_perf_muldiv_busy_cycles(dbg_perf_muldiv_busy_cycles),
+        .dbg_commit_valid    (dbg_commit_valid),
+        .dbg_commit_pc       (dbg_commit_pc),
+        .dbg_commit_inst     (dbg_commit_inst),
+        .dbg_commit_wen      (dbg_commit_wen),
+        .dbg_commit_rd       (dbg_commit_rd),
+        .dbg_commit_wdata    (dbg_commit_wdata),
+        .dbg_commit_is_load  (dbg_commit_is_load),
+        .dbg_commit_is_store (dbg_commit_is_store),
+        .dbg_commit_is_mmio  (dbg_commit_is_mmio),
+        .dbg_commit_is_trap  (dbg_commit_is_trap),
+        .dbg_commit_cause    (dbg_commit_cause),
+        .dbg_commit_next_pc  (dbg_commit_next_pc)
 `endif
     );
 
     IROM_0 Mem_IROM (
-        .addra(irom_word_addr),
+        .addra(irom_word_addrA),
+        .addrb(irom_word_addrB),
         .clka (w_cpu_clk),
-        .ena  (irom_ena),
-        .douta(instruction)
+        .clkb (w_cpu_clk),
+        .ena  (irom_enaA),
+        .enb  (irom_enaB),
+        .douta(instructionA),
+        .doutb(instructionB)
     );
 
-    // A second ROM instance gives the Harvard core a read-only data view of
-    // program memory.  This is required for C string literals, .rodata, and
-    // startup copies of initialized .data without redesigning the fetch port.
+    // A separate read copy lets loads access .rodata and startup .data in IROM.
     IROM_0 Mem_IROM_Data (
         .addra(irom_data_word_addr),
+        .addrb('0),
         .clka (w_cpu_clk),
+        .clkb (w_cpu_clk),
         .ena  (irom_data_ena),
-        .douta(irom_data_read)
+        .enb  (1'b0),
+        .douta(irom_data_read),
+        .doutb(irom_data_unused)
     );
 
     SocMemBridge #(

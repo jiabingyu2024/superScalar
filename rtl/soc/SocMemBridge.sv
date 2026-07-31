@@ -109,7 +109,12 @@ module SocMemBridge #(
             irom_resp_valid_q <= 1'b0;
             irom_offset_q <= 2'd0;
         end else begin
-            mmio_resp_valid_q <= req_valid && (mmio_sel || cnt_sel) && !req_write;
+            // Every accepted read must eventually receive a response.  In
+            // particular, the OoO core may issue a speculative read that is
+            // later killed; leaving an unmapped read unanswered would retain
+            // its LSU metadata forever and deadlock retirement.
+            mmio_resp_valid_q <= req_valid && !req_write &&
+                                 !(dram_sel || irom_sel || timer_sel);
             irom_resp_valid_q <= req_valid && irom_sel && !req_write;
             if (req_valid && irom_sel && !req_write) irom_offset_q <= req_addr[1:0];
             mmio_resp_rdata_q <= 32'd0;

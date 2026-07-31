@@ -105,6 +105,7 @@ int main(int argc, char** argv) {
 
         for (int i = 0; i < 8; ++i) {
             sim::Request req = advance_to_next_cpu_posedge();
+
             mirror.tick_request(req, false, opt.counter_cycles_per_ms);
         }
         top.w_clk_rst = 0;
