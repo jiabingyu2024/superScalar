@@ -344,6 +344,40 @@ set_ip_config_required DIV_0 {latency_configuration Latency_Configuration} {Manu
 set_ip_config_required DIV_0 {latency Latency} {34}
 set_ip_config_required DIV_0 {FlowControl flow_control} {Blocking}
 
+# RV32F uses the same adaptation pattern as RV32M: core RTL instantiates these
+# module names directly, while Verilator supplies same-name models from rtl/ip.
+# Non-blocking AXI streams remove TREADY from the core timing paths.  The deep
+# internal pipelines deliberately trade per-operation latency for WNS/TNS.
+create_ip -name floating_point -vendor xilinx.com -library ip -version 7.1 -module_name FP_FMA_0
+set_ip_config_required FP_FMA_0 {Operation_Type operation_type} {FMA}
+set_ip_config_required FP_FMA_0 {A_Precision_Type a_precision_type} {Single}
+set_ip_config_required FP_FMA_0 {Result_Precision_Type result_precision_type} {Single}
+set_ip_config_required FP_FMA_0 {Flow_Control flow_control} {NonBlocking}
+set_ip_config_required FP_FMA_0 {Has_ARESETn has_aresetn} {true}
+set_ip_config_required FP_FMA_0 {Has_RESULT_TREADY has_result_tready} {false}
+set_ip_config_required FP_FMA_0 {C_Latency c_latency} {19}
+set_ip_config_optional FP_FMA_0 {C_Rate c_rate} {1}
+
+create_ip -name floating_point -vendor xilinx.com -library ip -version 7.1 -module_name FP_DIV_0
+set_ip_config_required FP_DIV_0 {Operation_Type operation_type} {Divide}
+set_ip_config_required FP_DIV_0 {A_Precision_Type a_precision_type} {Single}
+set_ip_config_required FP_DIV_0 {Result_Precision_Type result_precision_type} {Single}
+set_ip_config_required FP_DIV_0 {Flow_Control flow_control} {NonBlocking}
+set_ip_config_required FP_DIV_0 {Has_ARESETn has_aresetn} {true}
+set_ip_config_required FP_DIV_0 {Has_RESULT_TREADY has_result_tready} {false}
+set_ip_config_required FP_DIV_0 {C_Latency c_latency} {28}
+set_ip_config_optional FP_DIV_0 {C_Rate c_rate} {1}
+
+create_ip -name floating_point -vendor xilinx.com -library ip -version 7.1 -module_name FP_SQRT_0
+set_ip_config_required FP_SQRT_0 {Operation_Type operation_type} {Square_root}
+set_ip_config_required FP_SQRT_0 {A_Precision_Type a_precision_type} {Single}
+set_ip_config_required FP_SQRT_0 {Result_Precision_Type result_precision_type} {Single}
+set_ip_config_required FP_SQRT_0 {Flow_Control flow_control} {NonBlocking}
+set_ip_config_required FP_SQRT_0 {Has_ARESETn has_aresetn} {true}
+set_ip_config_required FP_SQRT_0 {Has_RESULT_TREADY has_result_tready} {false}
+set_ip_config_required FP_SQRT_0 {C_Latency c_latency} {28}
+set_ip_config_optional FP_SQRT_0 {C_Rate c_rate} {1}
+
 set cdc_constraint_dir [file normalize [file join $project_dir constraints]]
 file mkdir $cdc_constraint_dir
 set cdc_xdc_file [file join $cdc_constraint_dir digital_twin_cdc.xdc]

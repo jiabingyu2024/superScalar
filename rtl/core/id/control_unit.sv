@@ -35,6 +35,12 @@ module control_unit(
     output logic                            o_is_m_ext,
     output logic  [`M_OP_BUS]              o_m_op,
 
+    output logic                            o_is_f_ext,
+    output logic                            o_f_reg_write,
+    output logic                            o_uses_frs1,
+    output logic                            o_uses_frs2,
+    output logic                            o_uses_frs3,
+
     output logic  [11:0]                    o_csr_addr
 );
 
@@ -62,6 +68,11 @@ module control_unit(
         o_load_unsigned = 1'b0;
         o_is_m_ext      = 1'b0;
         o_m_op          = func3;
+        o_is_f_ext      = 1'b0;
+        o_f_reg_write   = 1'b0;
+        o_uses_frs1     = 1'b0;
+        o_uses_frs2     = 1'b0;
+        o_uses_frs3     = 1'b0;
         o_csr_addr      = i_instr[31:20];
 
         unique case (opcode)
@@ -163,6 +174,66 @@ module control_unit(
 
             // fence / fence.i — treated as NOP (no cache in this pipeline)
             `OP_MISC_MEM: begin
+            end
+
+            `OP_F_LOAD: begin
+                o_is_f_ext      = 1'b1;
+                o_f_reg_write   = 1'b1;
+                o_mem_read      = 1'b1;
+                o_wb_src        = `WB_SRC_MEM;
+                o_is_rs2_imm    = 1'b1;
+                o_uses_rs1      = 1'b1;
+                o_mem_mask      = `MASK_WORD;
+            end
+
+            `OP_F_STORE: begin
+                o_is_f_ext      = 1'b1;
+                o_mem_write     = 1'b1;
+                o_is_rs2_imm    = 1'b1;
+                o_uses_rs1      = 1'b1;
+                o_uses_frs2     = 1'b1;
+                o_mem_mask      = `MASK_WORD;
+            end
+
+            `OP_F_MADD, `OP_F_MSUB, `OP_F_NMSUB, `OP_F_NMADD: begin
+                o_is_f_ext      = 1'b1;
+                o_f_reg_write   = 1'b1;
+                o_uses_frs1     = 1'b1;
+                o_uses_frs2     = 1'b1;
+                o_uses_frs3     = 1'b1;
+            end
+
+            `OP_F_TYPE: begin
+                o_is_f_ext = 1'b1;
+                unique case (func7)
+                    7'b1100000: begin // FCVT.W[U].S
+                        o_reg_write = 1'b1;
+                        o_uses_frs1 = 1'b1;
+                    end
+                    7'b1010000: begin // FEQ/FLT/FLE
+                        o_reg_write = 1'b1;
+                        o_uses_frs1 = 1'b1;
+                        o_uses_frs2 = 1'b1;
+                    end
+                    7'b1110000: begin // FMV.X.W/FCLASS.S
+                        o_reg_write = 1'b1;
+                        o_uses_frs1 = 1'b1;
+                    end
+                    7'b1101000,       // FCVT.S.W[U]
+                    7'b1111000: begin // FMV.W.X
+                        o_f_reg_write = 1'b1;
+                        o_uses_rs1    = 1'b1;
+                    end
+                    7'b0101100: begin // FSQRT.S
+                        o_f_reg_write = 1'b1;
+                        o_uses_frs1   = 1'b1;
+                    end
+                    default: begin
+                        o_f_reg_write = 1'b1;
+                        o_uses_frs1   = 1'b1;
+                        o_uses_frs2   = 1'b1;
+                    end
+                endcase
             end
 
             // CSR instructions, ecall, ebreak, mret

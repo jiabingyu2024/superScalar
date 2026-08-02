@@ -16,6 +16,10 @@ module stage_ex(
 
     input  logic  [`DATA_BUS]               i_rs1_data,
     input  logic  [`DATA_BUS]               i_rs2_data,
+    input  logic  [`INST_BUS]               i_instr,
+    input  logic  [`DATA_BUS]               i_frs1_data,
+    input  logic  [`DATA_BUS]               i_frs2_data,
+    input  logic  [`DATA_BUS]               i_frs3_data,
     input  logic  [`RF_BUS]                 i_rs1_addr,
     input  logic  [`RF_BUS]                 i_rs2_addr,
     input  logic  [`DATA_BUS]               i_imm,
@@ -51,6 +55,8 @@ module stage_ex(
 
     input  logic                            i_is_m_ext,
     input  logic  [`M_OP_BUS]               i_m_op,
+    input  logic                            i_is_f_ext,
+    input  logic                            i_f_reg_write,
 
     input  logic  [11:0]                    i_csr_addr,
 
@@ -71,6 +77,7 @@ module stage_ex(
     output logic                            o_mem_write,
     output logic                            o_wb_src,
     output logic                            o_reg_write,
+    output logic                            o_f_reg_write,
     output logic  [3:0]                     o_mem_mask,
     output logic                            o_load_unsigned,
 
@@ -101,6 +108,10 @@ module stage_ex(
     logic             stalled_operands_valid_q;
     logic [`DATA_BUS] rs1_exec_q;
     logic [`DATA_BUS] rs2_exec_q;
+    logic [`INST_BUS] instr_q;
+    logic [`DATA_BUS] frs1_data_q;
+    logic [`DATA_BUS] frs2_data_q;
+    logic [`DATA_BUS] frs3_data_q;
     // These buses feed several physically separated EX2 consumers.  Keep
     // their synthesized fanout bounded so Vivado duplicates the late-bypass
     // muxes close to ALU/branch/hold consumers instead of routing one shared
@@ -130,6 +141,8 @@ module stage_ex(
     logic [3:0]       inst_spec_q;
     logic             is_m_ext_q;
     logic [`M_OP_BUS] m_op_q;
+    logic             is_f_ext_q;
+    logic             f_reg_write_q;
     logic [11:0]      csr_addr_q;
     logic [`RF_BUS]   rd_addr_q;
     logic             mem_read_q;
@@ -234,6 +247,10 @@ module stage_ex(
         if (!i_rst_n) begin
             rs1_exec_q       <= '0;
             rs2_exec_q       <= '0;
+            instr_q          <= '0;
+            frs1_data_q      <= '0;
+            frs2_data_q      <= '0;
+            frs3_data_q      <= '0;
             rs1_late_m1_q    <= 1'b0;
             rs1_late_m2_q    <= 1'b0;
             rs1_late_w_q     <= 1'b0;
@@ -255,6 +272,8 @@ module stage_ex(
             inst_spec_q      <= '0;
             is_m_ext_q       <= 1'b0;
             m_op_q           <= '0;
+            is_f_ext_q       <= 1'b0;
+            f_reg_write_q    <= 1'b0;
             csr_addr_q       <= '0;
             rd_addr_q        <= '0;
             mem_read_q       <= 1'b0;
@@ -266,6 +285,10 @@ module stage_ex(
         end else if (i_flush_e) begin
             rs1_exec_q       <= '0;
             rs2_exec_q       <= '0;
+            instr_q          <= '0;
+            frs1_data_q      <= '0;
+            frs2_data_q      <= '0;
+            frs3_data_q      <= '0;
             rs1_late_m1_q    <= 1'b0;
             rs1_late_m2_q    <= 1'b0;
             rs1_late_w_q     <= 1'b0;
@@ -287,6 +310,8 @@ module stage_ex(
             inst_spec_q      <= '0;
             is_m_ext_q       <= 1'b0;
             m_op_q           <= '0;
+            is_f_ext_q       <= 1'b0;
+            f_reg_write_q    <= 1'b0;
             csr_addr_q       <= '0;
             rd_addr_q        <= '0;
             mem_read_q       <= 1'b0;
@@ -316,6 +341,10 @@ module stage_ex(
         end else begin
             rs1_exec_q       <= rs1_exec_mux;
             rs2_exec_q       <= rs2_exec_mux;
+            instr_q          <= i_instr;
+            frs1_data_q      <= i_frs1_data;
+            frs2_data_q      <= i_frs2_data;
+            frs3_data_q      <= i_frs3_data;
             // FWD_E_M names the producer that is currently in EX2 and will be
             // in M1 after this edge.  A non-fast load-use bubble instead puts
             // the load in M1 now, so remember that its data arrives in M2.
@@ -359,6 +388,8 @@ module stage_ex(
             inst_spec_q      <= i_inst_spec;
             is_m_ext_q       <= i_is_m_ext;
             m_op_q           <= i_m_op;
+            is_f_ext_q       <= i_is_f_ext;
+            f_reg_write_q    <= i_f_reg_write;
             csr_addr_q       <= i_csr_addr;
             rd_addr_q        <= i_rd_addr;
             mem_read_q       <= i_mem_read;
@@ -383,7 +414,7 @@ module stage_ex(
     // operations use registered/M2 operands and therefore cannot inherit the
     // former broad LUTRAM-to-EX timing cone.
     assign fast_alu_op_q = reg_write_q && !mem_read_q && !mem_write_q &&
-                           !is_branch_q && !is_m_ext_q &&
+                           !is_branch_q && !is_m_ext_q && !is_f_ext_q &&
                            (inst_spec_q == '0) &&
                            ((alu_ctrl_q == `ALU_ADD) ||
                             (alu_ctrl_q == `ALU_SUB) ||
@@ -451,10 +482,22 @@ module stage_ex(
     logic               mul_issue;
     logic [2:0]         mul_valid_pipe;
     logic [`M_OP_BUS]  mul_op_pipe [0:2];
+    logic              f_start_pulse;
+    logic              f_busy_int;
+    logic              f_done_int;
+    logic              f_issued;
+    logic              is_f_compute_q;
+    logic [`DATA_BUS]  f_result;
+    logic [4:0]        f_fflags;
 
     assign is_div_q      = is_m_ext_q && m_op_q[2];
     assign m_start_pulse = is_div_q && !m_busy_int && !m_issued;
-    assign o_m_busy      = is_div_q && !m_done_int;
+    assign is_f_compute_q = is_f_ext_q &&
+                            (instr_q[6:0] != `OP_F_LOAD) &&
+                            (instr_q[6:0] != `OP_F_STORE);
+    assign f_start_pulse = is_f_compute_q && !f_busy_int && !f_issued;
+    assign o_m_busy      = (is_div_q && !m_done_int) ||
+                           (is_f_compute_q && !f_done_int);
     assign o_is_mul      = is_m_ext_q && !m_op_q[2];
     assign o_m_op        = m_op_q;
     assign mul_issue     = o_is_mul && !i_stall_e && !i_flush_e;
@@ -518,6 +561,34 @@ module stage_ex(
         .o_res   (m_res)
     );
 
+    always_ff @(posedge i_clk) begin
+        if (!i_rst_n) begin
+            f_issued <= 1'b0;
+        end else if (i_flush_e || f_done_int || !is_f_compute_q) begin
+            f_issued <= 1'b0;
+        end else if (f_start_pulse) begin
+            f_issued <= 1'b1;
+        end
+    end
+
+    logic [2:0] csr_frm;
+    rv32f_unit u_rv32f_unit (
+        .i_clk      (i_clk),
+        .i_rst_n    (i_rst_n),
+        .i_start    (f_start_pulse),
+        .i_flush    (i_flush_e),
+        .i_instr    (instr_q),
+        .i_frs1     (frs1_data_q),
+        .i_frs2     (frs2_data_q),
+        .i_frs3     (frs3_data_q),
+        .i_xrs1     (rs1_exec_registered),
+        .i_frm      (csr_frm),
+        .o_busy     (f_busy_int),
+        .o_done     (f_done_int),
+        .o_result   (f_result),
+        .o_fflags   (f_fflags)
+    );
+
     // ---- CSR file ----
     logic [31:0] csr_rdata;
     logic [31:0] csr_wdata_next;
@@ -564,6 +635,9 @@ module stage_ex(
         .i_waddr      (csr_addr_q),
         .i_wdata      (csr_operand),
         .i_wmode      (csr_wmode),
+        .i_fflags_we  (f_done_int && is_f_compute_q),
+        .i_fflags     (f_fflags),
+        .o_frm        (csr_frm),
         // Trap 入口
         .i_trap_en    (is_ecall || is_ebreak),
         .i_trap_pc    (pc_q),           // EX2 PC = ecall 指令地址
@@ -597,6 +671,7 @@ module stage_ex(
     assign o_mem_write     = mem_write_q;
     assign o_wb_src        = wb_src_q;
     assign o_reg_write     = reg_write_q;
+    assign o_f_reg_write   = f_reg_write_q;
     assign o_mem_mask      = mem_mask_q;
     assign o_load_unsigned = load_unsigned_q;
     assign o_update_bpu_target = branch_bpu_target;
@@ -615,9 +690,12 @@ module stage_ex(
 
     always_comb begin
         o_mem_addr = rs1_exec_registered + imm_q;
-        o_a2_data = mem_write_q ? rs2_exec_registered : rs2_exec_final;
+        o_a2_data = mem_write_q ? (is_f_ext_q ? frs2_data_q : rs2_exec_registered) :
+                                  rs2_exec_final;
 
-        if (is_div_q) begin
+        if (is_f_compute_q) begin
+            o_alu_res = f_result;
+        end else if (is_div_q) begin
             o_alu_res = m_res;
         end else if (o_is_mul) begin
             o_alu_res = 32'd0;

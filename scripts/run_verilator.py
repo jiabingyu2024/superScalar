@@ -19,6 +19,7 @@ WAVE_DIR = BUILD_DIR / "wave"
 SRC_PROFILE_FILE = REPO / "tb" / "verilator" / "src_profiles.json"
 
 COMMON_TB_SOURCES = [
+    "tb/verilator/rv32f_dpi.cpp",
     "tb/verilator/sim_common.cpp",
     "tb/verilator/sim_config.cpp",
     "tb/verilator/sim_memory.cpp",
@@ -192,7 +193,7 @@ def build_verilator(target: BuildTarget, force: bool, jobs: int, cxx: str | None
         "--trace-fst",
         "-Wno-fatal",
         "-CFLAGS",
-        "-std=c++17 -O3",
+        "-std=c++17 -O3 -frounding-math -fno-fast-math",
     ])
     if cxx:
         cmd.extend(["-MAKEFLAGS", f"CXX={cxx}"])

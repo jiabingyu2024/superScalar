@@ -68,6 +68,11 @@ module core(
     logic             is_branch_d;
     logic             is_m_ext_d;
     logic [2:0]       m_op_d;
+    logic             is_f_ext_d;
+    logic             f_reg_write_d;
+    logic             uses_frs1_d;
+    logic             uses_frs2_d;
+    logic             uses_frs3_d;
     logic [11:0]      csr_addr_d;
     logic [`DATA_BUS] imm_d;
     logic [`DATA_BUS] rs1_data_d;
@@ -75,6 +80,10 @@ module core(
     logic [`DATA_BUS] rs2_data_d;
     logic [`RF_BUS]   rs2_addr_d;
     logic [`RF_BUS]   rd_addr_d;
+    logic [`DATA_BUS] frs1_data_d;
+    logic [`DATA_BUS] frs2_data_d;
+    logic [`DATA_BUS] frs3_data_d;
+    logic [`RF_BUS]   frs3_addr_d;
     logic [`PC_BUS]   pc_target_d;
 
     logic [`DATA_BUS] rs1_data_e;
@@ -100,6 +109,12 @@ module core(
     logic [7:0]       bpu_pht_idx_e;
     logic             is_m_ext_e;
     logic [2:0]       m_op_e;
+    logic             is_f_ext_e;
+    logic             f_reg_write_e;
+    logic [`INST_BUS] inst_e;
+    logic [`DATA_BUS] frs1_data_e;
+    logic [`DATA_BUS] frs2_data_e;
+    logic [`DATA_BUS] frs3_data_e;
     logic [11:0]      csr_addr_e;
 
     logic [1:0]       rs1_fwd_sel_d;
@@ -115,6 +130,7 @@ module core(
     logic             mem_write_ex2;
     logic             wb_src_ex2;
     logic             reg_write_ex2;
+    logic             f_reg_write_ex2;
     logic [3:0]       mem_mask_ex2;
     logic             load_unsigned_ex2;
     logic             is_mul_ex2;
@@ -140,6 +156,7 @@ module core(
     logic             mem_write_m;
     logic             wb_src_m;
     logic             reg_write_m;
+    logic             f_reg_write_m;
     logic [3:0]       mem_mask_m;
     logic             load_unsigned_m;
     logic             is_mul_m;
@@ -159,6 +176,7 @@ module core(
     logic [`DATA_BUS] alu_res_m2;
     logic             wb_src_m2;
     logic             reg_write_m2;
+    logic             f_reg_write_m2;
     logic             is_mul_m2;
     logic [`M_OP_BUS] m_op_m2;
     logic [`DATA_BUS] mem_data_m;
@@ -167,6 +185,7 @@ module core(
 
     logic [`RF_BUS]   rd_addr_w;
     logic             reg_write_w;
+    logic             f_reg_write_w;
     logic [`DATA_BUS] wb_data_w;
     logic             is_mul_w;
     logic [`M_OP_BUS] m_op_w;
@@ -199,6 +218,7 @@ module core(
     logic             mem_req_m;
     logic             mem_busy_m;
     logic             fast_load_alu_d;
+    logic             f_hazard_d;
 
     assign irom_addr = pc_p;
     assign irom_ena  = !stall_p_f;
@@ -206,13 +226,20 @@ module core(
     assign mem_req_m  = mem_read_m || mem_write_m;
     assign mem_busy_m = mem_req_m && !dram_req_ready;
     assign fast_load_alu_d = reg_write_d && !mem_read_d && !mem_write_d &&
-                             !is_branch_d && !is_m_ext_d &&
+                             !is_branch_d && !is_m_ext_d && !is_f_ext_d &&
                              (inst_spec_d == '0) &&
                              ((alu_ctrl_d == `ALU_ADD) ||
                               (alu_ctrl_d == `ALU_SUB) ||
                               (alu_ctrl_d == `ALU_AND) ||
                               (alu_ctrl_d == `ALU_OR)  ||
                               (alu_ctrl_d == `ALU_XOR));
+    // Conservative F-register interlock: any consumer waits until all older F
+    // writes retire.  Five OR gates replace a 3x5 address-compare scoreboard,
+    // keeping the new ID-to-PC stall cone short at the cost of a few bubbles in
+    // independent floating-point code (irrelevant to the directed test goal).
+    assign f_hazard_d = (uses_frs1_d || uses_frs2_d || uses_frs3_d) &&
+                        (f_reg_write_e || f_reg_write_ex2 || f_reg_write_m ||
+                         f_reg_write_m2 || f_reg_write_w);
 
     stage_pc u_stage_pc (
         .i_clk       (clk),
@@ -278,6 +305,7 @@ module core(
         .i_uses_rs1_d    (uses_rs1_d),
         .i_uses_rs2_d    (uses_rs2_d),
         .i_fast_load_alu_d(fast_load_alu_d),
+        .i_f_hazard_d    (f_hazard_d),
         .i_rd_addr_e     (rd_addr_e),
         .i_mem_read_e    (mem_read_e),
         .i_mem_mask_e    (mem_mask_e),
@@ -331,6 +359,9 @@ module core(
         .i_we            (reg_write_w),
         .i_w_addr        (rd_addr_w),
         .i_w_data        (wb_data_arch),
+        .i_f_we          (f_reg_write_w),
+        .i_f_w_addr      (rd_addr_w),
+        .i_f_w_data      (wb_data_w),
         .o_mem_read      (mem_read_d),
         .o_mem_write     (mem_write_d),
         .o_reg_write     (reg_write_d),
@@ -346,12 +377,21 @@ module core(
         .o_is_branch     (is_branch_d),
         .o_is_m_ext      (is_m_ext_d),
         .o_m_op          (m_op_d),
+        .o_is_f_ext      (is_f_ext_d),
+        .o_f_reg_write   (f_reg_write_d),
+        .o_uses_frs1     (uses_frs1_d),
+        .o_uses_frs2     (uses_frs2_d),
+        .o_uses_frs3     (uses_frs3_d),
         .o_csr_addr      (csr_addr_d),
         .o_imm           (imm_d),
         .o_rs1_data      (rs1_data_d),
         .o_rs1_addr      (rs1_addr_d),
         .o_rs2_data      (rs2_data_d),
         .o_rs2_addr      (rs2_addr_d),
+        .o_frs1_data     (frs1_data_d),
+        .o_frs2_data     (frs2_data_d),
+        .o_frs3_data     (frs3_data_d),
+        .o_frs3_addr     (frs3_addr_d),
         .o_rd_addr       (rd_addr_d)
     );
 
@@ -378,6 +418,10 @@ module core(
         .i_rs2_data      (rs2_data_d),
         .i_rs2_addr      (rs2_addr_d),
         .i_rd_addr       (rd_addr_d),
+        .i_instr         (inst_d),
+        .i_frs1_data     (frs1_data_d),
+        .i_frs2_data     (frs2_data_d),
+        .i_frs3_data     (frs3_data_d),
         .i_imm           (imm_d),
         .i_mem_read      (mem_read_d),
         .i_reg_write     (reg_write_d),
@@ -398,12 +442,18 @@ module core(
         .i_rs2_fwd_sel   (rs2_fwd_sel_d),
         .i_is_m_ext      (is_m_ext_d),
         .i_m_op          (m_op_d),
+        .i_is_f_ext      (is_f_ext_d),
+        .i_f_reg_write   (f_reg_write_d),
         .i_csr_addr      (csr_addr_d),
         .o_rs1_data      (rs1_data_e),
         .o_rs2_data      (rs2_data_e),
         .o_rd_addr       (rd_addr_e),
         .o_rs1_addr      (rs1_addr_e),
         .o_rs2_addr      (rs2_addr_e),
+        .o_instr         (inst_e),
+        .o_frs1_data     (frs1_data_e),
+        .o_frs2_data     (frs2_data_e),
+        .o_frs3_data     (frs3_data_e),
         .o_imm           (imm_e),
         .o_mem_read      (mem_read_e),
         .o_reg_write     (reg_write_e),
@@ -424,6 +474,8 @@ module core(
         .o_rs2_fwd_sel   (rs2_fwd_sel_e),
         .o_is_m_ext      (is_m_ext_e),
         .o_m_op          (m_op_e),
+        .o_is_f_ext      (is_f_ext_e),
+        .o_f_reg_write   (f_reg_write_e),
         .o_csr_addr      (csr_addr_e)
     );
 
@@ -434,6 +486,10 @@ module core(
         .i_stall_e       (stall_d_e),
         .i_rs1_data      (rs1_data_e),
         .i_rs2_data      (rs2_data_e),
+        .i_instr         (inst_e),
+        .i_frs1_data     (frs1_data_e),
+        .i_frs2_data     (frs2_data_e),
+        .i_frs3_data     (frs3_data_e),
         .i_rs1_addr      (rs1_addr_e),
         .i_rs2_addr      (rs2_addr_e),
         .i_imm           (imm_e),
@@ -464,6 +520,8 @@ module core(
         .i_inst_spec     (inst_spec_e),
         .i_is_m_ext      (is_m_ext_e),
         .i_m_op          (m_op_e),
+        .i_is_f_ext      (is_f_ext_e),
+        .i_f_reg_write   (f_reg_write_e),
         .i_csr_addr      (csr_addr_e),
         .i_rd_addr       (rd_addr_e),
         .i_mem_read      (mem_read_e),
@@ -480,6 +538,7 @@ module core(
         .o_mem_write     (mem_write_ex2),
         .o_wb_src        (wb_src_ex2),
         .o_reg_write     (reg_write_ex2),
+        .o_f_reg_write   (f_reg_write_ex2),
         .o_mem_mask      (mem_mask_ex2),
         .o_load_unsigned (load_unsigned_ex2),
         .o_update_taken  (update_taken_e),
@@ -512,6 +571,7 @@ module core(
         .i_mem_write     (mem_write_ex2),
         .i_wb_src        (wb_src_ex2),
         .i_reg_write     (reg_write_ex2),
+        .i_f_reg_write   (f_reg_write_ex2),
         .i_mem_mask      (mem_mask_ex2),
         .i_load_unsigned (load_unsigned_ex2),
         .i_is_mul        (is_mul_ex2),
@@ -534,6 +594,7 @@ module core(
         .o_mem_write     (mem_write_m),
         .o_wb_src        (wb_src_m),
         .o_reg_write     (reg_write_m),
+        .o_f_reg_write   (f_reg_write_m),
         .o_mem_mask      (mem_mask_m),
         .o_load_unsigned (load_unsigned_m),
         .o_is_mul        (is_mul_m),
@@ -586,6 +647,7 @@ module core(
         .i_mem_data      (mem_data_m),
         .i_wb_src        (wb_src_m),
         .i_reg_write     (reg_write_m),
+        .i_f_reg_write   (f_reg_write_m),
         .i_is_mul        (is_mul_m),
         .i_m_op          (m_op_m),
         .o_rd_addr       (rd_addr_m2),
@@ -593,6 +655,7 @@ module core(
         .o_mem_data      (mem_data_m2),
         .o_wb_src        (wb_src_m2),
         .o_reg_write     (reg_write_m2),
+        .o_f_reg_write   (f_reg_write_m2),
         .o_is_mul        (is_mul_m2),
         .o_m_op          (m_op_m2)
     );
@@ -613,6 +676,7 @@ module core(
         .i_flush         (1'b0),
         .i_stall         (stall_m_w),
         .i_reg_write     (reg_write_m2),
+        .i_f_reg_write   (f_reg_write_m2),
         .i_rd_addr       (rd_addr_m2),
         .i_wb_data       (wb_data_m2),
         .i_is_mul        (is_mul_m2),
@@ -620,6 +684,7 @@ module core(
         .o_rd_addr       (rd_addr_w),
         .o_wb_data       (wb_data_w),
         .o_reg_write     (reg_write_w),
+        .o_f_reg_write   (f_reg_write_w),
         .o_is_mul        (is_mul_w),
         .o_m_op          (m_op_w)
     );

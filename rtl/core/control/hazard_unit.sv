@@ -21,6 +21,7 @@ module hazard_unit(
     input  logic                            i_uses_rs1_d,
     input  logic                            i_uses_rs2_d,
     input  logic                            i_fast_load_alu_d,
+    input  logic                            i_f_hazard_d,
     input  logic  [`RF_BUS]                 i_rd_addr_e,
     input  logic                            i_mem_read_e,
     input  logic  [3:0]                     i_mem_mask_e,
@@ -79,7 +80,7 @@ module hazard_unit(
          ((i_rd_addr_e == i_rs1_addr_d) || (i_rd_addr_e == i_rs2_addr_d))) ||
         (i_is_mul_ex2 && i_reg_write_ex2 && (i_rd_addr_ex2 != '0) &&
          ((i_rd_addr_ex2 == i_rs1_addr_d) || (i_rd_addr_ex2 == i_rs2_addr_d)));
-    assign data_hazard = load_use_hazard || mul_use_hazard;
+    assign data_hazard = load_use_hazard || mul_use_hazard || i_f_hazard_d;
 
     always_comb begin
 

@@ -32,6 +32,13 @@
 `define OP_AUIPC     7'B0010111
 `define OP_SYSTEM    7'B1110011    // CSR, ecall, ebreak, mret
 `define OP_MISC_MEM  7'B0001111   // fence, fence.i
+`define OP_F_LOAD    7'B0000111   // FLW
+`define OP_F_STORE   7'B0100111   // FSW
+`define OP_F_MADD    7'B1000011
+`define OP_F_MSUB    7'B1000111
+`define OP_F_NMSUB   7'B1001011
+`define OP_F_NMADD   7'B1001111
+`define OP_F_TYPE    7'B1010011   // OP-FP
 
 `define FUNC3_ADD_SUB  3'B000       // func3 for R-type
 `define FUNC3_SLT      3'B010

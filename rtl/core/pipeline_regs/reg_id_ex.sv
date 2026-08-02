@@ -20,6 +20,10 @@ module reg_id_ex(
     input logic [`DATA_BUS]         i_rs2_data,
     input logic [`RF_BUS]           i_rs2_addr,
     input logic [`RF_BUS]           i_rd_addr,
+    input logic [`INST_BUS]         i_instr,
+    input logic [`DATA_BUS]         i_frs1_data,
+    input logic [`DATA_BUS]         i_frs2_data,
+    input logic [`DATA_BUS]         i_frs3_data,
 
     input logic [`DATA_BUS]         i_imm,
 
@@ -50,6 +54,8 @@ module reg_id_ex(
 
     input logic                     i_is_m_ext,
     input logic [`M_OP_BUS]         i_m_op,
+    input logic                     i_is_f_ext,
+    input logic                     i_f_reg_write,
     input logic [11:0]              i_csr_addr,
 
     output logic [`DATA_BUS]        o_rs1_data,
@@ -57,6 +63,10 @@ module reg_id_ex(
     output logic [4:0]              o_rd_addr,
     output logic [4:0]              o_rs1_addr,
     output logic [4:0]              o_rs2_addr,
+    output logic [`INST_BUS]        o_instr,
+    output logic [`DATA_BUS]        o_frs1_data,
+    output logic [`DATA_BUS]        o_frs2_data,
+    output logic [`DATA_BUS]        o_frs3_data,
 
     output logic [`DATA_BUS]        o_imm,
 
@@ -86,6 +96,8 @@ module reg_id_ex(
 
     output logic                    o_is_m_ext,
     output logic [`M_OP_BUS]        o_m_op,
+    output logic                    o_is_f_ext,
+    output logic                    o_f_reg_write,
     output logic [11:0]             o_csr_addr
 );
 
@@ -96,6 +108,10 @@ module reg_id_ex(
             o_rd_addr        <= '0;
             o_rs1_addr       <= '0;
             o_rs2_addr       <= '0;
+            o_instr          <= '0;
+            o_frs1_data      <= '0;
+            o_frs2_data      <= '0;
+            o_frs3_data      <= '0;
             o_imm            <= '0;
             o_mem_read       <= 1'b0;
             o_reg_write      <= 1'b0;
@@ -116,6 +132,8 @@ module reg_id_ex(
             o_rs2_fwd_sel    <= `FWD_RF;
             o_is_m_ext       <= 1'b0;
             o_m_op           <= 3'b000;
+            o_is_f_ext       <= 1'b0;
+            o_f_reg_write    <= 1'b0;
             o_csr_addr       <= 12'h0;
         end else if (i_flush) begin
             o_rs1_data       <= '0;
@@ -123,6 +141,10 @@ module reg_id_ex(
             o_rd_addr        <= '0;
             o_rs1_addr       <= '0;
             o_rs2_addr       <= '0;
+            o_instr          <= '0;
+            o_frs1_data      <= '0;
+            o_frs2_data      <= '0;
+            o_frs3_data      <= '0;
             o_imm            <= '0;
             o_mem_read       <= 1'b0;
             o_reg_write      <= 1'b0;
@@ -143,6 +165,8 @@ module reg_id_ex(
             o_rs2_fwd_sel    <= `FWD_RF;
             o_is_m_ext       <= 1'b0;
             o_m_op           <= 3'b000;
+            o_is_f_ext       <= 1'b0;
+            o_f_reg_write    <= 1'b0;
             o_csr_addr       <= 12'h0;
         end else if (!i_stall) begin
             o_rs1_data       <= i_rs1_data;
@@ -150,6 +174,10 @@ module reg_id_ex(
             o_rd_addr        <= i_rd_addr;
             o_rs1_addr       <= i_rs1_addr;
             o_rs2_addr       <= i_rs2_addr;
+            o_instr          <= i_instr;
+            o_frs1_data      <= i_frs1_data;
+            o_frs2_data      <= i_frs2_data;
+            o_frs3_data      <= i_frs3_data;
             o_imm            <= i_imm;
             o_mem_read       <= i_mem_read;
             o_reg_write      <= i_reg_write;
@@ -170,6 +198,8 @@ module reg_id_ex(
             o_rs2_fwd_sel    <= i_rs2_fwd_sel;
             o_is_m_ext       <= i_is_m_ext;
             o_m_op           <= i_m_op;
+            o_is_f_ext       <= i_is_f_ext;
+            o_f_reg_write    <= i_f_reg_write;
             o_csr_addr       <= i_csr_addr;
         end
     end

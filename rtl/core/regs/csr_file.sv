@@ -21,6 +21,9 @@ module csr_file (
     input  logic [11:0] i_waddr,
     input  logic [31:0] i_wdata,
     input  logic [1:0]  i_wmode,       // 00=write，01=set，10=clear
+    input  logic        i_fflags_we,
+    input  logic [4:0]  i_fflags,
+    output logic [2:0]  o_frm,
 
     // --- Trap 入口（ecall/ebreak）---
     input  logic        i_trap_en,
@@ -41,15 +44,21 @@ module csr_file (
     logic [31:0] mscratch_r;// 0x340
     logic [31:0] mepc_r;    // 0x341
     logic [31:0] mcause_r;  // 0x342
+    logic [2:0]  frm_r;
+    logic [4:0]  fflags_r;
     // 存根：mie, medeleg, mideleg, satp, stvec, pmpaddr0, pmpcfg0 等
     // 写入接受但读出 0，节省资源
 
     assign o_mtvec = mtvec_r;
     assign o_mepc  = mepc_r;
+    assign o_frm   = frm_r;
 
     // ---- 读出（组合）----
     always_comb begin
         case (i_raddr)
+            12'h001: o_rdata = {27'b0, fflags_r};
+            12'h002: o_rdata = {29'b0, frm_r};
+            12'h003: o_rdata = {24'b0, frm_r, fflags_r};
             12'h300: o_rdata = mstatus;
             12'h305: o_rdata = mtvec_r;
             12'h340: o_rdata = mscratch_r;
@@ -74,6 +83,13 @@ module csr_file (
         endcase
     endfunction
 
+    logic [31:0] fflags_write_value;
+    logic [31:0] frm_write_value;
+    logic [31:0] fcsr_write_value;
+    assign fflags_write_value = apply_wmode({27'b0, fflags_r}, i_wdata, i_wmode);
+    assign frm_write_value    = apply_wmode({29'b0, frm_r}, i_wdata, i_wmode);
+    assign fcsr_write_value   = apply_wmode({24'b0, frm_r, fflags_r}, i_wdata, i_wmode);
+
     // ---- 时序写入 ----
     always_ff @(posedge i_clk) begin
         if (!i_rst_n) begin
@@ -82,6 +98,8 @@ module csr_file (
             mscratch_r <= 32'h0;
             mepc_r   <= 32'h0;
             mcause_r <= 32'h0;
+            frm_r    <= 3'b000;
+            fflags_r <= 5'b00000;
         end else begin
             // Trap 入口优先级高于普通写
             if (i_trap_en) begin
@@ -91,6 +109,12 @@ module csr_file (
                 mstatus  <= {mstatus[31:8], mstatus[3], mstatus[6:4], 1'b0, mstatus[2:0]};
             end else if (i_we) begin
                 case (i_waddr)
+                    12'h001: fflags_r <= fflags_write_value[4:0];
+                    12'h002: frm_r    <= frm_write_value[2:0];
+                    12'h003: begin
+                        frm_r    <= fcsr_write_value[7:5];
+                        fflags_r <= fcsr_write_value[4:0];
+                    end
                     12'h300: mstatus  <= apply_wmode(mstatus,  i_wdata, i_wmode);
                     12'h305: mtvec_r  <= apply_wmode(mtvec_r,  i_wdata, i_wmode);
                     12'h340: mscratch_r <= apply_wmode(mscratch_r, i_wdata, i_wmode);
@@ -98,6 +122,8 @@ module csr_file (
                     12'h342: mcause_r <= apply_wmode(mcause_r, i_wdata, i_wmode);
                     default: ; // 存根 CSR：接受写入但不存储
                 endcase
+            end else if (i_fflags_we) begin
+                fflags_r <= fflags_r | i_fflags;
             end
         end
     end

@@ -17,6 +17,7 @@ module reg_m1_m2 (
 
     input logic                               i_wb_src,
     input logic                               i_reg_write,
+    input logic                               i_f_reg_write,
     input logic                               i_is_mul,
     input logic [`M_OP_BUS]                   i_m_op,
 
@@ -26,6 +27,7 @@ module reg_m1_m2 (
 
     output logic                              o_wb_src,
     output logic                              o_reg_write,
+    output logic                              o_f_reg_write,
     output logic                              o_is_mul,
     output logic [`M_OP_BUS]                  o_m_op
 
@@ -38,6 +40,7 @@ module reg_m1_m2 (
             o_mem_data      <= '0;
             o_wb_src        <= `WB_SRC_ALU;
             o_reg_write     <= 1'b0;
+            o_f_reg_write   <= 1'b0;
             o_is_mul        <= 1'b0;
             o_m_op          <= '0;
         end else if (i_flush) begin
@@ -46,6 +49,7 @@ module reg_m1_m2 (
             o_mem_data      <= '0;
             o_wb_src        <= `WB_SRC_ALU;
             o_reg_write     <= 1'b0;
+            o_f_reg_write   <= 1'b0;
             o_is_mul        <= 1'b0;
             o_m_op          <= '0;
         end else if (!i_stall) begin
@@ -54,6 +58,7 @@ module reg_m1_m2 (
             o_mem_data      <= i_mem_data;
             o_wb_src        <= i_wb_src;
             o_reg_write     <= i_reg_write;
+            o_f_reg_write   <= i_f_reg_write;
             o_is_mul        <= i_is_mul;
             o_m_op          <= i_m_op;
         end

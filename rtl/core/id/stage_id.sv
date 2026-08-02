@@ -21,6 +21,9 @@ module stage_id(
     input  logic                            i_we,
     input  logic  [`RF_BUS]                 i_w_addr,
     input  logic  [`DATA_BUS]               i_w_data,
+    input  logic                            i_f_we,
+    input  logic  [`RF_BUS]                 i_f_w_addr,
+    input  logic  [`DATA_BUS]               i_f_w_data,
 
     output logic                            o_mem_read,   // from control
     output logic                            o_mem_write,
@@ -45,6 +48,11 @@ module stage_id(
 
     output logic                            o_is_m_ext,
     output logic  [`M_OP_BUS]               o_m_op,
+    output logic                            o_is_f_ext,
+    output logic                            o_f_reg_write,
+    output logic                            o_uses_frs1,
+    output logic                            o_uses_frs2,
+    output logic                            o_uses_frs3,
     output logic  [11:0]                    o_csr_addr,
 
     output logic  [`DATA_BUS]               o_imm,
@@ -52,6 +60,10 @@ module stage_id(
     output logic  [`RF_BUS]                 o_rs1_addr,
     output logic  [`DATA_BUS]               o_rs2_data,
     output logic  [`RF_BUS]                 o_rs2_addr,
+    output logic  [`DATA_BUS]               o_frs1_data,
+    output logic  [`DATA_BUS]               o_frs2_data,
+    output logic  [`DATA_BUS]               o_frs3_data,
+    output logic  [`RF_BUS]                 o_frs3_addr,
     output logic  [`RF_BUS]                 o_rd_addr
 );
 
@@ -61,6 +73,7 @@ module stage_id(
     assign o_rs1_addr = i_inst_f_d[19:15];
     assign o_rs2_addr = i_inst_f_d[24:20];
     assign o_rd_addr  = i_inst_f_d[11:7];
+    assign o_frs3_addr = i_inst_f_d[31:27];
     assign o_rs1_data = rs1_data;
     assign o_rs2_data = rs2_data;
 
@@ -81,6 +94,11 @@ module stage_id(
         .o_load_unsigned (o_load_unsigned),
         .o_is_m_ext      (o_is_m_ext),
         .o_m_op          (o_m_op),
+        .o_is_f_ext      (o_is_f_ext),
+        .o_f_reg_write   (o_f_reg_write),
+        .o_uses_frs1     (o_uses_frs1),
+        .o_uses_frs2     (o_uses_frs2),
+        .o_uses_frs3     (o_uses_frs3),
         .o_csr_addr      (o_csr_addr)
     );
 
@@ -99,5 +117,18 @@ module stage_id(
         .i_w_data   (i_w_data),
         .o_rs1_data (rs1_data),
         .o_rs2_data (rs2_data)
+    );
+
+    fregfile u_fregfile (
+        .i_clk       (i_clk),
+        .i_we        (i_f_we),
+        .i_rs1_addr  (o_rs1_addr),
+        .i_rs2_addr  (o_rs2_addr),
+        .i_rs3_addr  (o_frs3_addr),
+        .i_w_addr    (i_f_w_addr),
+        .i_w_data    (i_f_w_data),
+        .o_rs1_data  (o_frs1_data),
+        .o_rs2_data  (o_frs2_data),
+        .o_rs3_data  (o_frs3_data)
     );
 endmodule

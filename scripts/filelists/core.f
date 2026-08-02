@@ -11,6 +11,7 @@ rtl/core/if/stage_if.sv
 # ID stage
 rtl/core/id/imm_unit.sv
 rtl/core/id/regfile.sv
+rtl/core/id/fregfile.sv
 rtl/core/id/control_unit.sv
 rtl/core/id/stage_id.sv
 
@@ -18,6 +19,7 @@ rtl/core/id/stage_id.sv
 rtl/core/ex/alu.sv
 rtl/core/ex/branch_cmp.sv
 rtl/core/ex/stage_ex.sv
+rtl/core/ex/rv32f_unit.sv
 
 # M2 stage
 rtl/core/m2/stage_m2.sv
