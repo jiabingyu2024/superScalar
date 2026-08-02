@@ -21,3 +21,16 @@ fpga/salvage_ip_aligned_route.tcl
 fpga/verify_ip_timing_alignment.tcl
 scripts/fpga_collect_checkpoint.tcl
 scripts/fpga_sweep_postroute_physopt.tcl
+docs/report/比赛架构报告_第5-6章_仿真平台与结果.docx
+docs/report/比赛架构报告_第5-6章_仿真平台与结果_HTML源.html
+docs/report/assets/difftest_flow.png
+docs/report/assets/sim_architecture.png
+docs/report/assets/src_perf.png
+docs/report/assets/src_stalls.png
+docs/report/assets/waveforms/6-1-rv32ui-lw-wave.png
+docs/report/assets/waveforms/6-2-rv32um-div-wave.png
+docs/report/assets/waveforms/6-3-csr-write-wave.png
+docs/report/assets/waveforms/6-4-ecall-trap-wave.png
+docs/report/assets/waveforms/6-5-srcwithmext-pass-wave.png
+docs/report/assets/waveforms/original/srcWithMext.json
+scripts/__pycache__/run_verilator.cpython-312.pyc
